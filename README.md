@@ -26,29 +26,29 @@
 
 Пример генерации случайного секрета: `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`.
 
-## Подключение домена baliminsk.online через Cloudflare Tunnel
+## Подключение к baliminsk.online (Cloudflare подготовлен)
 
-Этот раздел требует, чтобы **именно** `baliminsk.online` уже был добавлен в Cloudflare и находился в рабочем состоянии. Наличие репозитория само по себе не подключает домен.
+На 23 октября 2026 г. в Cloudflare уже создана зона `baliminsk.online` (тариф Free), проксируемая CNAME-запись и **удалённо управляемый Tunnel** с названием `bali-photo-wall`. Создавать ещё один туннель и вызывать `cloudflared tunnel route dns` **не нужно**.
 
-1. Установить [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
-2. Войти: `cloudflared tunnel login`.
-3. Создать туннель: `cloudflared tunnel create bali-photo-wall`.
-4. Настроить DNS: `cloudflared tunnel route dns bali-photo-wall baliminsk.online` (убедиться, что конфликтующих DNS-записей для корня нет).
-5. Создать `~/.cloudflared/config.yml` с **реальным** ID выданного туннеля:
+Статус зоны при настройке: **pending**. У регистратора `baliminsk.online` требуется выставить два NS Cloudflare:
 
-```yaml
-tunnel: ВАШ_UUID_ТУННЕЛЯ
-credentials-file: /путь/к/.cloudflared/ВАШ_UUID_ТУННЕЛЯ.json
-ingress:
-  - hostname: baliminsk.online
-    service: http://127.0.0.1:3100
-  - service: http_status:404
-```
+- `eric.ns.cloudflare.com`
+- `kehlani.ns.cloudflare.com`
 
-6. Запустить `cloudflared tunnel run bali-photo-wall`.
-7. Проверить `https://baliminsk.online/healthz`, затем загрузку фото, модерацию и экран с реального телефона.
+Существующий `baliminsk.by` в отдельной зоне и не изменялся. До переноса NS проверьте наличие других используемых записей у регистратора, например почтовых MX: при смене NS их надо сохранить в Cloudflare.
 
-Официальная документация: [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/). Не размещайте файл credentials туннеля в репозитории.
+### Запуск туннеля на компьютере BALI
+
+1. Сначала установите Node.js 22+ и запустите сервер по инструкции выше: `npm install`, заполнение `.env`, `npm start`.
+2. В панели Cloudflare откройте **Zero Trust → Networks → Connectors / Tunnels → bali-photo-wall**.
+3. Выберите **Add connector / Install connector**, операционную систему компьютера клуба и скопируйте **персональную** команду установки и запуска `cloudflared`, которую выдаст Cloudflare. Она содержит секретный токен: не публикуйте его в GitHub или переписке.
+4. Запустите эту команду на компьютере клуба с правами, требуемыми установщиком. Для постоянной работы лучше установить `cloudflared` как службу.
+5. Убедитесь, что туннель перешёл в статус **Healthy**, а зона домена Cloudflare — в статус **Active**.
+6. Проверьте `https://baliminsk.online/healthz`, затем загрузку реального снимка, модерацию по `/admin` и показ по `/screen`.
+
+**Настроенный ingress:** `baliminsk.online → http://127.0.0.1:3100`, остальные запросы к туннелю получают 404. DNS уже настроен на этот туннель. Никакого публичного IP-адреса на компьютере клуба не требуется.
+
+Полезная документация: [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/).
 
 ## Безопасность и ограничения
 
