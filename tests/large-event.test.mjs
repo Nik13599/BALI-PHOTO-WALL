@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import Database from 'better-sqlite3';
 import sharp from 'sharp';
+import http from 'node:http';
 
 test('300 approved photos are visible on screen and paginated for moderator', {timeout:55000},async()=>{
   const dir=await mkdtemp(path.join(os.tmpdir(),'bali-large-event-'));
@@ -37,13 +38,31 @@ test('300 approved photos are visible on screen and paginated for moderator', {t
     assert.doesNotMatch(adminLogin.headers.get('set-cookie'),/;\s*Secure/i,
       'localhost-only HTTP operator access should not set Secure cookie');
     const admin=adminLogin.headers.get('set-cookie').split(';')[0];
-    const publicLogin=await req('/api/admin/login',{
-      method:'POST',
-      headers:{'content-type':'application/json','Host':'baliminsk.online','X-Forwarded-Host':'localhost'},
-      body:JSON.stringify({password:'test-admin-password-12345'})
+    // fetch() always replaces Host with the connection host. Use node:http to
+    // actually simulate Cloudflare forwarding baliminsk.online to loopback.
+    const loginPayload=JSON.stringify({password:'test-admin-password-12345'});
+    const publicCookie=await new Promise((resolve,reject)=>{
+      const request=http.request({
+        hostname:'127.0.0.1',port,path:'/api/admin/login',method:'POST',
+        headers:{
+          Host:'baliminsk.online',
+          'X-Forwarded-Host':'localhost',
+          'Content-Type':'application/json',
+          'Content-Length':Buffer.byteLength(loginPayload)
+        }
+      },response=>{
+        const chunks=[];
+        response.on('data',chunk=>chunks.push(chunk));
+        response.on('end',()=>{
+          if(response.statusCode!==200)
+            return reject(new Error('Public login failed: '+Buffer.concat(chunks).toString()));
+          resolve(response.headers['set-cookie']?.[0]||'');
+        });
+      });
+      request.on('error',reject);
+      request.end(loginPayload);
     });
-    assert.equal(publicLogin.status,200);
-    assert.match(publicLogin.headers.get('set-cookie'),/;\s*Secure/i,
+    assert.match(publicCookie,/;\s*Secure/i,
       'public domain must always use Secure cookie despite forwarded-host spoofing');
     const screenLogin=await req('/api/screen/login',{
       method:'POST',headers:{'content-type':'application/json'},
