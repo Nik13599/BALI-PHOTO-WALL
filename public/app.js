@@ -254,7 +254,13 @@ if(page==='screen'){
     // A small gallery lives in the centre. Every incoming photo grows the
     // composition outward until its bounds meet the LED screen edges.
     const scale=settings.centerGrowth?Math.min(1,.68+.047*Math.sqrt(n)):1;
-    const stageW=Math.max(1,boxW*scale),stageH=Math.max(1,boxH*scale);
+    let stageW=Math.max(1,boxW*scale),stageH=Math.max(1,boxH*scale);
+    if(n===1 && settings.layout==='puzzle'){
+      // One portrait or square remains entirely visible, never forced into 16:9.
+      const ratio=Math.max(.28,Math.min(4,(Number(all[0].width)||1)/(Number(all[0].height)||1)));
+      if(stageW/stageH>ratio)stageW=stageH*ratio;
+      else stageH=stageW/ratio;
+    }
     const oldRects=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el.getBoundingClientRect()]));
     const existing=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el]));
     const fragment=document.createDocumentFragment();
