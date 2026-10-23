@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0c0d0c"><meta name="robots" content="noindex,nofollow"><title>BALI PHOTO WALL · Загрузи фото</title><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script></head>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0c0d0c"><meta name="robots" content="noindex,nofollow"><title>BALI PHOTO WALL · Загрузи фото</title><link rel="stylesheet" href="/style.css"><script defer src="/crop.js"></script><script defer src="/app.js"></script></head>
 <body data-page="guest">
 <div class="noise"></div><div class="shell guest-shell">
 <header class="header"><span class="wordmark">BALI<span class="accent">.</span></span><span class="header-note">NIGHT CLUB · PHOTO WALL</span></header>
@@ -11,6 +11,18 @@
 <form id="uploadForm" class="upload-card">
 <label class="dropzone" for="photo"><span class="camera">◎</span><span id="fileLabel">Выбрать фотографию</span><small>JPEG, PNG или WebP · до 8 МБ</small></label>
 <input type="file" id="photo" name="photo" accept="image/jpeg,image/png,image/webp" required hidden>
+<div id="cropEditor" class="crop-editor" hidden>
+  <div class="crop-head"><strong>ПОДГОТОВЬ ФОТО</strong><span id="cropPolicyLabel">Выбери область снимка</span></div>
+  <div id="cropChoices" class="crop-choices" role="group" aria-label="Формат публикации">
+    <button type="button" class="crop-choice selected" data-ratio="original">Исходный</button>
+    <button type="button" class="crop-choice" data-ratio="square">Квадрат 1:1</button>
+    <button type="button" class="crop-choice" data-ratio="portrait">Вертикальный 3:4</button>
+    <button type="button" class="crop-choice" data-ratio="landscape">Горизонтальный 4:3</button>
+  </div>
+  <canvas tabindex="0" id="cropCanvas" class="crop-canvas" aria-label="Предпросмотр выбранной области фотографии"></canvas>
+  <label class="crop-zoom">Приближение <input id="cropZoom" type="range" min="1" max="3" step=".02" value="1"><output id="cropZoomValue">100%</output></label>
+  <p class="crop-help">Перемещай фотографию пальцем или мышью. На экран отправится именно выбранный кадр.</p>
+</div>
 <label class="consent"><input type="checkbox" id="consent" required><span>Я подтверждаю право отправить это фото и разрешаю его показ на экранах BALI во время мероприятия. Фото может быть удалено по обращению к сотруднику клуба.</span></label>
 <button class="button primary" id="uploadBtn" type="submit">ОТПРАВИТЬ НА ЭКРАН <span>↗</span></button>
 <div class="alert" id="guestMessage" role="status" aria-live="polite"></div>

@@ -29,7 +29,10 @@ async function optimizePhoto(file) {
 }
 if(page==='guest') {
   const form=$('#uploadForm'), input=$('#photo'), btn=$('#uploadBtn');
+  let uploadPolicy='any';
   api('/api/public').then(data=>{
+    uploadPolicy=data.uploadShape==='square'?'square':'any';
+    globalThis.BaliCropEditor?.setPolicy(uploadPolicy);
     $('#eventName').textContent=data.event?.name||'Нет активного мероприятия';
     const hint=$('#guestLimitsText');
     if(hint){
@@ -40,7 +43,13 @@ if(page==='guest') {
     }
   })
     .catch(()=>$('#eventName').textContent='Сервис временно недоступен');
-  input.addEventListener('change',()=>$('#fileLabel').textContent=input.files[0]?.name || 'Выбрать фотографию');
+  input.addEventListener('change',async()=>{
+    $('#fileLabel').textContent=input.files[0]?.name || 'Выбрать фотографию';
+    try{
+      await globalThis.BaliCropEditor.load(input.files[0]);
+      notice('#guestMessage','Передвинь и увеличь фотографию, чтобы выбрать область показа.');
+    }catch(error){input.value='';notice('#guestMessage',error.message,true);}
+  });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
     const file=input.files[0]; if(!file) return notice('#guestMessage','Выберите фотографию',true);
@@ -48,8 +57,15 @@ if(page==='guest') {
     if(!$('#consent').checked) return notice('#guestMessage','Подтвердите согласие на показ',true);
     btn.disabled=true; btn.textContent='ОТПРАВЛЯЕМ…';
     try {
-      const optimized=await optimizePhoto(file);
-      if(optimized.size>8*1024*1024) throw new Error('Фото слишком большое даже после сжатия. Выберите другое.');
+      // Recheck the administrator's policy before sending an already edited photo.
+      const current=await api('/api/public');
+      const latest=current.uploadShape==='square'?'square':'any';
+      if(latest!==uploadPolicy){
+        uploadPolicy=latest;
+        globalThis.BaliCropEditor.setPolicy(uploadPolicy);
+        throw new Error('Администратор изменил требования к формату. Проверьте обрезку и нажмите «Отправить» ещё раз.');
+      }
+      const optimized=await globalThis.BaliCropEditor.exportFile();
       const data=new FormData(); data.append('photo',optimized); data.append('consent','yes');
       let resp,result;
       for(let attempt=0;attempt<4;attempt++){
@@ -61,7 +77,7 @@ if(page==='guest') {
       }
       if(!resp.ok) throw new Error(result.error||'Ошибка загрузки');
       notice('#guestMessage','✓ Фото принято! Оно появится на экране после проверки.');
-      form.reset(); $('#fileLabel').textContent='Выбрать фотографию';
+      form.reset();globalThis.BaliCropEditor.clear();$('#fileLabel').textContent='Выбрать фотографию';
     } catch(error) {notice('#guestMessage',error.message,true);}
     finally {btn.disabled=false;btn.innerHTML='ОТПРАВИТЬ НА ЭКРАН <span>↗</span>';}
   });
@@ -70,6 +86,7 @@ if(page==='admin') {
   let busy=false;
   let previousDashboard=null;
   let selectedEventId=null;
+  let displayedEventId=null;
   let pageNumber=1;
   const root=$('#adminRoot');
   async function loadDashboard(){
@@ -84,11 +101,14 @@ if(page==='admin') {
       if(signature===previousDashboard) return;
       previousDashboard=signature;
       if(!$('#dashboard')) {
-        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
+        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
       }
       $('#activeEvent').textContent=data.active?.name || 'Не выбрано';
       $('#photoCount').textContent=data.total+' всего · '+data.page+' / '+data.pages+' стр.';
       $('#selectedEvent').textContent=data.selected?.name||'Нет выбранного мероприятия';
+      displayedEventId=data.selected?.id||null;
+      $('#eventUploadShape').value=data.selected?.upload_shape==='square'?'square':'any';
+      $('#saveUploadShape').disabled=!displayedEventId;
       $('#eventList').innerHTML=data.events.map(e=>
         '<div class="event-choice"><button type="button" class="chip '+(e.id===data.selected?.id?'selected':'')+'" data-view="'+e.id+'">'+esc(e.name)+(e.active?' · ИДЁТ':'')+'</button>'+(e.active?'':'<button type="button" class="chip activate" data-activate="'+e.id+'" title="Вывести фото этого мероприятия на экраны">СДЕЛАТЬ АКТИВНЫМ</button>')+'</div>'
       ).join('');
@@ -124,6 +144,12 @@ if(page==='admin') {
     const el=event.target.closest('button');if(!el)return;
     try{
       if(el.id==='logoutBtn'){await action('/api/admin/logout',{});location.reload();}
+      else if(el.id==='saveUploadShape'){
+        if(!displayedEventId)return;
+        await action('/api/admin/events/'+displayedEventId+'/upload-shape',{uploadShape:$('#eventUploadShape').value});
+        previousDashboard=null;await loadDashboard();
+        notice('#adminMessage','✓ Формат загрузки сохранён.');
+      }
       else if(el.dataset.view){selectedEventId=Number(el.dataset.view);pageNumber=1;await loadDashboard();}
       else if(el.dataset.page){pageNumber=Math.max(1,pageNumber+(el.dataset.page==='next'?1:-1));await loadDashboard();}
       else if(el.dataset.activate){
@@ -143,7 +169,7 @@ if(page==='screen'){
   const STORE_KEY='bali-photo-wall-screen-settings-v1';
   const LOGO_KEY='bali-photo-wall-screen-logo-v1';
   const defaults={
-    maxPhotos:500,columns:0,gap:2,fit:'cover',
+    maxPhotos:500,columns:0,gap:2,fit:'cover',layout:'puzzle',centerGrowth:true,
     logoSize:28,liveSize:20,eventSize:32,qrSize:92,inset:18,
     showLogo:true,showLive:true,showEvent:true,showQr:true,showHint:true
   };
@@ -160,6 +186,7 @@ if(page==='screen'){
         if(key in limits && Number.isFinite(Number(saved[key])))
           settings[key]=Math.round(Math.min(limits[key][1],Math.max(limits[key][0],Number(saved[key]))));
         else if(key==='fit' && ['cover','contain'].includes(saved[key]))settings.fit=saved.fit;
+        else if(key==='layout' && ['puzzle','grid'].includes(saved[key]))settings.layout=saved.layout;
         else if(typeof defaults[key]==='boolean' && typeof saved[key]==='boolean')
           settings[key]=saved[key];
       }
@@ -182,6 +209,7 @@ if(page==='screen'){
     setShown($('#screenEvent'),settings.showEvent);
     setShown($('#eventHint'),settings.showHint);
     setShown($('#wallQR'),settings.showQr);
+    $('#columnsSettings').hidden=settings.layout!=='grid';
     for(const control of controls){
       const key=control.dataset.wallSetting;
       if(control.type==='checkbox')control.checked=settings[key];
@@ -219,26 +247,75 @@ if(page==='screen'){
     const n=all.length;
     setShown(empty,n===0);
     if(!n){grid.replaceChildren();return;}
-    const ratio=Math.max(0.65,screen.clientWidth/Math.max(1,screen.clientHeight));
-    let cols=settings.columns||Math.max(1,Math.round(Math.sqrt(n*ratio)));
-    if(!settings.columns && n===3)cols=3;
-    cols=Math.min(n,Math.max(1,cols));
-    const rows=Math.ceil(n/cols);
-    const perRow=Math.floor(n/rows),extra=n%rows;
-    const existing=new Map([...grid.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el]));
-    const fragment=document.createDocumentFragment();
-    let offset=0;
-    for(let rowIndex=0;rowIndex<rows;rowIndex++){
-      const row=document.createElement('div');
-      row.className='wall-grid-row';
-      const count=perRow+(rowIndex<extra?1:0);
-      for(let col=0;col<count;col++){
-        row.append(buildTile(all[offset],n,existing));
-        offset++;
-      }
-      fragment.append(row);
+    const stage=grid.querySelector('.wall-cluster')||document.createElement('div');
+    stage.className='wall-cluster';
+    const boxW=grid.clientWidth||screen.clientWidth;
+    const boxH=grid.clientHeight||screen.clientHeight;
+    // A small gallery lives in the centre. Every incoming photo grows the
+    // composition outward until its bounds meet the LED screen edges.
+    const scale=settings.centerGrowth?Math.min(1,.68+.047*Math.sqrt(n)):1;
+    let stageW=Math.max(1,boxW*scale),stageH=Math.max(1,boxH*scale);
+    if(n===1 && settings.layout==='puzzle'){
+      // One portrait or square remains entirely visible, never forced into 16:9.
+      const ratio=Math.max(.28,Math.min(4,(Number(all[0].width)||1)/(Number(all[0].height)||1)));
+      if(stageW/stageH>ratio)stageW=stageH*ratio;
+      else stageH=stageW/ratio;
     }
-    grid.replaceChildren(fragment);
+    const oldRects=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el.getBoundingClientRect()]));
+    const existing=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el]));
+    const fragment=document.createDocumentFragment();
+    if(settings.layout==='puzzle' && globalThis.BaliMosaic){
+      const mosaic=globalThis.BaliMosaic.compute(all,stageW,stageH,settings.gap);
+      for(const rowData of mosaic.rows){
+        const row=document.createElement('div');
+        row.className='wall-grid-row wall-puzzle-row';
+        row.style.flex='0 0 '+rowData.height+'px';
+        for(let i=0;i<rowData.items.length;i++){
+          const tile=buildTile(rowData.items[i],n,existing);
+          tile.style.flex='0 0 '+rowData.widths[i]+'px';
+          row.append(tile);
+        }
+        fragment.append(row);
+      }
+    } else {
+      const ratio=Math.max(.65,stageW/Math.max(1,stageH));
+      let cols=settings.columns||Math.max(1,Math.round(Math.sqrt(n*ratio)));
+      if(!settings.columns && n===3)cols=3;
+      cols=Math.min(n,Math.max(1,cols));
+      const rows=Math.ceil(n/cols);
+      const perRow=Math.floor(n/rows),extra=n%rows;
+      let offset=0;
+      for(let rowIndex=0;rowIndex<rows;rowIndex++){
+        const row=document.createElement('div');row.className='wall-grid-row';
+        const count=perRow+(rowIndex<extra?1:0);
+        for(let col=0;col<count;col++){
+          const tile=buildTile(all[offset++],n,existing);
+          tile.style.removeProperty('flex');
+          row.append(tile);
+        }
+        fragment.append(row);
+      }
+    }
+    stage.style.width=stageW+'px';
+    stage.style.height=stageH+'px';
+    stage.replaceChildren(fragment);
+    if(stage.parentElement!==grid)grid.replaceChildren(stage);
+    // Only animate a reasonably sized gallery. Hundreds of animated tiles
+    // would overload a modest LED controller and delay new photographs.
+    if(n<=80 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      const nextRects=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el.getBoundingClientRect()]));
+      for(const tile of stage.querySelectorAll('.wall-tile')){
+        const id=Number(tile.dataset.id),was=oldRects.get(id),next=nextRects.get(id);
+        if(!next)continue;
+        const from=was?
+          {transform:'translate('+(was.left-next.left)+'px,'+(was.top-next.top)+'px) scale('+(was.width/Math.max(1,next.width))+','+(was.height/Math.max(1,next.height))+')',opacity:1}:
+          {transform:'scale(.92)',opacity:0};
+        if(was && Math.abs(was.left-next.left)+Math.abs(was.top-next.top)+Math.abs(was.width-next.width)<1)continue;
+        tile.animate([from,{transform:'none',opacity:1}],{
+          duration:620,easing:'cubic-bezier(.18,.8,.18,1)'
+        });
+      }
+    }
   }
   function clearWall(){
     photos=[];signature='';eventId=null;
@@ -347,7 +424,7 @@ if(page==='screen'){
     const change=()=>{
       const key=input.dataset.wallSetting;
       settings[key]=input.type==='checkbox'?input.checked:
-        key==='fit'?input.value:Number(input.value);
+        key==='fit'||key==='layout'?input.value:Number(input.value);
       try{localStorage.setItem(STORE_KEY,JSON.stringify(settings))}catch{}
       applySettings();
     };

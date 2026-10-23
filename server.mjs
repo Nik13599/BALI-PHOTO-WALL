@@ -74,7 +74,13 @@ db.exec(`
 if (!db.prepare('SELECT 1 FROM events LIMIT 1').get()) {
   db.prepare('INSERT INTO events (name,active,created_at) VALUES (?,1,?)').run('BALI PHOTO WALL', Date.now());
 }
-const currentEvent = db.prepare('SELECT id,name FROM events WHERE active=1 ORDER BY id DESC LIMIT 1');
+// Schema upgrades preserve photos and events from existing Windows installations.
+const eventFields=db.pragma('table_info(events)').map(x=>x.name);
+if(!eventFields.includes('upload_shape'))db.exec("ALTER TABLE events ADD COLUMN upload_shape TEXT NOT NULL DEFAULT 'any'");
+const photoFields=db.pragma('table_info(photos)').map(x=>x.name);
+if(!photoFields.includes('width'))db.exec('ALTER TABLE photos ADD COLUMN width INTEGER');
+if(!photoFields.includes('height'))db.exec('ALTER TABLE photos ADD COLUMN height');
+const currentEvent = db.prepare('SELECT id,name,upload_shape FROM events WHERE active=1 ORDER BY id DESC LIMIT 1');
 const selectPhoto = db.prepare('SELECT * FROM photos WHERE id=?');
 const secureEqual = (a, b) => {
   const x = Buffer.from(a); const y = Buffer.from(b);
@@ -165,7 +171,7 @@ app.get('/healthz', (_req,res) => res.json({ok:true}));
 app.get('/api/public', (req,res) => {
   guestIdentity(req,res);
   const event = currentEvent.get();
-  res.json({ event, limit: MAX_PHOTOS_PER_GUEST === 0 ? null : MAX_PHOTOS_PER_GUEST });
+  res.json({ event, uploadShape:event?.upload_shape||'any', limit: MAX_PHOTOS_PER_GUEST === 0 ? null : MAX_PHOTOS_PER_GUEST });
 });
 app.get('/qr.svg', asyncRoute(async (_req, res) => {
   const svg = await QRCode.toString(PUBLIC_URL + '/', { type: 'svg', margin: 1, width: 320, color: {dark:'#111111',light:'#ffffff'} });
@@ -236,6 +242,15 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
   } catch {
     return res.status(415).json({error:'Поддерживаются JPEG, PNG и WebP без повреждений'});
   }
+  // Never silently replace a guest's chosen crop with a different server crop.
+  // Reject unsquared uploads if the moderator requires square photos.
+  if(currentEvent.get()?.upload_shape==='square'){
+    const shape=await sharp(processed).metadata();
+    if(shape.width!==shape.height){
+      return res.status(422).json({error:'На это мероприятие принимаются только квадратные фото 1:1. Проверьте обрезку и отправьте снова.'});
+    }
+  }
+  const dimension=await sharp(processed).metadata();
   const filename = crypto.randomUUID() + '.webp';
   const thumbnail = await sharp(processed).resize({width:360,height:360,fit:'inside',withoutEnlargement:true}).webp({quality:65}).toBuffer();
   const discardProcessed = () => Promise.all([
@@ -247,12 +262,12 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
     await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
     // The final count check and INSERT execute as one SQLite statement. Four
     // simultaneous requests from one browser can never exceed three rows.
-    const result = db.prepare(`INSERT INTO photos(event_id,filename,guest_id,status,created_at)
-      SELECT ?, ?, ?, 'pending', ?
+    const result = db.prepare(`INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height)
+      SELECT ?, ?, ?, 'pending', ?, ?, ?
       WHERE (? = 0 OR (SELECT COUNT(*) FROM photos WHERE event_id=? AND guest_id=?) < ?)
         AND (? = 0 OR (SELECT COUNT(*) FROM photos WHERE event_id=?) < ?)
         AND EXISTS (SELECT 1 FROM events WHERE id=? AND active=1)`)
-      .run(event.id,filename,guest,Date.now(),
+      .run(event.id,filename,guest,Date.now(),dimension.width,dimension.height,
         MAX_PHOTOS_PER_GUEST,event.id,guest,MAX_PHOTOS_PER_GUEST,
         MAX_PHOTOS_PER_EVENT,event.id,MAX_PHOTOS_PER_EVENT,event.id);
     if (!result.changes) {
@@ -280,11 +295,21 @@ const servePhoto = (row,res,privateView=false,fullView=false) => {
 app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res));
 // Keep LED transfers bounded. The newest 500 approved photos are enough
 // for a full mosaic, and database size is not an app-level upload quota.
-app.get('/api/screen', screenAuth, (_req,res) => {
+app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
   const event = currentEvent.get();
-  const photos = event ? db.prepare("SELECT id,created_at FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
-  res.json({event,photos});
-});
+  const photos = event ? db.prepare("SELECT id,created_at,width,height,filename FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
+  const update=db.prepare('UPDATE photos SET width=?,height=? WHERE id=? AND (width IS NULL OR height IS NULL)');
+  // Upgrade photos created before width/height metadata existed, once per photo.
+  for(const photo of photos){
+    if(photo.width>0 && photo.height>0)continue;
+    try {
+      const info=await sharp(path.join(PHOTOS,photo.filename)).metadata();
+      photo.width=info.width||1;photo.height=info.height||1;
+      update.run(photo.width,photo.height,photo.id);
+    } catch {photo.width=1;photo.height=1;update.run(1,1,photo.id);}
+  }
+  res.json({event,photos:photos.map(({id,created_at,width,height})=>({id,created_at,width,height}))});
+}));
 // Only approved photos may appear in the LED mosaic, even as thumbnails.
 // Unapproved originals remain accessible to the moderator only.
 app.get('/api/screen/thumbnail/:id', screenAuth, (req,res) => {
@@ -314,12 +339,12 @@ app.post('/api/admin/logout', requireAction, (_req,res) => {
 app.get('/api/admin/me', adminAuth, (_req,res) => res.json({ok:true}));
 app.get('/api/admin/photos/:id', adminAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res,true,req.query.full==='1'));
 app.get('/api/admin/dashboard', adminAuth, (req,res) => {
-  const events = db.prepare('SELECT id,name,active,created_at FROM events ORDER BY id DESC').all();
+  const events = db.prepare('SELECT id,name,active,created_at,upload_shape FROM events ORDER BY id DESC').all();
   const active = currentEvent.get();
   const requested = req.query.eventId;
   const selected = requested === undefined ? active
     : (typeof requested === 'string' && /^\d+$/.test(requested)
-      ? db.prepare('SELECT id,name FROM events WHERE id=?').get(Number(requested)) : null);
+      ? db.prepare('SELECT id,name,upload_shape FROM events WHERE id=?').get(Number(requested)) : null);
   if (requested !== undefined && !selected) return res.status(404).json({error:'Мероприятие не найдено'});
   const PAGE_SIZE = 48;
   const rawPage = req.query.page ?? '1';
@@ -349,6 +374,15 @@ const activateEvent = db.transaction(id => {
   db.prepare('UPDATE events SET active=0').run();
   db.prepare('UPDATE events SET active=1 WHERE id=?').run(id);
   return true;
+});
+app.post('/api/admin/events/:id/upload-shape', adminAuth, requireAction, (req,res)=>{
+  const id=Number(req.params.id);
+  const shape=req.body?.uploadShape;
+  if(!Number.isSafeInteger(id)||id<=0)return res.status(400).json({error:'Некорректное мероприятие'});
+  if(!['any','square'].includes(shape))return res.status(400).json({error:'Выберите любые форматы или только квадратные'});
+  const result=db.prepare('UPDATE events SET upload_shape=? WHERE id=?').run(shape,id);
+  if(!result.changes)return res.status(404).json({error:'Мероприятие не найдено'});
+  res.json({ok:true,uploadShape:shape});
 });
 app.post('/api/admin/events/:id/activate', adminAuth, requireAction, (req,res) => {
   if (!activateEvent(Number(req.params.id))) return res.status(404).json({error:'Мероприятие не найдено'});
