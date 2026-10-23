@@ -6,3 +6,8 @@
 .screen-login-card{width:min(100%,440px);display:flex;flex-direction:column;gap:17px;padding:32px;border:1px solid #46543f;border-radius:20px;background:#151d13;box-shadow:0 20px 80px #000a}
 .screen-login-card h2{margin:0;color:#d7ff4d}
 .screen-login-card p{color:#b0bfa8;line-height:1.5;margin:0;font-size:14px}
+
+.event-choice{display:flex;gap:6px;align-items:center;max-width:100%;flex-wrap:wrap;padding:3px;border-radius:14px;border:1px solid #374531}
+.event-choice .chip{font-size:11px;overflow-wrap:anywhere}
+.event-choice .activate{background:transparent;border-color:#3b4537;color:#9eac94;font-size:9px;letter-spacing:.02em}
+.event-choice .activate:hover{color:#d7ff4d;border-color:#d7ff4d}
