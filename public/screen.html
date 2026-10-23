@@ -10,20 +10,11 @@
 <main class="screen" id="wallScreen">
   <div class="wall-grid" id="wallGrid" aria-label="Фотостена BALI"></div>
   <div class="wall-empty" id="wallEmpty"><div class="wall-empty-title">ТВОЙ МОМЕНТ <span class="glow">НА ЭКРАНЕ</span></div><p>Отсканируй QR-код и загрузи фотографию</p></div>
-  <div class="wall-overlay wall-overlay-top">
-    <img class="wall-logo" id="wallLogo" src="/bali-logo.svg" alt="BALI Night Club">
-    <div class="wall-live" id="wallLive"><span class="pulse"></span><span>PHOTO LIVE</span></div>
-  </div>
-  <div class="wall-overlay wall-overlay-bottom">
-    <div class="wall-event-wrap">
-      <div class="wall-event-name" id="screenEvent">BALI NIGHT CLUB</div>
-      <div class="wall-event-hint" id="eventHint">Сканируй QR · Загружай фото · Попади на экран</div>
-    </div>
-    <div class="wall-qr" id="wallQR">
-      <img src="/qr.svg" alt="QR-код для загрузки фото" id="wallQRImage">
-      <span>ЗАГРУЗИ ФОТО</span>
-    </div>
-  </div>
+  <img class="wall-logo wall-floating" id="wallLogo" src="/bali-logo.svg" alt="BALI Night Club">
+  <div class="wall-live wall-floating" id="wallLive"><span class="pulse"></span><span>PHOTO LIVE</span></div>
+  <div class="wall-event-name wall-floating" id="screenEvent">BALI NIGHT CLUB</div>
+  <div class="wall-event-hint wall-floating" id="eventHint">Сканируй QR · Загружай фото · Попади на экран</div>
+  <div class="wall-qr wall-floating" id="wallQR"><img src="/qr.svg" alt="QR-код для загрузки фото" id="wallQRImage"><span>ЗАГРУЗИ ФОТО</span></div>
   <div class="screen-login" id="screenLogin">
     <form id="screenLoginForm" class="screen-login-card">
       <img class="login-logo" src="/bali-logo.svg" alt="Логотип BALI">
@@ -47,6 +38,20 @@
       <label class="wall-setting" for="setColumns" id="columnsSettings"><span>Столбцов <output id="outColumns">Авто</output></span><input id="setColumns" data-wall-setting="columns" type="range" min="0" max="40" step="1" value="0"><small>0 — автоматически под размер экрана</small></label>
       <label class="wall-setting" for="setGap"><span>Промежуток между фото <output id="outGap">2</output> px</span><input id="setGap" data-wall-setting="gap" type="range" min="0" max="16" step="1" value="2"></label>
       <label class="wall-setting" for="setFit"><span>Как размещать снимки</span><select id="setFit" data-wall-setting="fit"><option value="cover">Заполнить ячейки (кадрировать)</option><option value="contain">Показать целиком (с полями)</option></select></label>
+      <div class="wall-setting-separator">Положение надписей и QR</div>
+      <p class="wall-setting-note">Каждый элемент можно переместить независимо, не сдвигая фотографии.</p>
+      <label class="wall-setting"><span>Логотип: расположение</span><select data-wall-setting="logoPos" id="setLogoPos"><option value="tl">Сверху слева</option><option value="tc">Сверху по центру</option><option value="tr">Сверху справа</option><option value="ml">По центру слева</option><option value="mc">По центру экрана</option><option value="mr">По центру справа</option><option value="bl">Снизу слева</option><option value="bc">Снизу по центру</option><option value="br">Снизу справа</option></select></label>
+<label class="wall-setting"><span>PHOTO LIVE: расположение</span><select data-wall-setting="livePos" id="setLivePos"><option value="tl">Сверху слева</option><option value="tc">Сверху по центру</option><option value="tr">Сверху справа</option><option value="ml">По центру слева</option><option value="mc">По центру экрана</option><option value="mr">По центру справа</option><option value="bl">Снизу слева</option><option value="bc">Снизу по центру</option><option value="br">Снизу справа</option></select></label>
+<label class="wall-setting"><span>Название мероприятия: расположение</span><select data-wall-setting="eventPos" id="setEventPos"><option value="tl">Сверху слева</option><option value="tc">Сверху по центру</option><option value="tr">Сверху справа</option><option value="ml">По центру слева</option><option value="mc">По центру экрана</option><option value="mr">По центру справа</option><option value="bl">Снизу слева</option><option value="bc">Снизу по центру</option><option value="br">Снизу справа</option></select></label>
+<label class="wall-setting"><span>Подпись: расположение</span><select data-wall-setting="hintPos" id="setHintPos"><option value="tl">Сверху слева</option><option value="tc">Сверху по центру</option><option value="tr">Сверху справа</option><option value="ml">По центру слева</option><option value="mc">По центру экрана</option><option value="mr">По центру справа</option><option value="bl">Снизу слева</option><option value="bc">Снизу по центру</option><option value="br">Снизу справа</option></select></label>
+<label class="wall-setting"><span>QR-код: расположение</span><select data-wall-setting="qrPos" id="setQrPos"><option value="tl">Сверху слева</option><option value="tc">Сверху по центру</option><option value="tr">Сверху справа</option><option value="ml">По центру слева</option><option value="mc">По центру экрана</option><option value="mr">По центру справа</option><option value="bl">Снизу слева</option><option value="bc">Снизу по центру</option><option value="br">Снизу справа</option></select></label>
+      <label class="wall-setting"><span>Какой элемент подвинуть точнее</span>
+        <select id="wallShiftTarget">
+          <option value="logo">Логотип</option><option value="live">PHOTO LIVE</option><option value="event">Название мероприятия</option><option value="hint">Подпись</option><option value="qr">QR-код</option>
+        </select>
+      </label>
+      <label class="wall-setting"><span>Смещение по горизонтали <output id="wallShiftXValue">0</output> px</span><input type="range" id="wallShiftX" min="-250" max="250" value="0" step="5"></label>
+      <label class="wall-setting"><span>Смещение по вертикали <output id="wallShiftYValue">0</output> px</span><input type="range" id="wallShiftY" min="-250" max="250" value="0" step="5"></label>
       <div class="wall-setting-separator">Элементы экрана</div>
       <label class="wall-setting" for="setLogoSize"><span>Размер логотипа <output id="outLogoSize">28</output> px</span><input id="setLogoSize" data-wall-setting="logoSize" type="range" min="24" max="240" value="28"></label>
       <label class="wall-setting wall-logo-upload" for="wallLogoUpload"><span>Свой логотип (PNG, JPG, WebP)</span><input id="wallLogoUpload" type="file" accept="image/png,image/jpeg,image/webp"><small>Изображение до 1 МБ, сохранится на этом экране</small></label>

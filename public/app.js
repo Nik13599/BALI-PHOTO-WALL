@@ -169,12 +169,17 @@ if(page==='screen'){
   const STORE_KEY='bali-photo-wall-screen-settings-v1';
   const LOGO_KEY='bali-photo-wall-screen-logo-v1';
   const defaults={
-    maxPhotos:500,columns:0,gap:2,fit:'cover',layout:'puzzle',centerGrowth:true,
+    maxPhotos:500,columns:0,gap:2,fit:'contain',layout:'puzzle',centerGrowth:true,
+    logoPos:'tl',livePos:'tr',eventPos:'bl',hintPos:'bc',qrPos:'br',
+    logoX:0,logoY:0,liveX:0,liveY:0,eventX:0,eventY:0,hintX:0,hintY:0,qrX:0,qrY:0,
     logoSize:28,liveSize:20,eventSize:32,qrSize:92,inset:18,
     showLogo:true,showLive:true,showEvent:true,showQr:true,showHint:true
   };
   const limits={
     maxPhotos:[1,500],columns:[0,40],gap:[0,16],
+    logoX:[-250,250],logoY:[-250,250],liveX:[-250,250],liveY:[-250,250],
+    eventX:[-250,250],eventY:[-250,250],hintX:[-250,250],hintY:[-250,250],
+    qrX:[-250,250],qrY:[-250,250],
     logoSize:[24,240],liveSize:[10,55],eventSize:[12,85],
     qrSize:[40,250],inset:[0,80]
   };
@@ -187,6 +192,7 @@ if(page==='screen'){
           settings[key]=Math.round(Math.min(limits[key][1],Math.max(limits[key][0],Number(saved[key]))));
         else if(key==='fit' && ['cover','contain'].includes(saved[key]))settings.fit=saved.fit;
         else if(key==='layout' && ['puzzle','grid'].includes(saved[key]))settings.layout=saved.layout;
+        else if(key.endsWith('Pos') && ['tl','tc','tr','ml','mc','mr','bl','bc','br'].includes(saved[key]))settings[key]=saved[key];
         else if(typeof defaults[key]==='boolean' && typeof saved[key]==='boolean')
           settings[key]=saved[key];
       }
@@ -196,6 +202,36 @@ if(page==='screen'){
   const controls=[...document.querySelectorAll('[data-wall-setting]')];
   let photos=[],eventId=null,signature='',failedPolls=0,wasAuthenticated=false;
   const setShown=(element,visible)=>{ if(element)element.hidden=!visible; };
+  const floatingElements={logo:$('#wallLogo'),live:$('#wallLive'),event:$('#screenEvent'),hint:$('#eventHint'),qr:$('#wallQR')};
+  const anchors={tl:[0,0],tc:[.5,0],tr:[1,0],ml:[0,.5],mc:[.5,.5],mr:[1,.5],bl:[0,1],bc:[.5,1],br:[1,1]};
+  function positionFloating(){
+    for(const [key,element] of Object.entries(floatingElements)){
+      const pos=anchors[settings[key+'Pos']]||anchors.tl;
+      const dx=settings[key+'X']||0,dy=settings[key+'Y']||0;
+      const inset=settings.inset;
+      element.style.left=pos[0]===0?inset+'px':pos[0]===.5?'50%':'auto';
+      element.style.right=pos[0]===1?inset+'px':'auto';
+      element.style.top=pos[1]===0?inset+'px':pos[1]===.5?'50%':'auto';
+      element.style.bottom=pos[1]===1?inset+'px':'auto';
+      element.style.transform='translate(calc('+(pos[0]===.5?'-50% + ':'')+dx+'px),calc('+(pos[1]===.5?'-50% + ':'')+dy+'px))';
+    }
+  }
+  function syncShiftControls(){
+    const key=$('#wallShiftTarget').value;
+    $('#wallShiftX').value=String(settings[key+'X']);
+    $('#wallShiftY').value=String(settings[key+'Y']);
+    $('#wallShiftXValue').textContent=String(settings[key+'X']);
+    $('#wallShiftYValue').textContent=String(settings[key+'Y']);
+  }
+  $('#wallShiftTarget').addEventListener('change',syncShiftControls);
+  for(const [axis,input] of [['X',$('#wallShiftX')],['Y',$('#wallShiftY')]]){
+    input.addEventListener('input',()=>{
+      const key=$('#wallShiftTarget').value+axis;
+      settings[key]=Number(input.value);
+      try{localStorage.setItem(STORE_KEY,JSON.stringify(settings));}catch{}
+      syncShiftControls();positionFloating();
+    });
+  }
   function applySettings(){
     screen.style.setProperty('--wall-gap',settings.gap+'px');
     screen.style.setProperty('--wall-fit',settings.fit);
@@ -209,6 +245,7 @@ if(page==='screen'){
     setShown($('#screenEvent'),settings.showEvent);
     setShown($('#eventHint'),settings.showHint);
     setShown($('#wallQR'),settings.showQr);
+    positionFloating();syncShiftControls();
     $('#columnsSettings').hidden=settings.layout!=='grid';
     for(const control of controls){
       const key=control.dataset.wallSetting;
@@ -296,6 +333,7 @@ if(page==='screen'){
         fragment.append(row);
       }
     }
+    stage.style.setProperty('--wall-fit',settings.layout==='puzzle'?'contain':settings.fit);
     stage.style.width=stageW+'px';
     stage.style.height=stageH+'px';
     stage.replaceChildren(fragment);
@@ -332,7 +370,7 @@ if(page==='screen'){
       $('#screenEvent').textContent=eventName;
       // Update on photos or event identity changes; do not redraw every poll.
       const incoming=(data.photos||[]).slice(0,MAX_WALL_PHOTOS);
-      const nextSignature=event+':'+incoming.map(photo=>photo.id).join(',');
+      const nextSignature=event+':'+incoming.map(photo=>[photo.id,photo.width,photo.height].join('/')).join(',');
       if(nextSignature!==signature){
         eventId=event;
         signature=nextSignature;

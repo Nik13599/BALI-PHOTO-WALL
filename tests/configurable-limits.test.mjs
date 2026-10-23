@@ -6,7 +6,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import sharp from 'sharp';
 
-test('unlimited mode accepts more than three uploads without a paid-service quota', { timeout: 45000 }, async () => {
+test('legacy guest limit is ignored and guests can upload unlimited photos', { timeout: 45000 }, async () => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'bali-unlimited-'));
   const port = 13333;
   const url = 'http://127.0.0.1:' + port;
@@ -16,7 +16,7 @@ test('unlimited mode accepts more than three uploads without a paid-service quot
       ...process.env,
       NODE_ENV:'development', HOST:'127.0.0.1', PORT:String(port),
       DATA_DIR:dataDir, PUBLIC_URL:url,
-      MAX_PHOTOS_PER_GUEST:'0', MAX_PHOTOS_PER_EVENT:'0', UPLOAD_REQUESTS_PER_HOUR:'0',
+      MAX_PHOTOS_PER_GUEST:'1', MAX_PHOTOS_PER_EVENT:'0', UPLOAD_REQUESTS_PER_HOUR:'0',
       MIN_FREE_DISK_MB:'100', MAX_ACTIVE_UPLOADS:'12',
       ADMIN_PASSWORD:'test-admin-pass-12345', SCREEN_PASSWORD:'test-screen-pass-12345',
       SESSION_SECRET:'abcdefghijklmnopqrstuvwxyz1234567890abcdef'

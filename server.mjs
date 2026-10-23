@@ -37,16 +37,15 @@ if (!Number.isFinite(retentionSetting) || !Number.isInteger(retentionSetting) ||
 const RETENTION_DAYS = retentionSetting;
 // 0 disables an artificial photo-count cap. Hardware capacity still applies.
 const MAX_PHOTOS_PER_EVENT = Number(process.env.MAX_PHOTOS_PER_EVENT ?? 0);
-const MAX_PHOTOS_PER_GUEST = Number(process.env.MAX_PHOTOS_PER_GUEST ?? 3);
+// Guest photo caps were removed. Legacy .env MAX_PHOTOS_PER_GUEST is ignored.
 const MIN_FREE_DISK_MB = Number(process.env.MIN_FREE_DISK_MB || 512);
 const MAX_ACTIVE_UPLOADS = Number(process.env.MAX_ACTIVE_UPLOADS || 12);
 const UPLOAD_REQUESTS_PER_HOUR = Number(process.env.UPLOAD_REQUESTS_PER_HOUR ?? 0);
 if (!Number.isSafeInteger(MAX_PHOTOS_PER_EVENT) || MAX_PHOTOS_PER_EVENT < 0 || MAX_PHOTOS_PER_EVENT > 100000000 ||
-    !Number.isSafeInteger(MAX_PHOTOS_PER_GUEST) || MAX_PHOTOS_PER_GUEST < 0 || MAX_PHOTOS_PER_GUEST > 1000000 ||
     !Number.isSafeInteger(MIN_FREE_DISK_MB) || MIN_FREE_DISK_MB < 100 || MIN_FREE_DISK_MB > 100000 ||
     !Number.isSafeInteger(MAX_ACTIVE_UPLOADS) || MAX_ACTIVE_UPLOADS < 2 || MAX_ACTIVE_UPLOADS > 32 ||
     !Number.isSafeInteger(UPLOAD_REQUESTS_PER_HOUR) || UPLOAD_REQUESTS_PER_HOUR < 0 || UPLOAD_REQUESTS_PER_HOUR > 10000000) {
-  console.error('Check MAX_PHOTOS_PER_EVENT (0-100000000), MAX_PHOTOS_PER_GUEST (0-1000000), MIN_FREE_DISK_MB (100-100000), MAX_ACTIVE_UPLOADS (2-32), UPLOAD_REQUESTS_PER_HOUR (0-10000000)');
+  console.error('Check MAX_PHOTOS_PER_EVENT (0-100000000), MIN_FREE_DISK_MB (100-100000), MAX_ACTIVE_UPLOADS (2-32), UPLOAD_REQUESTS_PER_HOUR (0-10000000)');
   process.exit(1);
 }
 const db = new Database(path.join(DATA, 'bali-photo-wall.sqlite'));
@@ -171,7 +170,7 @@ app.get('/healthz', (_req,res) => res.json({ok:true}));
 app.get('/api/public', (req,res) => {
   guestIdentity(req,res);
   const event = currentEvent.get();
-  res.json({ event, uploadShape:event?.upload_shape||'any', limit: MAX_PHOTOS_PER_GUEST === 0 ? null : MAX_PHOTOS_PER_GUEST });
+  res.json({ event, uploadShape:event?.upload_shape||'any', limit:null });
 });
 app.get('/qr.svg', asyncRoute(async (_req, res) => {
   const svg = await QRCode.toString(PUBLIC_URL + '/', { type: 'svg', margin: 1, width: 320, color: {dark:'#111111',light:'#ffffff'} });
@@ -218,8 +217,6 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
   if (req.body?.consent !== 'yes') return res.status(400).json({error:'Необходимо согласие на показ фотографии'});
   if (!req.file?.path) return res.status(400).json({error:'Выберите фотографию'});
   const guest = guestIdentity(req,res);
-  const used = db.prepare('SELECT count(*) AS n FROM photos WHERE event_id=? AND guest_id=?').get(event.id,guest).n;
-  if (MAX_PHOTOS_PER_GUEST > 0 && used >= MAX_PHOTOS_PER_GUEST) return res.status(429).json({error:'Достигнут лимит фотографий гостя'});
   const alreadyInEvent = db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(event.id).n;
   if (MAX_PHOTOS_PER_EVENT > 0 && alreadyInEvent >= MAX_PHOTOS_PER_EVENT) return res.status(409).json({error:'Достигнут установленный лимит фотографий мероприятия'});
   try {
@@ -260,15 +257,12 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
   try {
     await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
     await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
-    // The final count check and INSERT execute as one SQLite statement. Four
-    // simultaneous requests from one browser can never exceed three rows.
+    // Preserve the optional per-event quota and active-event check atomically.
     const result = db.prepare(`INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height)
       SELECT ?, ?, ?, 'pending', ?, ?, ?
-      WHERE (? = 0 OR (SELECT COUNT(*) FROM photos WHERE event_id=? AND guest_id=?) < ?)
-        AND (? = 0 OR (SELECT COUNT(*) FROM photos WHERE event_id=?) < ?)
+      WHERE (? = 0 OR (SELECT COUNT(*) FROM photos WHERE event_id=?) < ?)
         AND EXISTS (SELECT 1 FROM events WHERE id=? AND active=1)`)
       .run(event.id,filename,guest,Date.now(),dimension.width,dimension.height,
-        MAX_PHOTOS_PER_GUEST,event.id,guest,MAX_PHOTOS_PER_GUEST,
         MAX_PHOTOS_PER_EVENT,event.id,MAX_PHOTOS_PER_EVENT,event.id);
     if (!result.changes) {
       await discardProcessed();
@@ -276,8 +270,8 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
         return res.status(409).json({error:'Мероприятие изменилось во время загрузки. Повторите отправку.'});
       const total = db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(event.id).n;
       const eventCapped = MAX_PHOTOS_PER_EVENT > 0 && total >= MAX_PHOTOS_PER_EVENT;
-      return res.status(eventCapped ? 409 : 429)
-        .json({error:eventCapped?'Достигнут установленный лимит фотографий мероприятия':'Достигнут лимит фотографий гостя'});
+      return res.status(409)
+        .json({error:eventCapped?'Достигнут установленный лимит фотографий мероприятия':'Мероприятие изменилось. Повторите отправку.'});
     }
     res.status(201).json({id:result.lastInsertRowid,status:'pending',message:'Фото отправлено на проверку'});
   } catch (error) {
