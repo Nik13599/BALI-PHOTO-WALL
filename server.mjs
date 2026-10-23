@@ -40,11 +40,13 @@ const MAX_PHOTOS_PER_EVENT = Number(process.env.MAX_PHOTOS_PER_EVENT ?? 0);
 const MAX_PHOTOS_PER_GUEST = Number(process.env.MAX_PHOTOS_PER_GUEST ?? 3);
 const MIN_FREE_DISK_MB = Number(process.env.MIN_FREE_DISK_MB || 512);
 const MAX_ACTIVE_UPLOADS = Number(process.env.MAX_ACTIVE_UPLOADS || 12);
+const UPLOAD_REQUESTS_PER_HOUR = Number(process.env.UPLOAD_REQUESTS_PER_HOUR ?? 0);
 if (!Number.isSafeInteger(MAX_PHOTOS_PER_EVENT) || MAX_PHOTOS_PER_EVENT < 0 || MAX_PHOTOS_PER_EVENT > 100000000 ||
     !Number.isSafeInteger(MAX_PHOTOS_PER_GUEST) || MAX_PHOTOS_PER_GUEST < 0 || MAX_PHOTOS_PER_GUEST > 1000000 ||
     !Number.isSafeInteger(MIN_FREE_DISK_MB) || MIN_FREE_DISK_MB < 100 || MIN_FREE_DISK_MB > 100000 ||
-    !Number.isSafeInteger(MAX_ACTIVE_UPLOADS) || MAX_ACTIVE_UPLOADS < 2 || MAX_ACTIVE_UPLOADS > 32) {
-  console.error('Check MAX_PHOTOS_PER_EVENT (0-100000000), MAX_PHOTOS_PER_GUEST (0-1000000), MIN_FREE_DISK_MB (100-100000), MAX_ACTIVE_UPLOADS (2-32)');
+    !Number.isSafeInteger(MAX_ACTIVE_UPLOADS) || MAX_ACTIVE_UPLOADS < 2 || MAX_ACTIVE_UPLOADS > 32 ||
+    !Number.isSafeInteger(UPLOAD_REQUESTS_PER_HOUR) || UPLOAD_REQUESTS_PER_HOUR < 0 || UPLOAD_REQUESTS_PER_HOUR > 10000000) {
+  console.error('Check MAX_PHOTOS_PER_EVENT (0-100000000), MAX_PHOTOS_PER_GUEST (0-1000000), MIN_FREE_DISK_MB (100-100000), MAX_ACTIVE_UPLOADS (2-32), UPLOAD_REQUESTS_PER_HOUR (0-10000000)');
   process.exit(1);
 }
 const db = new Database(path.join(DATA, 'bali-photo-wall.sqlite'));
@@ -170,7 +172,12 @@ app.get('/qr.svg', asyncRoute(async (_req, res) => {
   res.type('image/svg+xml').set('Cache-Control','public,max-age=600').send(svg);
 }));
 
-const uploadLimiter = rateLimit({windowMs:3600000,limit:4000,standardHeaders:'draft-8',legacyHeaders:false});
+// No hourly upload-request quota by default. Optional anti-abuse throttle
+// can be enabled by setting UPLOAD_REQUESTS_PER_HOUR to a positive number.
+const uploadLimiter = UPLOAD_REQUESTS_PER_HOUR === 0
+  ? (_req,_res,next) => next()
+  : rateLimit({windowMs:3600000,limit:UPLOAD_REQUESTS_PER_HOUR,
+    standardHeaders:'draft-8',legacyHeaders:false});
 let activeUploads = 0;
 function reserveUploadSlot(req,res,next) {
   if (activeUploads >= MAX_ACTIVE_UPLOADS) {
