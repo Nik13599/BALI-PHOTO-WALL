@@ -124,7 +124,7 @@ if(page==='admin') {
   setInterval(()=>{if($('#dashboard')&&!document.hidden)loadDashboard();},6000);
 }
 if(page==='screen'){
-  let photos=[],index=0,signature='',shownId=null,renderToken=0;
+  let photos=[],index=0,signature='',shownId=null,renderToken=0,failedPolls=0;
   const center=$('#screenCenter'),background=$('#photoBackground'),login=$('#screenLogin');
   $('#screenLoginForm').addEventListener('submit',async event=>{
     event.preventDefault();
@@ -168,6 +168,7 @@ if(page==='screen'){
   async function refresh(){
     try {
       const d=await api('/api/screen');
+      failedPolls=0;
       login.hidden=true;
       $('#screenEvent').textContent=d.event?.name||'BALI NIGHT CLUB';
       const sig=d.photos.map(p=>p.id).join(',');
@@ -178,7 +179,17 @@ if(page==='screen'){
         if(shownId!==null && !photos.some(p=>p.id===shownId))showPlaceholder();
         render();
       }
-    }catch(error){if(error.code===401){login.hidden=false;} else console.warn(error.message);}
+    }catch(error){
+      if(error.code===401){
+        login.hidden=false;signature='';photos=[];showPlaceholder();
+      } else {
+        console.warn('LED sync error:',error.message);
+        if(++failedPolls>=3){
+          signature='';photos=[];showPlaceholder();
+          $('#screenEvent').textContent='СОЕДИНЕНИЕ С СЕРВЕРОМ ПОТЕРЯНО';
+        }
+      }
+    }
   }
   $('#fullscreenBtn').addEventListener('click',()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{}));
   refresh();setInterval(refresh,5000);setInterval(render,8000);
