@@ -42,6 +42,9 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
     const login = await request('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'smoketest-only-secret-pass'})});
     assert.equal(login.status,200);
     const admin = login.headers.get('set-cookie').split(';')[0];
+    const screenLogin = await request('/api/screen/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'smoketest-screen-access'})});
+    assert.equal(screenLogin.status,200);
+    const screenCookie = screenLogin.headers.get('set-cookie').split(';')[0];
     const headers = { Cookie:admin, 'X-BALI-Action':'1', 'Content-Type':'application/json' };
     const img = await sharp({create:{width:96,height:96,channels:3,background:'#88ff33'}}).png().toBuffer();
     const form = new FormData();
@@ -53,15 +56,15 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
     const { photos } = await (await request('/api/admin/dashboard',{headers:{Cookie:admin}})).json();
     const uploaded = photos.find(p=>p.status==='pending');
     assert.ok(uploaded);
-    assert.equal((await request('/api/photos/'+uploaded.id)).status,404);
+    assert.equal((await request('/api/photos/'+uploaded.id,{headers:{Cookie:screenCookie}})).status,404);
     const approved = await request('/api/admin/photos/'+uploaded.id+'/status',{
       method:'POST',headers,body:JSON.stringify({status:'approved'})
     });
     assert.equal(approved.status,200);
-    const served = await request('/api/photos/'+uploaded.id);
+    const served = await request('/api/photos/'+uploaded.id,{headers:{Cookie:screenCookie}});
     assert.equal(served.status,200);
     assert.match(served.headers.get('content-type'),/image\/webp/);
-    const screen = await (await request('/api/screen')).json();
+    const screen = await (await request('/api/screen',{headers:{Cookie:screenCookie}})).json();
     assert.ok(screen.photos.some(p=>p.id===uploaded.id));
     const newEvent = await request('/api/admin/events',{method:'POST',headers,body:JSON.stringify({name:'SMOKE TEST EVENT'})});
     assert.equal(newEvent.status,201);
