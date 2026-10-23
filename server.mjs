@@ -150,7 +150,7 @@ app.get('/qr.svg', asyncRoute(async (_req, res) => {
   res.type('image/svg+xml').set('Cache-Control','public,max-age=600').send(svg);
 }));
 
-const uploadLimiter = rateLimit({windowMs:3600000,limit:1500,standardHeaders:'draft-8',legacyHeaders:false});
+const uploadLimiter = rateLimit({windowMs:3600000,limit:4000,standardHeaders:'draft-8',legacyHeaders:false});
 const upload = multer({ storage:multer.diskStorage({
   destination: (_req,_file,cb) => cb(null, UPLOADS),
   filename: (_req,_file,cb) => cb(null, crypto.randomUUID() + '.tmp')
@@ -236,12 +236,17 @@ app.post('/api/admin/logout', requireAction, (_req,res) => {
 });
 app.get('/api/admin/me', adminAuth, (_req,res) => res.json({ok:true}));
 app.get('/api/admin/photos/:id', adminAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res,true));
-app.get('/api/admin/dashboard', adminAuth, (_req,res) => {
+app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   const events = db.prepare('SELECT id,name,active,created_at FROM events ORDER BY id DESC LIMIT 100').all();
   const active = currentEvent.get();
-  const photos = active ? db.prepare('SELECT id,status,created_at FROM photos WHERE event_id=? ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END,created_at DESC LIMIT 250')
-    .all(active.id,'pending') : [];
-  res.json({events,active,photos});
+  const requested = req.query.eventId;
+  const selected = requested === undefined ? active
+    : (typeof requested === 'string' && /^\d+$/.test(requested)
+      ? db.prepare('SELECT id,name FROM events WHERE id=?').get(Number(requested)) : null);
+  if (requested !== undefined && !selected) return res.status(404).json({error:'Мероприятие не найдено'});
+  const photos = selected ? db.prepare('SELECT id,status,created_at FROM photos WHERE event_id=? ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END,created_at DESC LIMIT 250')
+    .all(selected.id,'pending') : [];
+  res.json({events,active,selected,photos});
 });
 const makeEvent = db.transaction(name => {
   db.prepare('UPDATE events SET active=0').run();
