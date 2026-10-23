@@ -74,3 +74,30 @@ body[data-page="screen"]{overflow:hidden;background:#050705}
 .wall-logo-buttons{display:flex;flex-direction:column;gap:5px}
 .wall-logo-buttons button{font-size:11px;padding:9px}
 .wall-logo-buttons span{color:#d7ff4d;font-size:11px}
+
+/* Guest crop editor: always show the exact region submitted for moderation. */
+.crop-editor[hidden],.crop-choice[hidden],.wall-setting[hidden]{display:none!important}
+.crop-editor{display:flex;flex-direction:column;align-items:center;gap:12px;margin:16px 0 0;padding:16px;border:1px solid #53644a;border-radius:14px;background:#0d150d}
+.crop-head{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;flex-wrap:wrap}
+.crop-head strong{font-size:13px;color:#d7ff4d}
+.crop-head span{font-size:12px;color:#bac9b5}
+.crop-choices{display:flex;flex-wrap:wrap;gap:6px;width:100%}
+.crop-choice{background:#26301f;color:#e1ebd9;border:1px solid #45583b;border-radius:8px;font-size:12px;padding:9px 10px;flex:1 1 auto}
+.crop-choice.selected{background:#d7ff4d;color:#18200f;border-color:#d7ff4d;font-weight:900}
+.crop-canvas{display:block;max-width:100%;width:min(100%,440px);height:auto;cursor:grab;touch-action:none;background:#090d09;border-radius:8px;user-select:none;outline-offset:3px}
+.crop-canvas:active{cursor:grabbing}
+.crop-zoom{display:flex;align-items:center;gap:10px;width:100%;font-size:12px;color:#d3dfc4}
+.crop-zoom input{flex:1;min-width:0;accent-color:#d7ff4d}
+.crop-zoom output{min-width:42px;text-align:right;color:#d7ff4d;font-weight:800}
+.crop-help{font-size:12px;color:#aabb9e;line-height:1.5;margin:0;text-align:center}
+.event-upload-policy{border-top:1px solid #4b5843;padding-top:14px;display:grid;gap:8px}
+.event-upload-policy label{font-size:13px;font-weight:800;color:#e4eede}
+.event-upload-policy-controls{display:flex;align-items:center;gap:8px}
+.event-upload-policy-controls select{flex:1;min-width:0}
+.event-upload-policy-controls button{flex:none}
+.event-upload-policy p{margin:0}
+.wall-cluster{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;gap:var(--wall-gap);overflow:hidden;transition:width .65s cubic-bezier(.18,.8,.18,1),height .65s cubic-bezier(.18,.8,.18,1)}
+.wall-puzzle-row{flex-shrink:0;width:100%}
+.wall-tile.wall-tile-contain img{object-fit:contain}
+@media(max-width:700px){.event-upload-policy-controls{flex-direction:column;align-items:stretch}.event-upload-policy-controls button{width:100%}.crop-editor{padding:12px}}
+@media(prefers-reduced-motion:reduce){.wall-cluster{transition:none}}
