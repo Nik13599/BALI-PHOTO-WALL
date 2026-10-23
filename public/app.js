@@ -139,73 +139,191 @@ if(page==='admin') {
   setInterval(()=>{if($('#dashboard')&&!document.hidden)loadDashboard();},6000);
 }
 if(page==='screen'){
-  let photos=[],index=0,signature='',shownId=null,renderToken=0,failedPolls=0;
-  const center=$('#screenCenter'),background=$('#photoBackground'),login=$('#screenLogin');
-  $('#screenLoginForm').addEventListener('submit',async event=>{
-    event.preventDefault();
-    const button=$('#screenLoginForm button');
-    button.disabled=true;
-    try {
-      await api('/api/screen/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#screenPassword').value})});
-      $('#screenPassword').value='';
-      login.hidden=true;
-      await refresh();
-    } catch(error) {notice('#screenLoginMessage',error.message,true);}
-    finally {button.disabled=false;}
-  });
-  function showPlaceholder(){
-    ++renderToken;
-    center.innerHTML='<div class="screen-placeholder"><div class="line">ПОДЕЛИСЬ <span class="glow">МОМЕНТОМ</span></div><p>Твои фотографии на экранах BALI</p></div>';
-    background.style.backgroundImage='none';
-    shownId=null;
-  }
-  function render(){
-    const token=++renderToken;
-    if(!photos.length){
-      if(shownId!==null)showPlaceholder();
-      return;
+  const MAX_WALL_PHOTOS=500;
+  const STORE_KEY='bali-photo-wall-screen-settings-v1';
+  const defaults={
+    maxPhotos:500,columns:0,gap:2,fit:'cover',
+    logoSize:76,liveSize:20,eventSize:32,qrSize:92,inset:18,
+    showLogo:true,showLive:true,showEvent:true,showQr:true,showHint:true
+  };
+  const limits={
+    maxPhotos:[1,500],columns:[0,40],gap:[0,16],
+    logoSize:[24,240],liveSize:[10,55],eventSize:[12,85],
+    qrSize:[40,250],inset:[0,80]
+  };
+  let settings={...defaults};
+  try {
+    const saved=JSON.parse(localStorage.getItem(STORE_KEY)||'null');
+    if(saved && typeof saved==='object'){
+      for(const key of Object.keys(defaults)){
+        if(key in limits && Number.isFinite(Number(saved[key])))
+          settings[key]=Math.round(Math.min(limits[key][1],Math.max(limits[key][0],Number(saved[key]))));
+        else if(key==='fit' && ['cover','contain'].includes(saved[key]))settings.fit=saved.fit;
+        else if(typeof defaults[key]==='boolean' && typeof saved[key]==='boolean')
+          settings[key]=saved[key];
+      }
     }
-    const id=photos[index%photos.length]?.id;index++;
-    if(!id || id===shownId && photos.length>1)return;
-    const url='/api/photos/'+id;
-    const img=new Image();
-    img.onload=()=>{
-      if(token!==renderToken || !photos.some(p=>p.id===id))return;
-      shownId=id;
-      center.replaceChildren(img);
-      background.style.backgroundImage='url("'+url+'")';
-    };
-    img.onerror=()=>{
-      if(token===renderToken)showPlaceholder();
-    };
-    img.alt='Фото гостя BALI';img.className='screen-photo';img.src=url;
+  } catch { /* Damaged or disabled browser storage: use defaults */ }
+  const screen=$('#wallScreen'),grid=$('#wallGrid'),empty=$('#wallEmpty'),login=$('#screenLogin'),panel=$('#wallSettings');
+  const controls=[...document.querySelectorAll('[data-wall-setting]')];
+  let photos=[],eventId=null,signature='',failedPolls=0,wasAuthenticated=false;
+  const setShown=(element,visible)=>{ if(element)element.hidden=!visible; };
+  function applySettings(){
+    screen.style.setProperty('--wall-gap',settings.gap+'px');
+    screen.style.setProperty('--wall-fit',settings.fit);
+    screen.style.setProperty('--wall-logo-size',settings.logoSize+'px');
+    screen.style.setProperty('--wall-live-size',settings.liveSize+'px');
+    screen.style.setProperty('--wall-event-size',settings.eventSize+'px');
+    screen.style.setProperty('--wall-qr-size',settings.qrSize+'px');
+    screen.style.setProperty('--wall-inset',settings.inset+'px');
+    setShown($('#wallLogo'),settings.showLogo);
+    setShown($('#wallLive'),settings.showLive);
+    setShown($('#screenEvent'),settings.showEvent);
+    setShown($('#eventHint'),settings.showHint);
+    setShown($('#wallQR'),settings.showQr);
+    for(const control of controls){
+      const key=control.dataset.wallSetting;
+      if(control.type==='checkbox')control.checked=settings[key];
+      else control.value=String(settings[key]);
+      const output=document.getElementById('out'+key[0].toUpperCase()+key.slice(1));
+      if(output)output.textContent=key==='columns' && settings[key]===0?'Авто':settings[key];
+    }
+    layout();
+  }
+  function getPhotoUrl(id,n){
+    // A full-size photo is used for one or a few images, while lightweight
+    // thumbnails keep a 500-tile wall responsive on standard LED hardware.
+    return n<=6 ? '/api/photos/'+id : '/api/screen/thumbnail/'+id;
+  }
+  function buildTile(photo,n,existing){
+    const tile=existing.get(photo.id) || document.createElement('div');
+    tile.className='wall-tile';
+    tile.dataset.id=String(photo.id);
+    let img=tile.querySelector('img');
+    if(!img){
+      img=document.createElement('img');
+      img.alt='';
+      img.decoding='async';
+      img.loading='eager';
+      img.addEventListener('error',()=>tile.classList.add('wall-tile-error'));
+      img.addEventListener('load',()=>tile.classList.remove('wall-tile-error'));
+      tile.append(img);
+    }
+    const source=getPhotoUrl(photo.id,n);
+    if(img.getAttribute('src')!==source)img.src=source;
+    return tile;
+  }
+  function layout(){
+    const all=photos.slice(0,settings.maxPhotos);
+    const n=all.length;
+    setShown(empty,n===0);
+    if(!n){grid.replaceChildren();return;}
+    const ratio=Math.max(0.65,screen.clientWidth/Math.max(1,screen.clientHeight));
+    let cols=settings.columns||Math.max(1,Math.round(Math.sqrt(n*ratio)));
+    if(!settings.columns && n===3)cols=3;
+    cols=Math.min(n,Math.max(1,cols));
+    const rows=Math.ceil(n/cols);
+    const perRow=Math.floor(n/rows),extra=n%rows;
+    const existing=new Map([...grid.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el]));
+    const fragment=document.createDocumentFragment();
+    let offset=0;
+    for(let rowIndex=0;rowIndex<rows;rowIndex++){
+      const row=document.createElement('div');
+      row.className='wall-grid-row';
+      const count=perRow+(rowIndex<extra?1:0);
+      for(let col=0;col<count;col++){
+        row.append(buildTile(all[offset],n,existing));
+        offset++;
+      }
+      fragment.append(row);
+    }
+    grid.replaceChildren(fragment);
+  }
+  function clearWall(){
+    photos=[];signature='';eventId=null;
+    layout();
   }
   async function refresh(){
-    try {
-      const d=await api('/api/screen');
+    try{
+      const data=await api('/api/screen');
       failedPolls=0;
+      wasAuthenticated=true;
       login.hidden=true;
-      $('#screenEvent').textContent=d.event?.name||'BALI NIGHT CLUB';
-      const sig=d.photos.map(p=>p.id).join(',');
-      if(sig!==signature){
-        signature=sig;photos=d.photos;index=0;
-        // Moderation removals must disappear immediately, including when the
-        // next image is still loading or no longer exists on disk.
-        if(shownId!==null && !photos.some(p=>p.id===shownId))showPlaceholder();
-        render();
+      const event=data.event?.id??null;
+      const eventName=data.event?.name||'BALI NIGHT CLUB';
+      $('#screenEvent').textContent=eventName;
+      // Update on photos or event identity changes; do not redraw every poll.
+      const incoming=(data.photos||[]).slice(0,MAX_WALL_PHOTOS);
+      const nextSignature=event+':'+incoming.map(photo=>photo.id).join(',');
+      if(nextSignature!==signature){
+        eventId=event;
+        signature=nextSignature;
+        photos=incoming;
+        layout();
       }
     }catch(error){
       if(error.code===401){
-        login.hidden=false;signature='';photos=[];showPlaceholder();
+        wasAuthenticated=false;
+        login.hidden=false;
+        clearWall();
       } else {
-        console.warn('LED sync error:',error.message);
+        console.warn('Photo wall sync:',error.message);
         if(++failedPolls>=3){
-          signature='';photos=[];showPlaceholder();
-          $('#screenEvent').textContent='СОЕДИНЕНИЕ С СЕРВЕРОМ ПОТЕРЯНО';
+          clearWall();
+          $('#screenEvent').textContent='НЕТ СОЕДИНЕНИЯ С СЕРВЕРОМ';
         }
       }
     }
   }
-  $('#fullscreenBtn').addEventListener('click',()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{}));
-  refresh();setInterval(refresh,5000);setInterval(render,8000);
+  $('#screenLoginForm').addEventListener('submit',async event=>{
+    event.preventDefault();
+    const button=$('#screenLoginForm button');
+    button.disabled=true;
+    try{
+      await api('/api/screen/login',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({password:$('#screenPassword').value})
+      });
+      $('#screenPassword').value='';
+      notice('#screenLoginMessage','');
+      login.hidden=true;
+      await refresh();
+    }catch(error){notice('#screenLoginMessage',error.message,true)}
+    finally{button.disabled=false}
+  });
+  function togglePanel(open){
+    panel.hidden=!open;
+    $('#wallSettingsToggle').setAttribute('aria-expanded',String(open));
+  }
+  $('#wallSettingsToggle').addEventListener('click',()=>togglePanel(panel.hidden));
+  $('#wallSettingsClose').addEventListener('click',()=>togglePanel(false));
+  $('#wallDone').addEventListener('click',()=>togglePanel(false));
+  $('#wallReset').addEventListener('click',()=>{
+    settings={...defaults};
+    try{localStorage.removeItem(STORE_KEY)}catch{}
+    applySettings();
+  });
+  for(const input of controls){
+    const change=()=>{
+      const key=input.dataset.wallSetting;
+      settings[key]=input.type==='checkbox'?input.checked:
+        key==='fit'?input.value:Number(input.value);
+      try{localStorage.setItem(STORE_KEY,JSON.stringify(settings))}catch{}
+      applySettings();
+    };
+    input.addEventListener(input.type==='range'?'input':'change',change);
+  }
+  $('#fullscreenBtn').addEventListener('click',()=>{
+    if(document.fullscreenElement)document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(()=>{});
+  });
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')togglePanel(false)});
+  let resizeFrame=0;
+  window.addEventListener('resize',()=>{
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame=requestAnimationFrame(layout);
+  });
+  applySettings();
+  refresh();
+  setInterval(refresh,5000);
 }
