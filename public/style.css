@@ -69,3 +69,8 @@ body[data-page="screen"]{overflow:hidden;background:#050705}
   .wall-qr{border-radius:5px;padding:3px}
   .wall-settings{top:4px;right:4px;max-height:calc(100dvh - 8px);width:min(350px,calc(100vw - 8px))}
 }
+
+.wall-logo-upload input[type="file"]{display:block;width:100%;max-width:100%;font-size:11px;color:#d9e8d2;background:#1e291b;padding:8px;border-radius:7px;border:1px solid #50604d}
+.wall-logo-buttons{display:flex;flex-direction:column;gap:5px}
+.wall-logo-buttons button{font-size:11px;padding:9px}
+.wall-logo-buttons span{color:#d7ff4d;font-size:11px}
