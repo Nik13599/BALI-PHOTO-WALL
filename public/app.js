@@ -94,7 +94,7 @@ if(page==='admin') {
       event.preventDefault();
       try {
         await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#password').value})});
-        root.innerHTML='';await loadDashboard();
+        root.innerHTML='<div class="panel"><p class="muted">Загружаем панель модерации…</p><div id="adminMessage" class="alert" role="status"></div></div>';await loadDashboard();
       } catch(error){notice('#adminMessage',error.message,true);}
     }
     if(event.target.id==='eventForm'){
