@@ -13,7 +13,7 @@ test('300 approved photos are visible on screen and paginated for moderator', {t
   const server=spawn(process.execPath,['server.mjs'],{
     stdio:['ignore','pipe','pipe'],
     env:{...process.env,DATA_DIR:dir,PORT:String(port),HOST:'127.0.0.1',
-      NODE_ENV:'production',PUBLIC_URL:'https://baliminsk.online',
+      NODE_ENV:'production',PUBLIC_URL:'https://baliminsk.online',MAX_PHOTOS_PER_EVENT:'300',
       ADMIN_PASSWORD:'test-admin-password-12345',
       SCREEN_PASSWORD:'test-screen-password-12345',
       SESSION_SECRET:'1234567890123456789012345678901234567890'}
@@ -72,6 +72,15 @@ test('300 approved photos are visible on screen and paginated for moderator', {t
       }
     });
     insert();
+    const guestPage=await req('/');
+    const guestCookie=guestPage.headers.get('set-cookie')?.split(';')[0];
+    assert.ok(guestCookie?.startsWith('bali_guest='));
+    const fullEventPhoto=await sharp({create:{width:60,height:70,channels:3,background:'#89efcc'}}).png().toBuffer();
+    const blockedUpload=new FormData();
+    blockedUpload.append('photo',new Blob([fullEventPhoto],{type:'image/png'}),'full-event.png');
+    blockedUpload.append('consent','yes');
+    const refused=await req('/api/upload',{method:'POST',headers:{cookie:guestCookie},body:blockedUpload});
+    assert.equal(refused.status,409,'Event limit must reject uploads beyond configured maximum');
     const picture=await sharp({create:{width:80,height:120,channels:3,background:'#abcdef'}}).webp().toBuffer();
     await writeFile(path.join(dir,'photos','bulk-0.webp'),picture);
     await writeFile(path.join(dir,'thumbnails','bulk-0.webp'),picture);
