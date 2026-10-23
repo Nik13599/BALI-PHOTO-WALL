@@ -35,6 +35,13 @@ if (!Number.isFinite(retentionSetting) || !Number.isInteger(retentionSetting) ||
   console.error('RETENTION_DAYS must be an integer from 1 to 90'); process.exit(1);
 }
 const RETENTION_DAYS = retentionSetting;
+const MAX_PHOTOS_PER_EVENT = Number(process.env.MAX_PHOTOS_PER_EVENT || 3000);
+const MIN_FREE_DISK_MB = Number(process.env.MIN_FREE_DISK_MB || 512);
+if (!Number.isSafeInteger(MAX_PHOTOS_PER_EVENT) || MAX_PHOTOS_PER_EVENT < 100 || MAX_PHOTOS_PER_EVENT > 50000 ||
+    !Number.isSafeInteger(MIN_FREE_DISK_MB) || MIN_FREE_DISK_MB < 100 || MIN_FREE_DISK_MB > 100000) {
+  console.error('MAX_PHOTOS_PER_EVENT must be 100-50000 and MIN_FREE_DISK_MB must be 100-100000');
+  process.exit(1);
+}
 const db = new Database(path.join(DATA, 'bali-photo-wall.sqlite'));
 db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
@@ -178,6 +185,12 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
   const guest = guestIdentity(req,res);
   const used = db.prepare('SELECT count(*) AS n FROM photos WHERE event_id=? AND guest_id=?').get(event.id,guest).n;
   if (used >= 3) return res.status(429).json({error:'Лимит: 3 фотографии за мероприятие'});
+  const alreadyInEvent = db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(event.id).n;
+  if (alreadyInEvent >= MAX_PHOTOS_PER_EVENT) return res.status(409).json({error:'Достигнут лимит фотографий мероприятия'});
+  const filesystem = await fsp.statfs(DATA);
+  if (Number(filesystem.bavail)*Number(filesystem.bsize) < MIN_FREE_DISK_MB * 1048576) {
+    return res.status(507).json({error:'На сервере недостаточно места для новых фотографий'});
+  }
   let processed;
   try {
     const input = sharp(req.file.path, {limitInputPixels: 36_000_000, failOn: 'error'});
@@ -201,11 +214,14 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
     // simultaneous requests from one browser can never exceed three rows.
     const result = db.prepare(`INSERT INTO photos(event_id,filename,guest_id,status,created_at)
       SELECT ?, ?, ?, 'pending', ?
-      WHERE (SELECT COUNT(*) FROM photos WHERE event_id=? AND guest_id=?) < 3`)
-      .run(event.id,filename,guest,Date.now(),event.id,guest);
+      WHERE (SELECT COUNT(*) FROM photos WHERE event_id=? AND guest_id=?) < 3
+        AND (SELECT COUNT(*) FROM photos WHERE event_id=?) < ?`)
+      .run(event.id,filename,guest,Date.now(),event.id,guest,event.id,MAX_PHOTOS_PER_EVENT);
     if (!result.changes) {
       await discardProcessed();
-      return res.status(429).json({error:'Лимит: 3 фотографии за мероприятие'});
+      const total = db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(event.id).n;
+      return res.status(total>=MAX_PHOTOS_PER_EVENT ? 409 : 429)
+        .json({error:total>=MAX_PHOTOS_PER_EVENT?'Достигнут лимит фотографий мероприятия':'Лимит: 3 фотографии за мероприятие'});
     }
     res.status(201).json({id:result.lastInsertRowid,status:'pending',message:'Фото отправлено на проверку'});
   } catch (error) {
