@@ -134,6 +134,12 @@ test('300 approved photos are visible on screen and paginated for moderator', {t
     assert.equal(ledThumbnail.status,200);
     assert.match(ledThumbnail.headers.get('content-type'),/image\/webp/);
     assert.match(ledThumbnail.headers.get('cache-control'),/no-store/);
+    // New photo wall requests compact copies using the protected public photo endpoint.
+    assert.equal((await req('/api/photos/'+photoIds[0]+'?thumb=1')).status,401);
+    const wallThumb=await req('/api/photos/'+photoIds[0]+'?thumb=1',{headers:{cookie:screen}});
+    assert.equal(wallThumb.status,200);
+    assert.match(wallThumb.headers.get('content-type'),/image\/webp/);
+
     // Photos rejected by the moderator must never appear in the new screen listing.
     const removed=await req('/api/admin/photos/'+photoIds[0]+'/status',{
       method:'POST',
@@ -144,6 +150,8 @@ test('300 approved photos are visible on screen and paginated for moderator', {t
     result=await (await req('/api/screen',{headers:{cookie:screen}})).json();
     assert.equal(result.photos.length,299);
     assert.ok(!result.photos.some(x=>x.id===photoIds[0]));
+    assert.equal((await req('/api/photos/'+photoIds[0]+'?thumb=1',{headers:{cookie:screen}})).status,404,
+      'Rejected photos must also be blocked from the photo wall thumbnail query');
     assert.equal((await req('/api/screen/thumbnail/'+photoIds[0],{headers:{cookie:screen}})).status,404,
       'Rejected photos must not be available through optimized mosaic thumbnails');
     // The last 500 approved photos are shown simultaneously on a full screen.
