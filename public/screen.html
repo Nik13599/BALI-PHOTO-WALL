@@ -47,6 +47,8 @@
       <label class="wall-setting" for="setFit"><span>Как размещать снимки</span><select id="setFit" data-wall-setting="fit"><option value="cover">Заполнить ячейки (кадрировать)</option><option value="contain">Показать целиком (с полями)</option></select></label>
       <div class="wall-setting-separator">Элементы экрана</div>
       <label class="wall-setting" for="setLogoSize"><span>Размер логотипа <output id="outLogoSize">76</output> px</span><input id="setLogoSize" data-wall-setting="logoSize" type="range" min="24" max="240" value="76"></label>
+      <label class="wall-setting wall-logo-upload" for="wallLogoUpload"><span>Свой логотип (PNG, JPG, WebP)</span><input id="wallLogoUpload" type="file" accept="image/png,image/jpeg,image/webp"><small>Изображение до 1 МБ, сохранится на этом экране</small></label>
+      <div class="wall-logo-buttons"><button class="button secondary" id="wallLogoDefault" type="button">Вернуть логотип BALI</button><span id="wallLogoMessage" role="status" aria-live="polite"></span></div>
       <label class="wall-setting" for="setLiveSize"><span>Размер PHOTO LIVE <output id="outLiveSize">20</output> px</span><input id="setLiveSize" data-wall-setting="liveSize" type="range" min="10" max="55" value="20"></label>
       <label class="wall-setting" for="setEventSize"><span>Размер названия вечеринки <output id="outEventSize">32</output> px</span><input id="setEventSize" data-wall-setting="eventSize" type="range" min="12" max="85" value="32"></label>
       <label class="wall-setting" for="setQrSize"><span>Размер QR-кода <output id="outQrSize">92</output> px</span><input id="setQrSize" data-wall-setting="qrSize" type="range" min="40" max="250" value="92"></label>
