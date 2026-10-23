@@ -270,14 +270,14 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
     throw error;
   }
 }));
-const servePhoto = (row,res,privateView=false,fullView=false) => {
+const servePhoto = (row,res,privateView=false,fullView=false,thumbnailView=false) => {
   if (!row || (!privateView && row.status !== 'approved')) return res.status(404).end();
   res.set('Cache-Control', 'private,no-store');
-  const filename = privateView && !fullView && fs.existsSync(path.join(THUMBS,row.filename))
+  const filename = (thumbnailView || (privateView && !fullView)) && fs.existsSync(path.join(THUMBS,row.filename))
     ? path.join(THUMBS,row.filename) : path.join(PHOTOS,row.filename);
   return res.type('image/webp').sendFile(filename);
 };
-app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res));
+app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res,false,false,req.query.thumb==='1'));
 // Keep LED transfers bounded. The newest 500 approved photos are enough
 // for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, (_req,res) => {
