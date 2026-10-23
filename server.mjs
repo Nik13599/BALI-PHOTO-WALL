@@ -15,8 +15,10 @@ const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(ROOT, 'data');
 const PHOTOS = path.join(DATA, 'photos');
 const UPLOADS = path.join(DATA, 'temporary-uploads');
+const THUMBS = path.join(DATA, 'thumbnails');
 fs.mkdirSync(PHOTOS, { recursive: true });
 fs.mkdirSync(UPLOADS, { recursive: true });
+fs.mkdirSync(THUMBS, { recursive: true });
 
 const PASSWORD = process.env.ADMIN_PASSWORD || '';
 const SECRET = process.env.SESSION_SECRET || '';
@@ -150,7 +152,9 @@ const upload = multer({ storage:multer.diskStorage({
 }), limits: {fileSize: 8*1024*1024, files:1, fields:2} });
 // Clean up uploads even when the controller rejects a request.
 app.use('/api/upload', (req,res,next) => {
-  res.on('finish',()=> { if(req.file?.path) fsp.unlink(req.file.path).catch(()=>{}); });
+  const discard=()=> { if(req.file?.path) fsp.unlink(req.file.path).catch(()=>{}); };
+  res.on('finish',discard);
+  res.on('close',discard);
   next();
 });
 app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async (req,res) => {
@@ -172,20 +176,29 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
     return res.status(415).json({error:'Поддерживаются JPEG, PNG и WebP без повреждений'});
   }
   const filename = crypto.randomUUID() + '.webp';
-  await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
+  const thumbnail = await sharp(processed).resize({width:360,height:360,fit:'cover'}).webp({quality:65}).toBuffer();
+  await Promise.all([
+    fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'}),
+    fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'})
+  ]);
   try {
     const result = db.prepare('INSERT INTO photos(event_id,filename,guest_id,status,created_at) VALUES (?,?,?, ?,?)')
       .run(event.id,filename,guest,'pending',Date.now());
     res.status(201).json({id:result.lastInsertRowid,status:'pending',message:'Фото отправлено на проверку'});
   } catch (error) {
-    await fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{});
+    await Promise.all([
+      fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{}),
+      fsp.unlink(path.join(THUMBS,filename)).catch(()=>{})
+    ]);
     throw error;
   }
 }));
 const servePhoto = (row,res,privateView=false) => {
   if (!row || (!privateView && row.status !== 'approved')) return res.status(404).end();
   res.set('Cache-Control', privateView ? 'private,no-store' : 'public,max-age=300');
-  return res.type('image/webp').sendFile(path.join(PHOTOS,row.filename));
+  const filename = privateView && fs.existsSync(path.join(THUMBS,row.filename))
+    ? path.join(THUMBS,row.filename) : path.join(PHOTOS,row.filename);
+  return res.type('image/webp').sendFile(filename);
 };
 app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res));
 app.get('/api/screen', screenAuth, (_req,res) => {
@@ -250,14 +263,20 @@ app.delete('/api/admin/photos/:id', adminAuth, requireAction, asyncRoute(async (
   const item = selectPhoto.get(Number(req.params.id));
   if (!item) return res.status(404).json({error:'Фотография не найдена'});
   db.prepare('DELETE FROM photos WHERE id=?').run(item.id);
-  await fsp.unlink(path.join(PHOTOS,item.filename)).catch(()=>{});
+  await Promise.all([
+    fsp.unlink(path.join(PHOTOS,item.filename)).catch(()=>{}),
+    fsp.unlink(path.join(THUMBS,item.filename)).catch(()=>{})
+  ]);
   res.json({ok:true});
 }));
 async function cleanup() {
   const old = db.prepare('SELECT id,filename FROM photos WHERE created_at < ?').all(Date.now()-RETENTION_DAYS*86400000);
   for (const item of old) {
     db.prepare('DELETE FROM photos WHERE id=?').run(item.id);
-    await fsp.unlink(path.join(PHOTOS,item.filename)).catch(()=>{});
+    await Promise.all([
+      fsp.unlink(path.join(PHOTOS,item.filename)).catch(()=>{}),
+      fsp.unlink(path.join(THUMBS,item.filename)).catch(()=>{})
+    ]);
   }
   if (old.length) console.log('Expired photos removed:',old.length);
 }
