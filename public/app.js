@@ -42,8 +42,14 @@ if(page==='guest') {
       const optimized=await optimizePhoto(file);
       if(optimized.size>8*1024*1024) throw new Error('Фото слишком большое даже после сжатия. Выберите другое.');
       const data=new FormData(); data.append('photo',optimized); data.append('consent','yes');
-      const resp=await fetch('/api/upload',{method:'POST',body:data,credentials:'same-origin'});
-      const result=await resp.json().catch(()=>({}));
+      let resp,result;
+      for(let attempt=0;attempt<4;attempt++){
+        resp=await fetch('/api/upload',{method:'POST',body:data,credentials:'same-origin'});
+        result=await resp.json().catch(()=>({}));
+        if(resp.status!==503 || result.code!=='BUSY' || attempt===3)break;
+        notice('#guestMessage','Много фотографий одновременно. Пробуем ещё раз…');
+        await new Promise(resolve=>setTimeout(resolve,1400*(attempt+1)+Math.random()*1000));
+      }
       if(!resp.ok) throw new Error(result.error||'Ошибка загрузки');
       notice('#guestMessage','✓ Фото принято! Оно появится на экране после проверки.');
       form.reset(); $('#fileLabel').textContent='Выбрать фотографию';
