@@ -17,7 +17,7 @@ jobs:
       - name: Validate PowerShell installation scripts
         shell: pwsh
         run: |
-          $scripts = Get-ChildItem -Path ./scripts -Filter '*-windows.ps1'
+          $scripts = Get-ChildItem -Path ./scripts -Filter '*.ps1'
           if ($scripts.Count -lt 4) { throw 'Missing one or more Windows install scripts' }
           foreach ($script in $scripts) {
             $tokens = $null
