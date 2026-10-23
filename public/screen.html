@@ -1,9 +1,66 @@
 <!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#0c0d0c"><meta name="robots" content="noindex,nofollow"><title>BALI PHOTO WALL · LED</title><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script></head>
-<body data-page="screen"><div class="screen">
-<div class="screen-background" id="photoBackground"></div>
-<div class="screen-login" id="screenLogin"><form id="screenLoginForm" class="screen-login-card"><div class="wordmark">BALI<span class="accent">.</span></div><h2>ПОДКЛЮЧЕНИЕ LED-ЭКРАНА</h2><p>Введите отдельный пароль оператора экрана. Фотографии не доступны без авторизации.</p><input class="field" id="screenPassword" type="password" autocomplete="current-password" placeholder="Пароль экрана" required><button class="button primary" type="submit">ЗАПУСТИТЬ ПОКАЗ</button><div class="alert" role="status" id="screenLoginMessage"></div></form></div>
-<div class="screen-top"><div class="wordmark huge">BALI<span class="accent">.</span></div><div class="onair"><span class="pulse"></span> PHOTO WALL · LIVE</div></div>
-<div class="screen-center" id="screenCenter"><div class="screen-placeholder"><div class="line">ПОДЕЛИСЬ <span class="glow">МОМЕНТОМ</span></div><p>Твои фотографии на экранах BALI</p></div></div>
-<div class="screen-bottom"><div><div class="screen-event" id="screenEvent">BALI NIGHT CLUB</div><div class="screen-hint">Сканируй QR-код · Загружай фото · Попади на экран</div></div><div class="qr-wrap"><img src="/qr.svg" alt="QR-код для загрузки фотографий"><small>ЗАГРУЗИ ФОТО</small></div></div>
-<button class="fullscreen" id="fullscreenBtn" type="button">⛶ Полный экран</button></div></body></html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#080b09"><meta name="robots" content="noindex,nofollow">
+<title>BALI PHOTO WALL · LIVE SCREEN</title>
+<link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script>
+</head>
+<body data-page="screen">
+<main class="screen" id="wallScreen">
+  <div class="wall-grid" id="wallGrid" aria-label="Фотостена BALI"></div>
+  <div class="wall-empty" id="wallEmpty"><div class="wall-empty-title">ТВОЙ МОМЕНТ <span class="glow">НА ЭКРАНЕ</span></div><p>Отсканируй QR-код и загрузи фотографию</p></div>
+  <div class="wall-overlay wall-overlay-top">
+    <img class="wall-logo" id="wallLogo" src="/bali-logo.svg" alt="BALI Night Club">
+    <div class="wall-live" id="wallLive"><span class="pulse"></span><span>PHOTO LIVE</span></div>
+  </div>
+  <div class="wall-overlay wall-overlay-bottom">
+    <div class="wall-event-wrap">
+      <div class="wall-event-name" id="screenEvent">BALI NIGHT CLUB</div>
+      <div class="wall-event-hint" id="eventHint">Сканируй QR · Загружай фото · Попади на экран</div>
+    </div>
+    <div class="wall-qr" id="wallQR">
+      <img src="/qr.svg" alt="QR-код для загрузки фото" id="wallQRImage">
+      <span>ЗАГРУЗИ ФОТО</span>
+    </div>
+  </div>
+  <div class="screen-login" id="screenLogin">
+    <form id="screenLoginForm" class="screen-login-card">
+      <img class="login-logo" src="/bali-logo.svg" alt="Логотип BALI">
+      <h2>ПОДКЛЮЧЕНИЕ LED-ЭКРАНА</h2>
+      <p>Введите пароль оператора экрана. Одобренные фотографии появятся живой сеткой.</p>
+      <input class="field" id="screenPassword" type="password" autocomplete="current-password" placeholder="Пароль экрана" required>
+      <button class="button primary" type="submit">ЗАПУСТИТЬ ФОТОСТЕНУ</button>
+      <div class="alert" role="status" id="screenLoginMessage"></div>
+    </form>
+  </div>
+  <div class="screen-toolbar">
+    <button class="screen-gear" id="wallSettingsToggle" type="button" aria-label="Настройки фотостены" aria-expanded="false"><span aria-hidden="true">⚙</span> Настройки</button>
+    <button class="screen-gear" id="fullscreenBtn" type="button">⛶ Весь экран</button>
+  </div>
+  <aside class="wall-settings" id="wallSettings" hidden aria-label="Настройки фотостены">
+    <div class="wall-settings-head"><div><strong>Настройки фотостены</strong><small>Сохраняются на этом экране</small></div><button type="button" class="screen-close" id="wallSettingsClose" aria-label="Закрыть">×</button></div>
+    <div class="wall-settings-scroll">
+      <label class="wall-setting" for="setMaxPhotos"><span>Фотографий на экране <output id="outMaxPhotos">500</output></span><input id="setMaxPhotos" data-wall-setting="maxPhotos" type="range" min="1" max="500" step="1" value="500"></label>
+      <label class="wall-setting" for="setColumns"><span>Столбцов <output id="outColumns">Авто</output></span><input id="setColumns" data-wall-setting="columns" type="range" min="0" max="40" step="1" value="0"><small>0 — автоматически под размер экрана</small></label>
+      <label class="wall-setting" for="setGap"><span>Промежуток между фото <output id="outGap">2</output> px</span><input id="setGap" data-wall-setting="gap" type="range" min="0" max="16" step="1" value="2"></label>
+      <label class="wall-setting" for="setFit"><span>Как размещать снимки</span><select id="setFit" data-wall-setting="fit"><option value="cover">Заполнить ячейки (кадрировать)</option><option value="contain">Показать целиком (с полями)</option></select></label>
+      <div class="wall-setting-separator">Элементы экрана</div>
+      <label class="wall-setting" for="setLogoSize"><span>Размер логотипа <output id="outLogoSize">76</output> px</span><input id="setLogoSize" data-wall-setting="logoSize" type="range" min="24" max="240" value="76"></label>
+      <label class="wall-setting" for="setLiveSize"><span>Размер PHOTO LIVE <output id="outLiveSize">20</output> px</span><input id="setLiveSize" data-wall-setting="liveSize" type="range" min="10" max="55" value="20"></label>
+      <label class="wall-setting" for="setEventSize"><span>Размер названия вечеринки <output id="outEventSize">32</output> px</span><input id="setEventSize" data-wall-setting="eventSize" type="range" min="12" max="85" value="32"></label>
+      <label class="wall-setting" for="setQrSize"><span>Размер QR-кода <output id="outQrSize">92</output> px</span><input id="setQrSize" data-wall-setting="qrSize" type="range" min="40" max="250" value="92"></label>
+      <label class="wall-setting" for="setInset"><span>Отступы от краёв <output id="outInset">18</output> px</span><input id="setInset" data-wall-setting="inset" type="range" min="0" max="80" value="18"></label>
+      <label class="wall-toggle"><input id="setShowLogo" data-wall-setting="showLogo" type="checkbox" checked> Показывать логотип</label>
+      <label class="wall-toggle"><input id="setShowLive" data-wall-setting="showLive" type="checkbox" checked> Показывать PHOTO LIVE</label>
+      <label class="wall-toggle"><input id="setShowEvent" data-wall-setting="showEvent" type="checkbox" checked> Показывать название вечеринки</label>
+      <label class="wall-toggle"><input id="setShowQr" data-wall-setting="showQr" type="checkbox" checked> Показывать QR-код</label>
+      <label class="wall-toggle"><input id="setShowHint" data-wall-setting="showHint" type="checkbox" checked> Показывать подпись под названием</label>
+      <div class="wall-settings-actions">
+        <button class="button secondary" id="wallReset" type="button">Сбросить настройки</button>
+        <button class="button primary" id="wallDone" type="button">Готово</button>
+      </div>
+    </div>
+  </aside>
+</main>
+</body></html>

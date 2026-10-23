@@ -129,6 +129,11 @@ test('300 approved photos are visible on screen and paginated for moderator', {t
     const full=await req('/api/admin/photos/'+photoIds[0]+'?full=1',{headers:{cookie:admin}});
     assert.equal(thumb.status,200);assert.equal(full.status,200);
     assert.match(full.headers.get('cache-control'),/no-store/);
+    assert.equal((await req('/api/screen/thumbnail/'+photoIds[0])).status,401);
+    const ledThumbnail=await req('/api/screen/thumbnail/'+photoIds[0],{headers:{cookie:screen}});
+    assert.equal(ledThumbnail.status,200);
+    assert.match(ledThumbnail.headers.get('content-type'),/image\/webp/);
+    assert.match(ledThumbnail.headers.get('cache-control'),/no-store/);
     // Photos rejected by the moderator must never appear in the new screen listing.
     const removed=await req('/api/admin/photos/'+photoIds[0]+'/status',{
       method:'POST',
@@ -139,6 +144,20 @@ test('300 approved photos are visible on screen and paginated for moderator', {t
     result=await (await req('/api/screen',{headers:{cookie:screen}})).json();
     assert.equal(result.photos.length,299);
     assert.ok(!result.photos.some(x=>x.id===photoIds[0]));
+    assert.equal((await req('/api/screen/thumbnail/'+photoIds[0],{headers:{cookie:screen}})).status,404,
+      'Rejected photos must not be available through optimized mosaic thumbnails');
+    // The last 500 approved photos are shown simultaneously on a full screen.
+    // Create more than 500 approved rows to verify bounded transfer without
+    // imposing a guest upload or photo storage quota.
+    const addMany=db.transaction(()=>{
+      for(let i=300;i<540;i++)add.run(event,'bulk-'+i+'.webp','guest-'+i,baseline+i);
+    });
+    addMany();
+    result=await (await req('/api/screen',{headers:{cookie:screen}})).json();
+    assert.equal(result.photos.length,500);
+    assert.equal(new Set(result.photos.map(x=>x.id)).size,500);
+    assert.ok(result.photos.every((x,i,a)=>i===0 || a[i-1].id>x.id),
+      'The latest photos should be delivered newest first');
   }finally{
     db?.close();
     if(server.exitCode===null){
