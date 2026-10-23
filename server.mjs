@@ -86,7 +86,10 @@ function cookies(req) {
   return out;
 }
 function cookieOptions(req, maxAge) {
-  return { httpOnly: true, secure: req.secure || process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/', maxAge };
+  const localHost = ['localhost','127.0.0.1','::1'].includes(req.hostname);
+  // Keep HTTPS cookies Secure on the public domain while allowing a
+  // localhost-only operator session on the club's own computer.
+  return { httpOnly: true, secure: req.secure || (!localHost && process.env.NODE_ENV === 'production'), sameSite: 'strict', path: '/', maxAge };
 }
 function guestIdentity(req, res) {
   const id = checked(cookies(req).bali_guest);
@@ -181,7 +184,7 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
     return res.status(415).json({error:'Поддерживаются JPEG, PNG и WebP без повреждений'});
   }
   const filename = crypto.randomUUID() + '.webp';
-  const thumbnail = await sharp(processed).resize({width:360,height:360,fit:'cover'}).webp({quality:65}).toBuffer();
+  const thumbnail = await sharp(processed).resize({width:360,height:360,fit:'inside',withoutEnlargement:true}).webp({quality:65}).toBuffer();
   const discardProcessed = () => Promise.all([
     fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{}),
     fsp.unlink(path.join(THUMBS,filename)).catch(()=>{})
@@ -205,17 +208,17 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
     throw error;
   }
 }));
-const servePhoto = (row,res,privateView=false) => {
+const servePhoto = (row,res,privateView=false,fullView=false) => {
   if (!row || (!privateView && row.status !== 'approved')) return res.status(404).end();
   res.set('Cache-Control', 'private,no-store');
-  const filename = privateView && fs.existsSync(path.join(THUMBS,row.filename))
+  const filename = privateView && !fullView && fs.existsSync(path.join(THUMBS,row.filename))
     ? path.join(THUMBS,row.filename) : path.join(PHOTOS,row.filename);
   return res.type('image/webp').sendFile(filename);
 };
 app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res));
 app.get('/api/screen', screenAuth, (_req,res) => {
   const event = currentEvent.get();
-  const photos = event ? db.prepare("SELECT id,created_at FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC LIMIT 150").all(event.id) : [];
+  const photos = event ? db.prepare("SELECT id,created_at FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC,id DESC").all(event.id) : [];
   res.json({event,photos});
 });
 
@@ -235,7 +238,7 @@ app.post('/api/admin/logout', requireAction, (_req,res) => {
   res.json({ok:true});
 });
 app.get('/api/admin/me', adminAuth, (_req,res) => res.json({ok:true}));
-app.get('/api/admin/photos/:id', adminAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res,true));
+app.get('/api/admin/photos/:id', adminAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res,true,req.query.full==='1'));
 app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   const events = db.prepare('SELECT id,name,active,created_at FROM events ORDER BY id DESC LIMIT 100').all();
   const active = currentEvent.get();
@@ -244,9 +247,17 @@ app.get('/api/admin/dashboard', adminAuth, (req,res) => {
     : (typeof requested === 'string' && /^\d+$/.test(requested)
       ? db.prepare('SELECT id,name FROM events WHERE id=?').get(Number(requested)) : null);
   if (requested !== undefined && !selected) return res.status(404).json({error:'Мероприятие не найдено'});
-  const photos = selected ? db.prepare('SELECT id,status,created_at FROM photos WHERE event_id=? ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END,created_at DESC LIMIT 250')
-    .all(selected.id,'pending') : [];
-  res.json({events,active,selected,photos});
+  const PAGE_SIZE = 48;
+  const rawPage = req.query.page ?? '1';
+  if (typeof rawPage !== 'string' || !/^[1-9][0-9]{0,5}$/.test(rawPage)) {
+    return res.status(400).json({error:'Неверный номер страницы'});
+  }
+  const total = selected ? db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(selected.id).n : 0;
+  const pages = Math.max(1,Math.ceil(total/PAGE_SIZE));
+  const page = Math.min(Number(rawPage),pages);
+  const photos = selected ? db.prepare('SELECT id,status,created_at FROM photos WHERE event_id=? ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT ? OFFSET ?')
+    .all(selected.id,'pending',PAGE_SIZE,(page-1)*PAGE_SIZE) : [];
+  res.json({events,active,selected,photos,page,pages,total,pageSize:PAGE_SIZE});
 });
 const makeEvent = db.transaction(name => {
   db.prepare('UPDATE events SET active=0').run();
