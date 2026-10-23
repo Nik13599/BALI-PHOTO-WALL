@@ -29,7 +29,10 @@ async function optimizePhoto(file) {
 }
 if(page==='guest') {
   const form=$('#uploadForm'), input=$('#photo'), btn=$('#uploadBtn');
+  let uploadPolicy='any';
   api('/api/public').then(data=>{
+    uploadPolicy=data.uploadShape==='square'?'square':'any';
+    globalThis.BaliCropEditor?.setPolicy(uploadPolicy);
     $('#eventName').textContent=data.event?.name||'Нет активного мероприятия';
     const hint=$('#guestLimitsText');
     if(hint){
@@ -40,7 +43,13 @@ if(page==='guest') {
     }
   })
     .catch(()=>$('#eventName').textContent='Сервис временно недоступен');
-  input.addEventListener('change',()=>$('#fileLabel').textContent=input.files[0]?.name || 'Выбрать фотографию');
+  input.addEventListener('change',async()=>{
+    $('#fileLabel').textContent=input.files[0]?.name || 'Выбрать фотографию';
+    try{
+      await globalThis.BaliCropEditor.load(input.files[0]);
+      notice('#guestMessage','Передвинь и увеличь фотографию, чтобы выбрать область показа.');
+    }catch(error){input.value='';notice('#guestMessage',error.message,true);}
+  });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
     const file=input.files[0]; if(!file) return notice('#guestMessage','Выберите фотографию',true);
@@ -48,8 +57,15 @@ if(page==='guest') {
     if(!$('#consent').checked) return notice('#guestMessage','Подтвердите согласие на показ',true);
     btn.disabled=true; btn.textContent='ОТПРАВЛЯЕМ…';
     try {
-      const optimized=await optimizePhoto(file);
-      if(optimized.size>8*1024*1024) throw new Error('Фото слишком большое даже после сжатия. Выберите другое.');
+      // Recheck the administrator's policy before sending an already edited photo.
+      const current=await api('/api/public');
+      const latest=current.uploadShape==='square'?'square':'any';
+      if(latest!==uploadPolicy){
+        uploadPolicy=latest;
+        globalThis.BaliCropEditor.setPolicy(uploadPolicy);
+        throw new Error('Администратор изменил требования к формату. Проверьте обрезку и нажмите «Отправить» ещё раз.');
+      }
+      const optimized=await globalThis.BaliCropEditor.exportFile();
       const data=new FormData(); data.append('photo',optimized); data.append('consent','yes');
       let resp,result;
       for(let attempt=0;attempt<4;attempt++){
@@ -61,7 +77,7 @@ if(page==='guest') {
       }
       if(!resp.ok) throw new Error(result.error||'Ошибка загрузки');
       notice('#guestMessage','✓ Фото принято! Оно появится на экране после проверки.');
-      form.reset(); $('#fileLabel').textContent='Выбрать фотографию';
+      form.reset();globalThis.BaliCropEditor.clear();$('#fileLabel').textContent='Выбрать фотографию';
     } catch(error) {notice('#guestMessage',error.message,true);}
     finally {btn.disabled=false;btn.innerHTML='ОТПРАВИТЬ НА ЭКРАН <span>↗</span>';}
   });
@@ -70,6 +86,7 @@ if(page==='admin') {
   let busy=false;
   let previousDashboard=null;
   let selectedEventId=null;
+  let displayedEventId=null;
   let pageNumber=1;
   const root=$('#adminRoot');
   async function loadDashboard(){
@@ -84,11 +101,14 @@ if(page==='admin') {
       if(signature===previousDashboard) return;
       previousDashboard=signature;
       if(!$('#dashboard')) {
-        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
+        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
       }
       $('#activeEvent').textContent=data.active?.name || 'Не выбрано';
       $('#photoCount').textContent=data.total+' всего · '+data.page+' / '+data.pages+' стр.';
       $('#selectedEvent').textContent=data.selected?.name||'Нет выбранного мероприятия';
+      displayedEventId=data.selected?.id||null;
+      $('#eventUploadShape').value=data.selected?.upload_shape==='square'?'square':'any';
+      $('#saveUploadShape').disabled=!displayedEventId;
       $('#eventList').innerHTML=data.events.map(e=>
         '<div class="event-choice"><button type="button" class="chip '+(e.id===data.selected?.id?'selected':'')+'" data-view="'+e.id+'">'+esc(e.name)+(e.active?' · ИДЁТ':'')+'</button>'+(e.active?'':'<button type="button" class="chip activate" data-activate="'+e.id+'" title="Вывести фото этого мероприятия на экраны">СДЕЛАТЬ АКТИВНЫМ</button>')+'</div>'
       ).join('');
@@ -124,6 +144,12 @@ if(page==='admin') {
     const el=event.target.closest('button');if(!el)return;
     try{
       if(el.id==='logoutBtn'){await action('/api/admin/logout',{});location.reload();}
+      else if(el.id==='saveUploadShape'){
+        if(!displayedEventId)return;
+        await action('/api/admin/events/'+displayedEventId+'/upload-shape',{uploadShape:$('#eventUploadShape').value});
+        previousDashboard=null;await loadDashboard();
+        notice('#adminMessage','✓ Формат загрузки сохранён.');
+      }
       else if(el.dataset.view){selectedEventId=Number(el.dataset.view);pageNumber=1;await loadDashboard();}
       else if(el.dataset.page){pageNumber=Math.max(1,pageNumber+(el.dataset.page==='next'?1:-1));await loadDashboard();}
       else if(el.dataset.activate){
