@@ -242,14 +242,12 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
   } catch {
     return res.status(415).json({error:'Поддерживаются JPEG, PNG и WebP без повреждений'});
   }
-  // The server enforces event requirements even if a browser skips the crop UI.
+  // Never silently replace a guest's chosen crop with a different server crop.
+  // Reject unsquared uploads if the moderator requires square photos.
   if(currentEvent.get()?.upload_shape==='square'){
-    const p=await sharp(processed).metadata();
-    if(p.width!==p.height){
-      const side=Math.min(p.width,p.height);
-      processed=await sharp(processed)
-        .extract({left:Math.floor((p.width-side)/2),top:Math.floor((p.height-side)/2),width:side,height:side})
-        .webp({quality:77}).toBuffer();
+    const shape=await sharp(processed).metadata();
+    if(shape.width!==shape.height){
+      return res.status(422).json({error:'На это мероприятие принимаются только квадратные фото 1:1. Проверьте обрезку и отправьте снова.'});
     }
   }
   const dimension=await sharp(processed).metadata();
@@ -308,7 +306,7 @@ app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
       const info=await sharp(path.join(PHOTOS,photo.filename)).metadata();
       photo.width=info.width||1;photo.height=info.height||1;
       update.run(photo.width,photo.height,photo.id);
-    } catch {photo.width=1;photo.height=1;}
+    } catch {photo.width=1;photo.height=1;update.run(1,1,photo.id);}
   }
   res.json({event,photos:photos.map(({id,created_at,width,height})=>({id,created_at,width,height}))});
 }));
