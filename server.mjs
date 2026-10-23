@@ -29,7 +29,7 @@ const RETENTION_DAYS = Math.min(90, Math.max(1, Number(process.env.RETENTION_DAY
 const db = new Database(path.join(DATA, 'bali-photo-wall.sqlite'));
 db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
-db.exec(\`
+db.exec(`
   CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -46,7 +46,7 @@ db.exec(\`
   );
   CREATE INDEX IF NOT EXISTS photos_event_status ON photos(event_id, status, created_at);
   CREATE INDEX IF NOT EXISTS photos_guest_event ON photos(guest_id, event_id);
-\`);
+`);
 if (!db.prepare('SELECT 1 FROM events LIMIT 1').get()) {
   db.prepare('INSERT INTO events (name,active,created_at) VALUES (?,1,?)').run('BALI PHOTO WALL', Date.now());
 }
@@ -243,4 +243,4 @@ app.use((err,req,res,_next) => {
   if (err instanceof multer.MulterError) return res.status(400).json({error:'Ошибка загрузки файла'});
   res.status(500).json({error:'Не удалось обработать запрос'});
 });
-app.listen(PORT,HOST,()=>console.log('BALI PHOTO WALL:',\`http://\${HOST}:\${PORT}\`));
+app.listen(PORT,HOST,()=>console.log('BALI PHOTO WALL:',`http://${HOST}:${PORT}`));
