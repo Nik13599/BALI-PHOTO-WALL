@@ -14,12 +14,15 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const DATA = path.join(ROOT, 'data');
 const PHOTOS = path.join(DATA, 'photos');
+const UPLOADS = path.join(DATA, 'temporary-uploads');
 fs.mkdirSync(PHOTOS, { recursive: true });
+fs.mkdirSync(UPLOADS, { recursive: true });
 
 const PASSWORD = process.env.ADMIN_PASSWORD || '';
 const SECRET = process.env.SESSION_SECRET || '';
-if (PASSWORD.length < 12 || PASSWORD.includes('CHANGE_') || SECRET.length < 32 || SECRET.includes('CHANGE_')) {
-  console.error('Set secure ADMIN_PASSWORD (12+ characters) and SESSION_SECRET (32+ characters) in .env');
+const SCREEN_PASSWORD = process.env.SCREEN_PASSWORD || '';
+if (PASSWORD.length < 12 || PASSWORD.includes('CHANGE_') || SCREEN_PASSWORD.length < 12 || SCREEN_PASSWORD.includes('CHANGE_') || SECRET.length < 32 || SECRET.includes('CHANGE_')) {
+  console.error('Set ADMIN_PASSWORD and SCREEN_PASSWORD (each 12+ chars) and SESSION_SECRET (32+ chars) in .env');
   process.exit(1);
 }
 const HOST = process.env.HOST || '127.0.0.1';
@@ -85,11 +88,24 @@ function guestIdentity(req, res) {
   res.cookie('bali_guest', signed(fresh), cookieOptions(req, 30 * 86400000));
   return fresh;
 }
-function adminAuth(req, res, next) {
-  const raw = checked(cookies(req).bali_admin);
+function validSession(req, name) {
+  const raw = checked(cookies(req)[name]);
   const expires = Number(raw);
-  if (!raw || !Number.isSafeInteger(expires) || expires < Date.now()) return res.status(401).json({ error: 'Требуется вход сотрудника' });
+  return Boolean(raw && Number.isSafeInteger(expires) && expires >= Date.now());
+}
+function adminAuth(req, res, next) {
+  if (!validSession(req,'bali_admin')) return res.status(401).json({ error: 'Требуется вход сотрудника' });
   next();
+}
+function screenAuth(req, res, next) {
+  if (!validSession(req,'bali_screen') && !validSession(req,'bali_admin')) return res.status(401).json({ error: 'Требуется вход оператора экрана' });
+  next();
+}
+function verifyPassword(supplied, stored) {
+  return typeof supplied === 'string' && secureEqual(
+    crypto.createHash('sha256').update(supplied).digest('hex'),
+    crypto.createHash('sha256').update(stored).digest('hex')
+  );
 }
 function requireAction(req, res, next) {
   if (req.get('X-BALI-Action') !== '1') return res.status(403).json({ error: 'Запрос отклонён' });
@@ -128,7 +144,15 @@ app.get('/qr.svg', asyncRoute(async (_req, res) => {
 }));
 
 const uploadLimiter = rateLimit({windowMs:3600000,limit:1500,standardHeaders:'draft-8',legacyHeaders:false});
-const upload = multer({ storage:multer.memoryStorage(), limits: {fileSize: 8*1024*1024, files:1, fields:2} });
+const upload = multer({ storage:multer.diskStorage({
+  destination: (_req,_file,cb) => cb(null, UPLOADS),
+  filename: (_req,_file,cb) => cb(null, crypto.randomUUID() + '.tmp')
+}), limits: {fileSize: 8*1024*1024, files:1, fields:2} });
+// Clean up uploads even when the controller rejects a request.
+app.use('/api/upload', (req,res,next) => {
+  res.on('finish',()=> { if(req.file?.path) fsp.unlink(req.file.path).catch(()=>{}); });
+  next();
+});
 app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async (req,res) => {
   const event = currentEvent.get();
   if (!event) return res.status(409).json({error:'Сейчас нет активного мероприятия'});
@@ -139,7 +163,7 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
   if (used >= 3) return res.status(429).json({error:'Лимит: 3 фотографии за мероприятие'});
   let processed;
   try {
-    const input = sharp(req.file.buffer, {limitInputPixels: 36_000_000, failOn: 'error'});
+    const input = sharp(req.file.path, {limitInputPixels: 36_000_000, failOn: 'error'});
     const info = await input.metadata();
     if (!['jpeg','png','webp'].includes(info.format)) throw new Error('format');
     processed = await input.rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
@@ -163,19 +187,21 @@ const servePhoto = (row,res,privateView=false) => {
   res.set('Cache-Control', privateView ? 'private,no-store' : 'public,max-age=300');
   return res.type('image/webp').sendFile(path.join(PHOTOS,row.filename));
 };
-app.get('/api/photos/:id', (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res));
-app.get('/api/screen', (_req,res) => {
+app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res));
+app.get('/api/screen', screenAuth, (_req,res) => {
   const event = currentEvent.get();
   const photos = event ? db.prepare("SELECT id,created_at FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC LIMIT 150").all(event.id) : [];
   res.json({event,photos});
 });
 
 const loginLimiter = rateLimit({windowMs:900000,limit:10,standardHeaders:'draft-8',legacyHeaders:false});
+app.post('/api/screen/login', loginLimiter, (req,res) => {
+  if (!verifyPassword(req.body?.password, SCREEN_PASSWORD)) return res.status(401).json({error:'Неверный пароль экрана'});
+  res.cookie('bali_screen',signed(String(Date.now()+24*3600000)),cookieOptions(req,24*3600000));
+  res.json({ok:true});
+});
 app.post('/api/admin/login', loginLimiter, (req,res) => {
-  if (typeof req.body?.password !== 'string' || !secureEqual(
-    crypto.createHash('sha256').update(req.body.password).digest('hex'),
-    crypto.createHash('sha256').update(PASSWORD).digest('hex')
-  )) return res.status(401).json({error:'Неверный пароль'});
+  if (!verifyPassword(req.body?.password, PASSWORD)) return res.status(401).json({error:'Неверный пароль'});
   res.cookie('bali_admin',signed(String(Date.now()+12*3600000)),cookieOptions(req,12*3600000));
   res.json({ok:true});
 });
