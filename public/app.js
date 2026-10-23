@@ -36,11 +36,11 @@ if(page==='guest') {
     event.preventDefault();
     const file=input.files[0]; if(!file) return notice('#guestMessage','Выберите фотографию',true);
     if(!['image/jpeg','image/png','image/webp'].includes(file.type)) return notice('#guestMessage','Нужен JPEG, PNG или WebP',true);
-    if(file.size>8*1024*1024) return notice('#guestMessage','Фото должно быть меньше 8 МБ',true);
     if(!$('#consent').checked) return notice('#guestMessage','Подтвердите согласие на показ',true);
     btn.disabled=true; btn.textContent='ОТПРАВЛЯЕМ…';
     try {
       const optimized=await optimizePhoto(file);
+      if(optimized.size>8*1024*1024) throw new Error('Фото слишком большое даже после сжатия. Выберите другое.');
       const data=new FormData(); data.append('photo',optimized); data.append('consent','yes');
       const resp=await fetch('/api/upload',{method:'POST',body:data,credentials:'same-origin'});
       const result=await resp.json().catch(()=>({}));
