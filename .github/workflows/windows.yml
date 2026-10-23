@@ -1,0 +1,37 @@
+name: BALI PHOTO WALL Windows install readiness
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate PowerShell installation scripts
+        shell: pwsh
+        run: |
+          $scripts = Get-ChildItem -Path ./scripts -Filter '*-windows.ps1'
+          if ($scripts.Count -lt 4) { throw 'Missing one or more Windows install scripts' }
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($script.FullName,[ref]$tokens,[ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error ($script.Name + ': ' + $_.Message) }
+              throw ('PowerShell parse failed for ' + $script.Name)
+            }
+            Write-Host ('Parsed ' + $script.Name)
+          }
+      - name: Install production dependencies
+        run: npm install --no-audit --no-fund
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Run complete isolated tests on Windows
+        run: npm test
