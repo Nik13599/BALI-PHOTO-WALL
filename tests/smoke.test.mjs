@@ -87,16 +87,16 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
     const deleted = await request('/api/admin/photos/'+uploaded.id,{method:'DELETE',headers,body:'{}'});
     assert.equal(deleted.status,200);
 
-    // A concurrent burst used to bypass the three-photo limit.
+    // Concurrent uploads should all succeed when guest counts are unlimited.
     const attempts = await Promise.all(Array.from({length:4},async () => {
       const batch = new FormData();
       batch.append('photo',new Blob([img],{type:'image/png'}),'parallel.png');
       batch.append('consent','yes');
       return request('/api/upload',{method:'POST',headers:{Cookie:guest},body:batch});
     }));
-    assert.deepEqual(attempts.map(x=>x.status).sort((a,b)=>a-b),[201,201,201,429]);
+    assert.deepEqual(attempts.map(x=>x.status).sort((a,b)=>a-b),[201,201,201,201]);
     const afterBurst = await (await request('/api/admin/dashboard',{headers:{Cookie:admin}})).json();
-    assert.equal(afterBurst.photos.length,3);
+    assert.equal(afterBurst.photos.length,4);
     const rejected = await request('/api/admin/photos/'+afterBurst.photos[0].id+'/status',{
       method:'POST',headers,body:JSON.stringify({status:'rejected'})
     });
