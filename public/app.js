@@ -143,7 +143,7 @@ if(page==='screen'){
   const STORE_KEY='bali-photo-wall-screen-settings-v1';
   const LOGO_KEY='bali-photo-wall-screen-logo-v1';
   const defaults={
-    maxPhotos:500,columns:0,gap:2,fit:'cover',
+    maxPhotos:500,columns:0,gap:2,fit:'cover',layout:'puzzle',
     logoSize:28,liveSize:20,eventSize:32,qrSize:92,inset:18,
     showLogo:true,showLive:true,showEvent:true,showQr:true,showHint:true
   };
@@ -160,6 +160,7 @@ if(page==='screen'){
         if(key in limits && Number.isFinite(Number(saved[key])))
           settings[key]=Math.round(Math.min(limits[key][1],Math.max(limits[key][0],Number(saved[key]))));
         else if(key==='fit' && ['cover','contain'].includes(saved[key]))settings.fit=saved.fit;
+        else if(key==='layout' && ['puzzle','grid'].includes(saved[key]))settings.layout=saved.layout;
         else if(typeof defaults[key]==='boolean' && typeof saved[key]==='boolean')
           settings[key]=saved[key];
       }
@@ -182,6 +183,7 @@ if(page==='screen'){
     setShown($('#screenEvent'),settings.showEvent);
     setShown($('#eventHint'),settings.showHint);
     setShown($('#wallQR'),settings.showQr);
+    $('#columnsSettings').hidden=settings.layout!=='grid';
     for(const control of controls){
       const key=control.dataset.wallSetting;
       if(control.type==='checkbox')control.checked=settings[key];
@@ -219,24 +221,39 @@ if(page==='screen'){
     const n=all.length;
     setShown(empty,n===0);
     if(!n){grid.replaceChildren();return;}
-    const ratio=Math.max(0.65,screen.clientWidth/Math.max(1,screen.clientHeight));
-    let cols=settings.columns||Math.max(1,Math.round(Math.sqrt(n*ratio)));
-    if(!settings.columns && n===3)cols=3;
-    cols=Math.min(n,Math.max(1,cols));
-    const rows=Math.ceil(n/cols);
-    const perRow=Math.floor(n/rows),extra=n%rows;
     const existing=new Map([...grid.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el]));
     const fragment=document.createDocumentFragment();
-    let offset=0;
-    for(let rowIndex=0;rowIndex<rows;rowIndex++){
-      const row=document.createElement('div');
-      row.className='wall-grid-row';
-      const count=perRow+(rowIndex<extra?1:0);
-      for(let col=0;col<count;col++){
-        row.append(buildTile(all[offset],n,existing));
-        offset++;
+    if(settings.layout==='puzzle' && globalThis.BaliMosaic){
+      const mosaic=globalThis.BaliMosaic.compute(all,grid.clientWidth||screen.clientWidth,grid.clientHeight||screen.clientHeight,settings.gap);
+      for(const rowData of mosaic.rows){
+        const row=document.createElement('div');
+        row.className='wall-grid-row wall-puzzle-row';
+        row.style.flex='0 0 '+rowData.height+'px';
+        for(let i=0;i<rowData.items.length;i++){
+          const tile=buildTile(rowData.items[i],n,existing);
+          tile.style.flex='0 0 '+rowData.widths[i]+'px';
+          row.append(tile);
+        }
+        fragment.append(row);
       }
-      fragment.append(row);
+    } else {
+      const ratio=Math.max(.65,screen.clientWidth/Math.max(1,screen.clientHeight));
+      let cols=settings.columns||Math.max(1,Math.round(Math.sqrt(n*ratio)));
+      if(!settings.columns && n===3)cols=3;
+      cols=Math.min(n,Math.max(1,cols));
+      const rows=Math.ceil(n/cols);
+      const perRow=Math.floor(n/rows),extra=n%rows;
+      let offset=0;
+      for(let rowIndex=0;rowIndex<rows;rowIndex++){
+        const row=document.createElement('div');row.className='wall-grid-row';
+        const count=perRow+(rowIndex<extra?1:0);
+        for(let col=0;col<count;col++){
+          const tile=buildTile(all[offset++],n,existing);
+          tile.style.removeProperty('flex');
+          row.append(tile);
+        }
+        fragment.append(row);
+      }
     }
     grid.replaceChildren(fragment);
   }
@@ -347,7 +364,7 @@ if(page==='screen'){
     const change=()=>{
       const key=input.dataset.wallSetting;
       settings[key]=input.type==='checkbox'?input.checked:
-        key==='fit'?input.value:Number(input.value);
+        key==='fit'||key==='layout'?input.value:Number(input.value);
       try{localStorage.setItem(STORE_KEY,JSON.stringify(settings))}catch{}
       applySettings();
     };
