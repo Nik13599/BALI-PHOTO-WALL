@@ -51,6 +51,16 @@ test('300 approved photos are visible on screen and paginated for moderator', {t
     });
     assert.equal(screenLogin.status,200);
     const screen=screenLogin.headers.get('set-cookie').split(';')[0];
+    // Copying a signed LED token into the admin cookie must not grant access.
+    const forgedAdmin=screen.replace(/^bali_screen=/,'bali_admin=');
+    assert.equal((await req('/api/admin/me',{headers:{cookie:forgedAdmin}})).status,401,
+      'LED credentials must not grant admin privileges');
+    assert.equal((await req('/api/admin/dashboard',{headers:{cookie:forgedAdmin}})).status,401);
+    const forgedScreen=admin.replace(/^bali_admin=/,'bali_screen=');
+    assert.equal((await req('/api/screen',{headers:{cookie:forgedScreen}})).status,401,
+      'Admin token may authenticate as admin, but not when relabelled as a screen token');
+    assert.equal((await req('/api/screen',{headers:{cookie:admin}})).status,200,
+      'Valid admin credentials must retain authorised screen access');
     db=new Database(path.join(dir,'bali-photo-wall.sqlite'));
     const event=db.prepare('SELECT id FROM events WHERE active=1').get().id;
     const add=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at) VALUES (?,?,?,'approved',?)");
