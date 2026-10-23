@@ -144,7 +144,7 @@ if(page==='screen'){
   const LOGO_KEY='bali-photo-wall-screen-logo-v1';
   const defaults={
     maxPhotos:500,columns:0,gap:2,fit:'cover',
-    logoSize:76,liveSize:20,eventSize:32,qrSize:92,inset:18,
+    logoSize:28,liveSize:20,eventSize:32,qrSize:92,inset:18,
     showLogo:true,showLive:true,showEvent:true,showQr:true,showHint:true
   };
   const limits={
