@@ -88,7 +88,19 @@ if(page==='admin') {
 }
 if(page==='screen'){
   let photos=[],index=0,signature='',shownId=null;
-  const center=$('#screenCenter'),background=$('#photoBackground');
+  const center=$('#screenCenter'),background=$('#photoBackground'),login=$('#screenLogin');
+  $('#screenLoginForm').addEventListener('submit',async event=>{
+    event.preventDefault();
+    const button=$('#screenLoginForm button');
+    button.disabled=true;
+    try {
+      await api('/api/screen/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#screenPassword').value})});
+      $('#screenPassword').value='';
+      login.hidden=true;
+      await refresh();
+    } catch(error) {notice('#screenLoginMessage',error.message,true);}
+    finally {button.disabled=false;}
+  });
   function render(){
     if(!photos.length){
       if(shownId!==null){center.innerHTML='<div class="screen-placeholder"><div class="line">ПОДЕЛИСЬ <span class="glow">МОМЕНТОМ</span></div><p>Твои фотографии на экранах BALI</p></div>';background.style.backgroundImage='none';shownId=null;}
@@ -103,10 +115,11 @@ if(page==='screen'){
   async function refresh(){
     try {
       const d=await api('/api/screen');
+      login.hidden=true;
       $('#screenEvent').textContent=d.event?.name||'BALI NIGHT CLUB';
       const sig=d.photos.map(p=>p.id).join(',');
       if(sig!==signature){signature=sig;photos=d.photos;index=0;render();}
-    }catch(error){console.warn(error.message);}
+    }catch(error){if(error.code===401){login.hidden=false;} else console.warn(error.message);}
   }
   $('#fullscreenBtn').addEventListener('click',()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{}));
   refresh();setInterval(refresh,5000);setInterval(render,8000);
