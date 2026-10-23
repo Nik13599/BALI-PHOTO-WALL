@@ -9,50 +9,50 @@
 - **/screen** — полноэкранное слайд-шоу одобренных снимков; QR-код для гостей.
 - **/healthz** — проверка работы сервера.
 
-Снимки хранятся на диске компьютера клуба в папке \`data/photos\`, метаданные и статусы — в локальной SQLite \`data/bali-photo-wall.sqlite\`. Модерация обязательна. У каждого мероприятия своя галерея. До 3 снимков с одного гостевого браузера, обработка JPEG/PNG/WebP через sharp, максимальный исходный файл 8 МБ. Фото преобразуются в WebP размером до 1600×1600. Старые снимки удаляются через заданное число дней (по умолчанию 7). Это браузерное ограничение, не криптографическая защита от злоумышленника; рекомендуется дополнять его WAF/Turnstile при реальном публичном запуске.
+Снимки хранятся на диске компьютера клуба в папке `data/photos`, метаданные и статусы — в локальной SQLite `data/bali-photo-wall.sqlite`. Модерация обязательна. У каждого мероприятия своя галерея. До 3 снимков с одного гостевого браузера, обработка JPEG/PNG/WebP через sharp, максимальный исходный файл 8 МБ. Фото преобразуются в WebP размером до 1600×1600. Старые снимки удаляются через заданное число дней (по умолчанию 7). Это браузерное ограничение, не криптографическая защита от злоумышленника; рекомендуется дополнять его WAF/Turnstile при реальном публичном запуске.
 
 ## Запуск на компьютере клуба (Windows / Linux)
 
 Нужен **Node.js 22+**. Сервер должен работать всё время, пока клуб принимает фотографии.
 
-1. Скачать репозиторий или выполнить \`git clone https://github.com/Nik13599/BALI-PHOTO-WALL.git\`.
-2. В папке проекта выполнить \`npm install\`.
-3. Скопировать \`.env.example\` в \`.env\`.
-4. В \`.env\` установить **свой** длинный \`ADMIN_PASSWORD\`, случайный \`SESSION_SECRET\` (минимум 32 символа), \`PUBLIC_URL=https://baliminsk.online\`.
-5. Выполнить \`npm start\`.
-6. На этом же компьютере открыть \`http://127.0.0.1:3100/admin\` и \`http://127.0.0.1:3100/screen\`.
+1. Скачать репозиторий или выполнить `git clone https://github.com/Nik13599/BALI-PHOTO-WALL.git`.
+2. В папке проекта выполнить `npm install`.
+3. Скопировать `.env.example` в `.env`.
+4. В `.env` установить **свой** длинный `ADMIN_PASSWORD`, случайный `SESSION_SECRET` (минимум 32 символа), `PUBLIC_URL=https://baliminsk.online`.
+5. Выполнить `npm start`.
+6. На этом же компьютере открыть `http://127.0.0.1:3100/admin` и `http://127.0.0.1:3100/screen`.
 
-Для локальной проверки по HTTP поставьте \`NODE_ENV=development\` (в production cookie сотрудника отмечена Secure и требует HTTPS). Никогда не публикуйте \`.env\` в GitHub.
+Для локальной проверки по HTTP поставьте `NODE_ENV=development` (в production cookie сотрудника отмечена Secure и требует HTTPS). Никогда не публикуйте `.env` в GitHub.
 
-Пример генерации случайного секрета: \`node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"\`.
+Пример генерации случайного секрета: `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`.
 
 ## Подключение домена baliminsk.online через Cloudflare Tunnel
 
-Этот раздел требует, чтобы **именно** \`baliminsk.online\` уже был добавлен в Cloudflare и находился в рабочем состоянии. Наличие репозитория само по себе не подключает домен.
+Этот раздел требует, чтобы **именно** `baliminsk.online` уже был добавлен в Cloudflare и находился в рабочем состоянии. Наличие репозитория само по себе не подключает домен.
 
 1. Установить [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/).
-2. Войти: \`cloudflared tunnel login\`.
-3. Создать туннель: \`cloudflared tunnel create bali-photo-wall\`.
-4. Настроить DNS: \`cloudflared tunnel route dns bali-photo-wall baliminsk.online\` (убедиться, что конфликтующих DNS-записей для корня нет).
-5. Создать \`~/.cloudflared/config.yml\` с **реальным** ID выданного туннеля:
+2. Войти: `cloudflared tunnel login`.
+3. Создать туннель: `cloudflared tunnel create bali-photo-wall`.
+4. Настроить DNS: `cloudflared tunnel route dns bali-photo-wall baliminsk.online` (убедиться, что конфликтующих DNS-записей для корня нет).
+5. Создать `~/.cloudflared/config.yml` с **реальным** ID выданного туннеля:
 
-\`\`\`yaml
+```yaml
 tunnel: ВАШ_UUID_ТУННЕЛЯ
 credentials-file: /путь/к/.cloudflared/ВАШ_UUID_ТУННЕЛЯ.json
 ingress:
   - hostname: baliminsk.online
     service: http://127.0.0.1:3100
   - service: http_status:404
-\`\`\`
+```
 
-6. Запустить \`cloudflared tunnel run bali-photo-wall\`.
-7. Проверить \`https://baliminsk.online/healthz\`, затем загрузку фото, модерацию и экран с реального телефона.
+6. Запустить `cloudflared tunnel run bali-photo-wall`.
+7. Проверить `https://baliminsk.online/healthz`, затем загрузку фото, модерацию и экран с реального телефона.
 
 Официальная документация: [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/). Не размещайте файл credentials туннеля в репозитории.
 
 ## Безопасность и ограничения
 
-- Сервер по умолчанию слушает только \`127.0.0.1\`, не открыт напрямую в интернет.
+- Сервер по умолчанию слушает только `127.0.0.1`, не открыт напрямую в интернет.
 - Панель админа защищена паролем, подписанной HttpOnly cookie на 12 часов и дополнительным заголовком на изменяющих запросах.
 - До модерации фото нельзя получить через публичные URL.
 - В обработанных фотографиях не сохраняются EXIF-метаданные, но лица и другие персональные данные на самих фото могут оставаться.
@@ -63,8 +63,8 @@ ingress:
 
 ## Проверка
 
-\`npm run check\` — базовая проверка синтаксиса JS.
-\`GET /healthz\` — ответ \`{"ok":true}\` если сервер запущен.
-\`data/\` и \`.env\` исключены из Git благодаря \`.gitignore\`.
+`npm run check` — базовая проверка синтаксиса JS.
+`GET /healthz` — ответ `{"ok":true}` если сервер запущен.
+`data/` и `.env` исключены из Git благодаря `.gitignore`.
 
 В репозитории находится код приложения; **публикация в интернет не выполняется одним коммитом**. Нужно запустить Node.js и Cloudflare Tunnel на компьютере клуба.
