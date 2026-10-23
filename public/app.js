@@ -138,16 +138,31 @@ if(page==='screen'){
     } catch(error) {notice('#screenLoginMessage',error.message,true);}
     finally {button.disabled=false;}
   });
+  function showPlaceholder(){
+    ++renderToken;
+    center.innerHTML='<div class="screen-placeholder"><div class="line">ПОДЕЛИСЬ <span class="glow">МОМЕНТОМ</span></div><p>Твои фотографии на экранах BALI</p></div>';
+    background.style.backgroundImage='none';
+    shownId=null;
+  }
   function render(){
     const token=++renderToken;
     if(!photos.length){
-      if(shownId!==null){center.innerHTML='<div class="screen-placeholder"><div class="line">ПОДЕЛИСЬ <span class="glow">МОМЕНТОМ</span></div><p>Твои фотографии на экранах BALI</p></div>';background.style.backgroundImage='none';shownId=null;}
+      if(shownId!==null)showPlaceholder();
       return;
     }
     const id=photos[index%photos.length]?.id;index++;
     if(!id || id===shownId && photos.length>1)return;
-    shownId=id;const url='/api/photos/'+id;
-    const img=new Image();img.onload=()=>{if(token!==renderToken || !photos.some(p=>p.id===id))return;center.replaceChildren(img);background.style.backgroundImage='url("'+url+'")';};
+    const url='/api/photos/'+id;
+    const img=new Image();
+    img.onload=()=>{
+      if(token!==renderToken || !photos.some(p=>p.id===id))return;
+      shownId=id;
+      center.replaceChildren(img);
+      background.style.backgroundImage='url("'+url+'")';
+    };
+    img.onerror=()=>{
+      if(token===renderToken)showPlaceholder();
+    };
     img.alt='Фото гостя BALI';img.className='screen-photo';img.src=url;
   }
   async function refresh(){
@@ -156,7 +171,13 @@ if(page==='screen'){
       login.hidden=true;
       $('#screenEvent').textContent=d.event?.name||'BALI NIGHT CLUB';
       const sig=d.photos.map(p=>p.id).join(',');
-      if(sig!==signature){signature=sig;photos=d.photos;index=0;render();}
+      if(sig!==signature){
+        signature=sig;photos=d.photos;index=0;
+        // Moderation removals must disappear immediately, including when the
+        // next image is still loading or no longer exists on disk.
+        if(shownId!==null && !photos.some(p=>p.id===shownId))showPlaceholder();
+        render();
+      }
     }catch(error){if(error.code===401){login.hidden=false;} else console.warn(error.message);}
   }
   $('#fullscreenBtn').addEventListener('click',()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{}));
