@@ -70,7 +70,7 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
     assert.equal(newEvent.status,201);
     const next = await (await request('/api/public',{headers:{Cookie:guest}})).json();
     assert.equal(next.event.name,'SMOKE TEST EVENT');
-    const empty = await (await request('/api/screen')).json();
+    const empty = await (await request('/api/screen',{headers:{Cookie:screenCookie}})).json();
     assert.equal(empty.photos.length,0);
     const deleted = await request('/api/admin/photos/'+uploaded.id,{method:'DELETE',headers,body:'{}'});
     assert.equal(deleted.status,200);
