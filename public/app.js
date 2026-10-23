@@ -141,6 +141,7 @@ if(page==='admin') {
 if(page==='screen'){
   const MAX_WALL_PHOTOS=500;
   const STORE_KEY='bali-photo-wall-screen-settings-v1';
+  const LOGO_KEY='bali-photo-wall-screen-logo-v1';
   const defaults={
     maxPhotos:500,columns:0,gap:2,fit:'cover',
     logoSize:76,liveSize:20,eventSize:32,qrSize:92,inset:18,
@@ -298,9 +299,48 @@ if(page==='screen'){
   $('#wallSettingsToggle').addEventListener('click',()=>togglePanel(panel.hidden));
   $('#wallSettingsClose').addEventListener('click',()=>togglePanel(false));
   $('#wallDone').addEventListener('click',()=>togglePanel(false));
+  function restoreScreenLogo(){
+    const logo=$('#wallLogo');
+    let stored='';
+    try{stored=localStorage.getItem(LOGO_KEY)||''}catch{}
+    logo.src=/^data:image\/(png|jpeg|webp);base64,/.test(stored)?stored:'/bali-logo.svg';
+  }
+  function resetScreenLogo(){
+    try{localStorage.removeItem(LOGO_KEY)}catch{}
+    $('#wallLogoUpload').value='';
+    $('#wallLogoMessage').textContent='';
+    restoreScreenLogo();
+  }
+  $('#wallLogoDefault').addEventListener('click',resetScreenLogo);
+  $('#wallLogoUpload').addEventListener('change',event=>{
+    const file=event.target.files?.[0];
+    if(!file)return;
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size>1024*1024){
+      $('#wallLogoMessage').textContent='PNG/JPG/WebP, максимум 1 МБ';
+      event.target.value='';
+      return;
+    }
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const data=typeof reader.result==='string'?reader.result:'';
+      if(!/^data:image\/(png|jpeg|webp);base64,/.test(data)){
+        $('#wallLogoMessage').textContent='Не удалось прочитать логотип';return;
+      }
+      try{
+        localStorage.setItem(LOGO_KEY,data);
+        restoreScreenLogo();
+        $('#wallLogoMessage').textContent='Логотип сохранён';
+      }catch{
+        $('#wallLogoMessage').textContent='Не удалось сохранить: недостаточно памяти браузера';
+      }
+    };
+    reader.onerror=()=>{$('#wallLogoMessage').textContent='Ошибка чтения изображения'};
+    reader.readAsDataURL(file);
+  });
   $('#wallReset').addEventListener('click',()=>{
     settings={...defaults};
     try{localStorage.removeItem(STORE_KEY)}catch{}
+    resetScreenLogo();
     applySettings();
   });
   for(const input of controls){
@@ -323,6 +363,7 @@ if(page==='screen'){
     cancelAnimationFrame(resizeFrame);
     resizeFrame=requestAnimationFrame(layout);
   });
+  restoreScreenLogo();
   applySettings();
   refresh();
   setInterval(refresh,5000);
