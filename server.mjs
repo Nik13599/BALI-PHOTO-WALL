@@ -37,9 +37,11 @@ if (!Number.isFinite(retentionSetting) || !Number.isInteger(retentionSetting) ||
 const RETENTION_DAYS = retentionSetting;
 const MAX_PHOTOS_PER_EVENT = Number(process.env.MAX_PHOTOS_PER_EVENT || 3000);
 const MIN_FREE_DISK_MB = Number(process.env.MIN_FREE_DISK_MB || 512);
+const MAX_ACTIVE_UPLOADS = Number(process.env.MAX_ACTIVE_UPLOADS || 12);
 if (!Number.isSafeInteger(MAX_PHOTOS_PER_EVENT) || MAX_PHOTOS_PER_EVENT < 100 || MAX_PHOTOS_PER_EVENT > 50000 ||
-    !Number.isSafeInteger(MIN_FREE_DISK_MB) || MIN_FREE_DISK_MB < 100 || MIN_FREE_DISK_MB > 100000) {
-  console.error('MAX_PHOTOS_PER_EVENT must be 100-50000 and MIN_FREE_DISK_MB must be 100-100000');
+    !Number.isSafeInteger(MIN_FREE_DISK_MB) || MIN_FREE_DISK_MB < 100 || MIN_FREE_DISK_MB > 100000 ||
+    !Number.isSafeInteger(MAX_ACTIVE_UPLOADS) || MAX_ACTIVE_UPLOADS < 2 || MAX_ACTIVE_UPLOADS > 32) {
+  console.error('Check MAX_PHOTOS_PER_EVENT (100-50000), MIN_FREE_DISK_MB (100-100000) and MAX_ACTIVE_UPLOADS (2-32)');
   process.exit(1);
 }
 const db = new Database(path.join(DATA, 'bali-photo-wall.sqlite'));
@@ -166,6 +168,23 @@ app.get('/qr.svg', asyncRoute(async (_req, res) => {
 }));
 
 const uploadLimiter = rateLimit({windowMs:3600000,limit:4000,standardHeaders:'draft-8',legacyHeaders:false});
+let activeUploads = 0;
+function reserveUploadSlot(req,res,next) {
+  if (activeUploads >= MAX_ACTIVE_UPLOADS) {
+    res.set('Retry-After','3');
+    return res.status(503).json({error:'Много фотографий одновременно. Повторяем отправку…',code:'BUSY'});
+  }
+  activeUploads++;
+  let released=false;
+  const release=()=>{
+    if(released)return;
+    released=true;
+    activeUploads--;
+  };
+  res.once('finish',release);
+  res.once('close',release);
+  next();
+}
 const upload = multer({ storage:multer.diskStorage({
   destination: (_req,_file,cb) => cb(null, UPLOADS),
   filename: (_req,_file,cb) => cb(null, crypto.randomUUID() + '.tmp')
@@ -177,7 +196,7 @@ app.use('/api/upload', (req,res,next) => {
   res.on('close',discard);
   next();
 });
-app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async (req,res) => {
+app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo'), asyncRoute(async (req,res) => {
   const event = currentEvent.get();
   if (!event) return res.status(409).json({error:'Сейчас нет активного мероприятия'});
   if (req.body?.consent !== 'yes') return res.status(400).json({error:'Необходимо согласие на показ фотографии'});
