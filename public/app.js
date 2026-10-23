@@ -139,138 +139,168 @@ if(page==='admin') {
   setInterval(()=>{if($('#dashboard')&&!document.hidden)loadDashboard();},6000);
 }
 if(page==='screen'){
-  const MAX_WALL_PHOTOS=500;
-  const STORE_KEY='bali-photo-wall-screen-settings-v1';
-  const defaults={
-    maxPhotos:500,columns:0,gap:2,fit:'cover',
-    logoSize:76,liveSize:20,eventSize:32,qrSize:92,inset:18,
-    showLogo:true,showLive:true,showEvent:true,showQr:true,showHint:true
-  };
-  const limits={
-    maxPhotos:[1,500],columns:[0,40],gap:[0,16],
-    logoSize:[24,240],liveSize:[10,55],eventSize:[12,85],
-    qrSize:[40,250],inset:[0,80]
-  };
-  let settings={...defaults};
-  try {
-    const saved=JSON.parse(localStorage.getItem(STORE_KEY)||'null');
-    if(saved && typeof saved==='object'){
-      for(const key of Object.keys(defaults)){
-        if(key in limits && Number.isFinite(Number(saved[key])))
-          settings[key]=Math.round(Math.min(limits[key][1],Math.max(limits[key][0],Number(saved[key]))));
-        else if(key==='fit' && ['cover','contain'].includes(saved[key]))settings.fit=saved.fit;
-        else if(typeof defaults[key]==='boolean' && typeof saved[key]==='boolean')
-          settings[key]=saved[key];
-      }
-    }
-  } catch { /* Damaged or disabled browser storage: use defaults */ }
-  const screen=$('#wallScreen'),grid=$('#wallGrid'),empty=$('#wallEmpty'),login=$('#screenLogin'),panel=$('#wallSettings');
-  const controls=[...document.querySelectorAll('[data-wall-setting]')];
-  let photos=[],eventId=null,signature='',failedPolls=0,wasAuthenticated=false;
-  const setShown=(element,visible)=>{ if(element)element.hidden=!visible; };
-  function applySettings(){
-    screen.style.setProperty('--wall-gap',settings.gap+'px');
-    screen.style.setProperty('--wall-fit',settings.fit);
-    screen.style.setProperty('--wall-logo-size',settings.logoSize+'px');
-    screen.style.setProperty('--wall-live-size',settings.liveSize+'px');
-    screen.style.setProperty('--wall-event-size',settings.eventSize+'px');
-    screen.style.setProperty('--wall-qr-size',settings.qrSize+'px');
-    screen.style.setProperty('--wall-inset',settings.inset+'px');
-    setShown($('#wallLogo'),settings.showLogo);
-    setShown($('#wallLive'),settings.showLive);
-    setShown($('#screenEvent'),settings.showEvent);
-    setShown($('#eventHint'),settings.showHint);
-    setShown($('#wallQR'),settings.showQr);
-    for(const control of controls){
-      const key=control.dataset.wallSetting;
-      if(control.type==='checkbox')control.checked=settings[key];
-      else control.value=String(settings[key]);
-      const output=document.getElementById('out'+key[0].toUpperCase()+key.slice(1));
-      if(output)output.textContent=key==='columns' && settings[key]===0?'Авто':settings[key];
-    }
-    layout();
+  const center=$('#screenCenter'),login=$('#screenLogin'),settingsPanel=$('#wallSettings');
+  const storageKey='bali-photo-wall-led-settings-v1';
+  const defaults={limit:500,layout:'auto',columns:8,gap:4,fit:'cover',qr:true,qrSize:80,logo:true,logoSize:200};
+  const clampInt=(value,min,max,fallback)=>Number.isFinite(Number(value))?Math.max(min,Math.min(max,Math.round(Number(value)))):fallback;
+  function normalize(source={}){
+    return {
+      limit:clampInt(source.limit,1,500,defaults.limit),
+      layout:source.layout==='manual'?'manual':'auto',
+      columns:clampInt(source.columns,1,50,defaults.columns),
+      gap:clampInt(source.gap,0,24,defaults.gap),
+      fit:source.fit==='contain'?'contain':'cover',
+      qr:typeof source.qr==='boolean'?source.qr:defaults.qr,
+      qrSize:clampInt(source.qrSize,50,180,defaults.qrSize),
+      logo:typeof source.logo==='boolean'?source.logo:defaults.logo,
+      logoSize:clampInt(source.logoSize,100,340,defaults.logoSize)
+    };
   }
-  function getPhotoUrl(id,n){
-    // A full-size photo is used for one or a few images, while lightweight
-    // thumbnails keep a 500-tile wall responsive on standard LED hardware.
-    return n<=6 ? '/api/photos/'+id : '/api/screen/thumbnail/'+id;
+  let saved={};
+  try{saved=JSON.parse(localStorage.getItem(storageKey)||'{}')||{};}catch{}
+  let preferences=normalize(saved);
+  let photos=[],signature=null,failedPolls=0;
+  let tiles=new Map();
+  const settingInputs={
+    limit:$('#wallLimit'),layout:$('#wallLayout'),columns:$('#wallColumns'),
+    gap:$('#wallGap'),fit:$('#wallFit'),qr:$('#wallQr'),qrSize:$('#wallQrSize'),
+    logo:$('#wallLogo'),logoSize:$('#wallLogoSize')
+  };
+  function syncControls(){
+    for(const [key,input] of Object.entries(settingInputs)){
+      if(input.type==='checkbox')input.checked=preferences[key];
+      else input.value=String(preferences[key]);
+    }
+    $('#wallColumnsGroup').hidden=preferences.layout!=='manual';
+    $('#wallGapValue').textContent=preferences.gap+' px';
+    $('#wallQrSizeValue').textContent=preferences.qrSize+' px';
+    $('#wallLogoSizeValue').textContent=preferences.logoSize+' px';
+    const root=document.querySelector('.screen');
+    root.style.setProperty('--wall-gap',preferences.gap+'px');
+    root.style.setProperty('--wall-fit',preferences.fit);
+    root.style.setProperty('--qr-size',preferences.qrSize+'px');
+    root.style.setProperty('--logo-size',preferences.logoSize+'px');
+    $('#screenQr').hidden=!preferences.qr;
+    $('#screenLogo').hidden=!preferences.logo;
   }
-  function buildTile(photo,n,existing){
-    const tile=existing.get(photo.id) || document.createElement('div');
+  function saveSettings(){
+    try{localStorage.setItem(storageKey,JSON.stringify(preferences));}catch{}
+  }
+  function autoColumns(count){
+    if(count<=2)return count;
+    const width=Math.max(1,center.clientWidth);
+    const height=Math.max(1,center.clientHeight);
+    let best=1,score=Infinity;
+    for(let columns=1;columns<=Math.min(count,50);columns++){
+      const rows=Math.ceil(count/columns);
+      const aspect=(width/columns)/(height/rows);
+      // Favor comfortable image shapes and limit underfilled final rows.
+      const penalty=Math.abs(Math.log(Math.max(.01,aspect)/(4/3)))+
+        (columns*rows-count)/count*.3;
+      if(penalty<score){score=penalty;best=columns;}
+    }
+    return best;
+  }
+  function showPlaceholder(){
+    center.innerHTML='<div class="screen-placeholder"><div class="line">ПОДЕЛИСЬ <span class="glow">МОМЕНТОМ</span></div><p>Твои фотографии на экранах BALI</p></div>';
+    tiles.clear();
+    $('#wallCount').textContent='0 фотографий';
+  }
+  function buildTile(id,useThumbnail){
+    const tile=document.createElement('div');
     tile.className='wall-tile';
-    tile.dataset.id=String(photo.id);
-    let img=tile.querySelector('img');
-    if(!img){
-      img=document.createElement('img');
-      img.alt='';
-      img.decoding='async';
-      img.loading='eager';
-      img.addEventListener('error',()=>tile.classList.add('wall-tile-error'));
-      img.addEventListener('load',()=>tile.classList.remove('wall-tile-error'));
-      tile.append(img);
-    }
-    const source=getPhotoUrl(photo.id,n);
-    if(img.getAttribute('src')!==source)img.src=source;
+    const img=document.createElement('img');
+    img.alt='Фото гостя BALI';
+    img.loading='eager';
+    img.decoding='async';
+    img.onerror=()=>tile.classList.add('failed');
+    tile.append(img);
+    tile.dataset.photoId=String(id);
+    tile.dataset.thumb=String(useThumbnail);
+    img.src='/api/photos/'+encodeURIComponent(id)+(useThumbnail?'?thumb=1':'');
     return tile;
   }
-  function layout(){
-    const all=photos.slice(0,settings.maxPhotos);
-    const n=all.length;
-    setShown(empty,n===0);
-    if(!n){grid.replaceChildren();return;}
-    const ratio=Math.max(0.65,screen.clientWidth/Math.max(1,screen.clientHeight));
-    let cols=settings.columns||Math.max(1,Math.round(Math.sqrt(n*ratio)));
-    if(!settings.columns && n===3)cols=3;
-    cols=Math.min(n,Math.max(1,cols));
-    const rows=Math.ceil(n/cols);
-    const perRow=Math.floor(n/rows),extra=n%rows;
-    const existing=new Map([...grid.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el]));
+  function renderWall(){
+    const visible=photos.slice(0,preferences.limit);
+    $('#wallCount').textContent='Показано '+visible.length+' из '+photos.length;
+    if(!visible.length){showPlaceholder();return;}
+    const count=visible.length;
+    const columns=Math.max(1,Math.min(count,preferences.layout==='manual'?preferences.columns:autoColumns(count)));
+    const rows=Math.ceil(count/columns);
+    const useThumbnail=count>12;
+    const updatedTiles=new Map();
     const fragment=document.createDocumentFragment();
     let offset=0;
+    // Balance the last row instead of leaving dark, unused cells.
+    const even=Math.floor(count/rows),extra=count%rows;
     for(let rowIndex=0;rowIndex<rows;rowIndex++){
       const row=document.createElement('div');
-      row.className='wall-grid-row';
-      const count=perRow+(rowIndex<extra?1:0);
-      for(let col=0;col<count;col++){
-        row.append(buildTile(all[offset],n,existing));
-        offset++;
+      row.className='wall-row';
+      const rowLength=even+(rowIndex<extra?1:0);
+      for(let index=0;index<rowLength;index++){
+        const id=visible[offset++].id;
+        let tile=tiles.get(id);
+        if(!tile || tile.dataset.thumb!==String(useThumbnail))tile=buildTile(id,useThumbnail);
+        updatedTiles.set(id,tile);
+        row.append(tile);
       }
       fragment.append(row);
     }
-    grid.replaceChildren(fragment);
+    center.replaceChildren(fragment);
+    tiles=updatedTiles;
   }
-  function clearWall(){
-    photos=[];signature='';eventId=null;
-    layout();
+  function changePreference(key){
+    const input=settingInputs[key];
+    const value=input.type==='checkbox'?input.checked:input.value;
+    preferences=normalize({...preferences,[key]:value});
+    saveSettings();
+    syncControls();
+    renderWall();
   }
+  for(const [key,input] of Object.entries(settingInputs)){
+    input.addEventListener(['gap','qrSize','logoSize'].includes(key)?'input':'change',()=>changePreference(key));
+  }
+  $('#wallReset').addEventListener('click',()=>{
+    preferences={...defaults};
+    saveSettings();syncControls();renderWall();
+  });
+  function togglePanel(open){
+    settingsPanel.hidden=!open;
+    $('#settingsBtn').setAttribute('aria-expanded',String(open));
+  }
+  $('#settingsBtn').addEventListener('click',()=>togglePanel(settingsPanel.hidden));
+  $('#settingsClose').addEventListener('click',()=>togglePanel(false));
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')togglePanel(false);});
+  $('#fullscreenBtn').addEventListener('click',()=>{
+    if(document.fullscreenElement)document.exitFullscreen().catch(()=>{});
+    else document.documentElement.requestFullscreen().catch(()=>{});
+  });
+  let resizeQueued=false;
+  window.addEventListener('resize',()=>{
+    if(resizeQueued)return;
+    resizeQueued=true;
+    requestAnimationFrame(()=>{resizeQueued=false;renderWall();});
+  });
   async function refresh(){
     try{
       const data=await api('/api/screen');
       failedPolls=0;
-      wasAuthenticated=true;
       login.hidden=true;
-      const event=data.event?.id??null;
-      const eventName=data.event?.name||'BALI NIGHT CLUB';
-      $('#screenEvent').textContent=eventName;
-      // Update on photos or event identity changes; do not redraw every poll.
-      const incoming=(data.photos||[]).slice(0,MAX_WALL_PHOTOS);
-      const nextSignature=event+':'+incoming.map(photo=>photo.id).join(',');
+      $('#screenEvent').textContent=data.event?.name||'BALI NIGHT CLUB';
+      const list=Array.isArray(data.photos)?data.photos:[];
+      const nextSignature=list.map(photo=>photo.id).join(',');
       if(nextSignature!==signature){
-        eventId=event;
-        signature=nextSignature;
-        photos=incoming;
-        layout();
+        signature=nextSignature;photos=list;
+        renderWall();
       }
     }catch(error){
       if(error.code===401){
-        wasAuthenticated=false;
-        login.hidden=false;
-        clearWall();
-      } else {
-        console.warn('Photo wall sync:',error.message);
+        login.hidden=false;photos=[];signature=null;showPlaceholder();
+      }else{
+        console.warn('LED sync error:',error.message);
         if(++failedPolls>=3){
-          clearWall();
-          $('#screenEvent').textContent='НЕТ СОЕДИНЕНИЯ С СЕРВЕРОМ';
+          photos=[];signature=null;showPlaceholder();
+          $('#screenEvent').textContent='СОЕДИНЕНИЕ С СЕРВЕРОМ ПОТЕРЯНО';
         }
       }
     }
@@ -280,50 +310,14 @@ if(page==='screen'){
     const button=$('#screenLoginForm button');
     button.disabled=true;
     try{
-      await api('/api/screen/login',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({password:$('#screenPassword').value})
-      });
+      await api('/api/screen/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#screenPassword').value})});
       $('#screenPassword').value='';
-      notice('#screenLoginMessage','');
       login.hidden=true;
       await refresh();
-    }catch(error){notice('#screenLoginMessage',error.message,true)}
-    finally{button.disabled=false}
+    }catch(error){notice('#screenLoginMessage',error.message,true);}
+    finally{button.disabled=false;}
   });
-  function togglePanel(open){
-    panel.hidden=!open;
-    $('#wallSettingsToggle').setAttribute('aria-expanded',String(open));
-  }
-  $('#wallSettingsToggle').addEventListener('click',()=>togglePanel(panel.hidden));
-  $('#wallSettingsClose').addEventListener('click',()=>togglePanel(false));
-  $('#wallDone').addEventListener('click',()=>togglePanel(false));
-  $('#wallReset').addEventListener('click',()=>{
-    settings={...defaults};
-    try{localStorage.removeItem(STORE_KEY)}catch{}
-    applySettings();
-  });
-  for(const input of controls){
-    const change=()=>{
-      const key=input.dataset.wallSetting;
-      settings[key]=input.type==='checkbox'?input.checked:
-        key==='fit'?input.value:Number(input.value);
-      try{localStorage.setItem(STORE_KEY,JSON.stringify(settings))}catch{}
-      applySettings();
-    };
-    input.addEventListener(input.type==='range'?'input':'change',change);
-  }
-  $('#fullscreenBtn').addEventListener('click',()=>{
-    if(document.fullscreenElement)document.exitFullscreen();
-    else document.documentElement.requestFullscreen().catch(()=>{});
-  });
-  document.addEventListener('keydown',event=>{if(event.key==='Escape')togglePanel(false)});
-  let resizeFrame=0;
-  window.addEventListener('resize',()=>{
-    cancelAnimationFrame(resizeFrame);
-    resizeFrame=requestAnimationFrame(layout);
-  });
-  applySettings();
+  syncControls();
   refresh();
   setInterval(refresh,5000);
 }
