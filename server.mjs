@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const DATA = path.join(ROOT, 'data');
+const DATA = path.resolve(process.env.DATA_DIR || path.join(ROOT, 'data'));
 const PHOTOS = path.join(DATA, 'photos');
 const UPLOADS = path.join(DATA, 'temporary-uploads');
 const THUMBS = path.join(DATA, 'thumbnails');
@@ -30,10 +30,15 @@ if (PASSWORD.length < 12 || PASSWORD.includes('CHANGE_') || SCREEN_PASSWORD.leng
 const HOST = process.env.HOST || '127.0.0.1';
 const PORT = Number(process.env.PORT || 3100);
 const PUBLIC_URL = (process.env.PUBLIC_URL || 'http://localhost:3100').replace(/\/+$/, '');
-const RETENTION_DAYS = Math.min(90, Math.max(1, Number(process.env.RETENTION_DAYS || 7)));
+const retentionSetting = Number(process.env.RETENTION_DAYS || 7);
+if (!Number.isFinite(retentionSetting) || !Number.isInteger(retentionSetting) || retentionSetting < 1 || retentionSetting > 90) {
+  console.error('RETENTION_DAYS must be an integer from 1 to 90'); process.exit(1);
+}
+const RETENTION_DAYS = retentionSetting;
 const db = new Database(path.join(DATA, 'bali-photo-wall.sqlite'));
 db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
+db.pragma('foreign_keys = ON');
 db.exec(`
   CREATE TABLE IF NOT EXISTS events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,7 +150,7 @@ app.get('/qr.svg', asyncRoute(async (_req, res) => {
   res.type('image/svg+xml').set('Cache-Control','public,max-age=600').send(svg);
 }));
 
-const uploadLimiter = rateLimit({windowMs:3600000,limit:1500,standardHeaders:'draft-8',legacyHeaders:false});
+const uploadLimiter = rateLimit({windowMs:3600000,limit:4000,standardHeaders:'draft-8',legacyHeaders:false});
 const upload = multer({ storage:multer.diskStorage({
   destination: (_req,_file,cb) => cb(null, UPLOADS),
   filename: (_req,_file,cb) => cb(null, crypto.randomUUID() + '.tmp')
@@ -177,25 +182,32 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
   }
   const filename = crypto.randomUUID() + '.webp';
   const thumbnail = await sharp(processed).resize({width:360,height:360,fit:'cover'}).webp({quality:65}).toBuffer();
-  await Promise.all([
-    fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'}),
-    fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'})
+  const discardProcessed = () => Promise.all([
+    fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{}),
+    fsp.unlink(path.join(THUMBS,filename)).catch(()=>{})
   ]);
   try {
-    const result = db.prepare('INSERT INTO photos(event_id,filename,guest_id,status,created_at) VALUES (?,?,?, ?,?)')
-      .run(event.id,filename,guest,'pending',Date.now());
+    await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
+    await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
+    // The final count check and INSERT execute as one SQLite statement. Four
+    // simultaneous requests from one browser can never exceed three rows.
+    const result = db.prepare(`INSERT INTO photos(event_id,filename,guest_id,status,created_at)
+      SELECT ?, ?, ?, 'pending', ?
+      WHERE (SELECT COUNT(*) FROM photos WHERE event_id=? AND guest_id=?) < 3`)
+      .run(event.id,filename,guest,Date.now(),event.id,guest);
+    if (!result.changes) {
+      await discardProcessed();
+      return res.status(429).json({error:'Лимит: 3 фотографии за мероприятие'});
+    }
     res.status(201).json({id:result.lastInsertRowid,status:'pending',message:'Фото отправлено на проверку'});
   } catch (error) {
-    await Promise.all([
-      fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{}),
-      fsp.unlink(path.join(THUMBS,filename)).catch(()=>{})
-    ]);
+    await discardProcessed();
     throw error;
   }
 }));
 const servePhoto = (row,res,privateView=false) => {
   if (!row || (!privateView && row.status !== 'approved')) return res.status(404).end();
-  res.set('Cache-Control', privateView ? 'private,no-store' : 'private,max-age=300');
+  res.set('Cache-Control', 'private,no-store');
   const filename = privateView && fs.existsSync(path.join(THUMBS,row.filename))
     ? path.join(THUMBS,row.filename) : path.join(PHOTOS,row.filename);
   return res.type('image/webp').sendFile(filename);
@@ -224,12 +236,17 @@ app.post('/api/admin/logout', requireAction, (_req,res) => {
 });
 app.get('/api/admin/me', adminAuth, (_req,res) => res.json({ok:true}));
 app.get('/api/admin/photos/:id', adminAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res,true));
-app.get('/api/admin/dashboard', adminAuth, (_req,res) => {
+app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   const events = db.prepare('SELECT id,name,active,created_at FROM events ORDER BY id DESC LIMIT 100').all();
   const active = currentEvent.get();
-  const photos = active ? db.prepare('SELECT id,status,created_at FROM photos WHERE event_id=? ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END,created_at DESC LIMIT 250')
-    .all(active.id,'pending') : [];
-  res.json({events,active,photos});
+  const requested = req.query.eventId;
+  const selected = requested === undefined ? active
+    : (typeof requested === 'string' && /^\d+$/.test(requested)
+      ? db.prepare('SELECT id,name FROM events WHERE id=?').get(Number(requested)) : null);
+  if (requested !== undefined && !selected) return res.status(404).json({error:'Мероприятие не найдено'});
+  const photos = selected ? db.prepare('SELECT id,status,created_at FROM photos WHERE event_id=? ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END,created_at DESC LIMIT 250')
+    .all(selected.id,'pending') : [];
+  res.json({events,active,selected,photos});
 });
 const makeEvent = db.transaction(name => {
   db.prepare('UPDATE events SET active=0').run();
@@ -270,6 +287,18 @@ app.delete('/api/admin/photos/:id', adminAuth, requireAction, asyncRoute(async (
   res.json({ok:true});
 }));
 async function cleanup() {
+  // An interrupted upload may leave a temporary file behind.
+  const leftovers = await fsp.readdir(UPLOADS,{withFileTypes:true});
+  for (const item of leftovers) {
+    if (!item.isFile() || !item.name.endsWith('.tmp')) continue;
+    const filename = path.join(UPLOADS,item.name);
+    try {
+      const stat = await fsp.stat(filename);
+      if (Date.now()-stat.mtimeMs > 2*3600000) await fsp.unlink(filename);
+    } catch (error) {
+      if (error.code!=='ENOENT') console.warn('Temporary file cleanup failed',error.message);
+    }
+  }
   const old = db.prepare('SELECT id,filename FROM photos WHERE created_at < ?').all(Date.now()-RETENTION_DAYS*86400000);
   for (const item of old) {
     db.prepare('DELETE FROM photos WHERE id=?').run(item.id);

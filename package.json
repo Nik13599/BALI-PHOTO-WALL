@@ -6,7 +6,8 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node --env-file=.env server.mjs",
-    "check": "node --check server.mjs && node --check public/app.js"
+    "check": "node --check server.mjs && node --check public/app.js",
+    "test": "npm run check && node --test tests/smoke.test.mjs && node test/smoke.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",

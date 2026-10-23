@@ -2,10 +2,14 @@ import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const origin='http://127.0.0.1:39991';
+const tempData=mkdtempSync(path.join(os.tmpdir(),'bali-photo-wall-verify-'));
 const server=spawn(process.execPath,['server.mjs'],{
-  cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',HOST:'127.0.0.1',PORT:'39991',
+  cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',HOST:'127.0.0.1',PORT:'39991',DATA_DIR:tempData,
     ADMIN_PASSWORD:'test-password-only-123456',SCREEN_PASSWORD:'test-screen-only-123456',SESSION_SECRET:'test-only-32-character-secret-do-not-use-prod'},
   stdio:['ignore','pipe','pipe']
 });
@@ -74,5 +78,10 @@ try {
   assert.equal(active.photos.length,0,'New event must have its own slideshow');
   console.log('PASS: pages, guest upload, private pending media, admin login, moderation, protected screen, event isolation');
 }finally{
-  server.kill('SIGTERM');
+  if (server.exitCode===null) {
+    const exited=new Promise(resolve=>server.once('exit',resolve));
+    server.kill('SIGTERM');
+    await exited;
+  }
+  rmSync(tempData,{recursive:true,force:true});
 }
