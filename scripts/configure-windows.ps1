@@ -16,7 +16,7 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 if ([string]::IsNullOrWhiteSpace($ConfigPath)) { $ConfigPath = Join-Path $root '.env' }
 if (-not (Test-Path -LiteralPath $ConfigPath)) { throw 'No .env configuration. Run INSTALL-WINDOWS.cmd first.' }
 $definitions = @(
-  @{ Key='MAX_PHOTOS_PER_GUEST'; Parameter='GuestPhotoLimit'; Min=0; Max=1000000; Default=3; Label='Photos per guest (0=no cap)' },
+  @{ Key='MAX_PHOTOS_PER_GUEST'; Parameter='GuestPhotoLimit'; Min=0; Max=1000000; Default=0; Label='Guest uploads unlimited (always 0)' },
   @{ Key='MAX_PHOTOS_PER_EVENT'; Parameter='EventPhotoLimit'; Min=0; Max=100000000; Default=0; Label='Photos per event (0=no cap)' },
   @{ Key='UPLOAD_REQUESTS_PER_HOUR'; Parameter='RequestsPerHour'; Min=0; Max=10000000; Default=0; Label='Upload requests/hour (0=no cap)' },
   @{ Key='RETENTION_DAYS'; Parameter='RetentionDays'; Min=1; Max=90; Default=7; Label='Photo retention days (1-90)' },
@@ -40,7 +40,10 @@ foreach ($item in $definitions) {
     }
   }
   $provided = $PSBoundParameters.ContainsKey($item.Parameter)
-  if ($provided) {
+  if ($item.Key -eq 'MAX_PHOTOS_PER_GUEST') {
+    # Legacy setting may still be 3 on older installations. Disable it permanently.
+    $desired = 0
+  } elseif ($provided) {
     $desired = [int](Get-Variable -Name $item.Parameter -ValueOnly)
   } elseif ($nonInteractive.Count -eq 0) {
     $inputValue = Read-Host ($item.Label + ' [current '+$value+'] (Enter=keep)')
