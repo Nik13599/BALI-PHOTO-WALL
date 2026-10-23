@@ -97,8 +97,8 @@ function cookies(req) {
   return out;
 }
 function cookieOptions(req, maxAge) {
-  const hostname = String(req.headers.host || '').split(':')[0].toLowerCase();
-  const localHost = ['localhost','127.0.0.1','[::1]'].includes(hostname);
+  const host = String(req.headers.host || '').toLowerCase();
+  const localHost = /^(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(host) || /^\[::1\](?::\d+)?$/.test(host);
   // Keep HTTPS cookies Secure on the public domain while allowing a
   // localhost-only operator session on the club's own computer.
   return { httpOnly: true, secure: req.secure || (!localHost && process.env.NODE_ENV === 'production'), sameSite: 'strict', path: '/', maxAge };
