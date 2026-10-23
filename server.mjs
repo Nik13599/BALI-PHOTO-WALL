@@ -187,9 +187,15 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
   if (used >= 3) return res.status(429).json({error:'Лимит: 3 фотографии за мероприятие'});
   const alreadyInEvent = db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(event.id).n;
   if (alreadyInEvent >= MAX_PHOTOS_PER_EVENT) return res.status(409).json({error:'Достигнут лимит фотографий мероприятия'});
-  const filesystem = await fsp.statfs(DATA);
-  if (Number(filesystem.bavail)*Number(filesystem.bsize) < MIN_FREE_DISK_MB * 1048576) {
-    return res.status(507).json({error:'На сервере недостаточно места для новых фотографий'});
+  try {
+    const filesystem = await fsp.statfs(DATA);
+    if (Number(filesystem.bavail)*Number(filesystem.bsize) < MIN_FREE_DISK_MB * 1048576) {
+      return res.status(507).json({error:'На сервере недостаточно места для новых фотографий'});
+    }
+  } catch (error) {
+    // Some platforms do not support filesystem statistics.
+    if (!['ENOSYS','ENOTSUP','EOPNOTSUPP'].includes(error.code)) throw error;
+    console.warn('Filesystem free space cannot be verified on this operating system');
   }
   let processed;
   try {
@@ -340,6 +346,23 @@ async function cleanup() {
     ]);
   }
   if (old.length) console.log('Expired photos removed:',old.length);
+  // A crash can happen between saving a processed file and its DB INSERT,
+  // or between deleting its DB row and unlinking the file. Reconcile both
+  // directories against committed records after a conservative grace period.
+  const known = new Set(db.prepare('SELECT filename FROM photos').all().map(p=>p.filename));
+  for (const directory of [PHOTOS,THUMBS]) {
+    const entries = await fsp.readdir(directory,{withFileTypes:true});
+    for (const entry of entries) {
+      if (!entry.isFile() || !entry.name.endsWith('.webp') || known.has(entry.name)) continue;
+      const fullPath = path.join(directory,entry.name);
+      try {
+        const stat = await fsp.stat(fullPath);
+        if (Date.now()-stat.mtimeMs > 2*3600000) await fsp.unlink(fullPath);
+      } catch(error) {
+        if(error.code!=='ENOENT') console.warn('Photo file cleanup failed',error.message);
+      }
+    }
+  }
 }
 cleanup().catch(console.error);
 setInterval(()=>cleanup().catch(console.error),3600000).unref();
