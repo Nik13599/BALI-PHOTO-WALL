@@ -29,7 +29,16 @@ async function optimizePhoto(file) {
 }
 if(page==='guest') {
   const form=$('#uploadForm'), input=$('#photo'), btn=$('#uploadBtn');
-  api('/api/public').then(data=>$('#eventName').textContent=data.event?.name||'Нет активного мероприятия')
+  api('/api/public').then(data=>{
+    $('#eventName').textContent=data.event?.name||'Нет активного мероприятия';
+    const hint=$('#guestLimitsText');
+    if(hint){
+      hint.textContent=(data.limit===null
+        ? 'Ограничение на количество фотографий от одного гостя отключено.'
+        : 'До '+data.limit+' фото от одного гостя за мероприятие.')+
+        ' Фото проходят модерацию и удаляются через установленный срок.';
+    }
+  })
     .catch(()=>$('#eventName').textContent='Сервис временно недоступен');
   input.addEventListener('change',()=>$('#fileLabel').textContent=input.files[0]?.name || 'Выбрать фотографию');
   form.addEventListener('submit',async event=>{

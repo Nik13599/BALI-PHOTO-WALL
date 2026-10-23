@@ -51,7 +51,9 @@ if (-not (Test-Path -LiteralPath $envFile)) {
     "SCREEN_PASSWORD=$screen",
     "SESSION_SECRET=$secret",
     'RETENTION_DAYS=7',
-    'MAX_PHOTOS_PER_EVENT=3000',
+    'MAX_PHOTOS_PER_GUEST=3',
+    'MAX_PHOTOS_PER_EVENT=0',
+    'UPLOAD_REQUESTS_PER_HOUR=0',
     'MIN_FREE_DISK_MB=512',
     'MAX_ACTIVE_UPLOADS=12'
   )
@@ -76,4 +78,5 @@ Write-Host 'Installation complete.' -ForegroundColor Green
 Write-Host 'Start locally: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\start-windows.ps1'
 Write-Host 'Verify status: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\diagnose-windows.ps1'
 Write-Host 'Auto-start on sign-in: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\enable-autostart.ps1'
+Write-Host 'Edit limits: double-click CONFIGURE-WINDOWS.cmd (0 = no fixed photo/request quota).'
 Write-Host 'Cloudflare Tunnel connector must be installed separately using the existing Cloudflare dashboard.'

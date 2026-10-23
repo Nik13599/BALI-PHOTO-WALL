@@ -29,6 +29,24 @@ jobs:
             }
             Write-Host ('Parsed ' + $script.Name)
           }
+      - name: Verify Windows settings editor preserves secrets
+        shell: pwsh
+        run: |
+          $testEnv = Join-Path $env:RUNNER_TEMP 'bali-test-settings.env'
+          @(
+            'NODE_ENV=production',
+            'PUBLIC_URL=https://baliminsk.online',
+            'ADMIN_PASSWORD=my-admin-secret-12345',
+            'SCREEN_PASSWORD=my-screen-secret-12345',
+            'SESSION_SECRET=my-extra-long-non-public-session-secret'
+          ) | Set-Content -LiteralPath $testEnv -Encoding utf8
+          & ./scripts/configure-windows.ps1 -ConfigPath $testEnv -GuestPhotoLimit 0 -EventPhotoLimit 0 -RequestsPerHour 0 -RetentionDays 7 -MinFreeDiskMB 512 -ConcurrentUploads 12
+          # PowerShell scripts do not set LASTEXITCODE; terminating errors are handled automatically.
+          $text = Get-Content -LiteralPath $testEnv -Raw
+          foreach ($expected in @('MAX_PHOTOS_PER_GUEST=0','MAX_PHOTOS_PER_EVENT=0','UPLOAD_REQUESTS_PER_HOUR=0','SESSION_SECRET=my-extra-long-non-public-session-secret','ADMIN_PASSWORD=my-admin-secret-12345')) {
+            if (-not $text.Contains($expected)) { throw ('Config test missing '+$expected.Split('=')[0]) }
+          }
+          Remove-Item -LiteralPath $testEnv -Force
       - name: Install production dependencies
         run: npm install --no-audit --no-fund
       - name: Audit production dependencies
