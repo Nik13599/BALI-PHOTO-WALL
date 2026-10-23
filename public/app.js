@@ -12,6 +12,21 @@ function notice(selector,text,bad=false) {
   const elem=$(selector); if(!elem) return;
   elem.textContent=text; elem.className='alert '+(bad?'bad':'good');
 }
+async function optimizePhoto(file) {
+  if(file.size<=900000) return file;
+  try {
+    const bitmap=await createImageBitmap(file);
+    const scale=Math.min(1,1600/Math.max(bitmap.width,bitmap.height));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(bitmap.width*scale));
+    canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+    canvas.getContext('2d').drawImage(bitmap,0,0,canvas.width,canvas.height);
+    bitmap.close();
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',0.76));
+    if(blob && blob.size<file.size) return new File([blob],'bali-photo.webp',{type:'image/webp'});
+  } catch(error) { console.warn('Browser image optimization unavailable',error); }
+  return file;
+}
 if(page==='guest') {
   const form=$('#uploadForm'), input=$('#photo'), btn=$('#uploadBtn');
   api('/api/public').then(data=>$('#eventName').textContent=data.event?.name||'Нет активного мероприятия')
@@ -24,8 +39,9 @@ if(page==='guest') {
     if(file.size>8*1024*1024) return notice('#guestMessage','Фото должно быть меньше 8 МБ',true);
     if(!$('#consent').checked) return notice('#guestMessage','Подтвердите согласие на показ',true);
     btn.disabled=true; btn.textContent='ОТПРАВЛЯЕМ…';
-    const data=new FormData(); data.append('photo',file); data.append('consent','yes');
     try {
+      const optimized=await optimizePhoto(file);
+      const data=new FormData(); data.append('photo',optimized); data.append('consent','yes');
       const resp=await fetch('/api/upload',{method:'POST',body:data,credentials:'same-origin'});
       const result=await resp.json().catch(()=>({}));
       if(!resp.ok) throw new Error(result.error||'Ошибка загрузки');
