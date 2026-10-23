@@ -143,7 +143,7 @@ if(page==='screen'){
   const STORE_KEY='bali-photo-wall-screen-settings-v1';
   const LOGO_KEY='bali-photo-wall-screen-logo-v1';
   const defaults={
-    maxPhotos:500,columns:0,gap:2,fit:'cover',layout:'puzzle',
+    maxPhotos:500,columns:0,gap:2,fit:'cover',layout:'puzzle',centerGrowth:true,
     logoSize:28,liveSize:20,eventSize:32,qrSize:92,inset:18,
     showLogo:true,showLive:true,showEvent:true,showQr:true,showHint:true
   };
@@ -221,10 +221,19 @@ if(page==='screen'){
     const n=all.length;
     setShown(empty,n===0);
     if(!n){grid.replaceChildren();return;}
-    const existing=new Map([...grid.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el]));
+    const stage=grid.querySelector('.wall-cluster')||document.createElement('div');
+    stage.className='wall-cluster';
+    const boxW=grid.clientWidth||screen.clientWidth;
+    const boxH=grid.clientHeight||screen.clientHeight;
+    // A small gallery lives in the centre. Every incoming photo grows the
+    // composition outward until its bounds meet the LED screen edges.
+    const scale=settings.centerGrowth?Math.min(1,.68+.047*Math.sqrt(n)):1;
+    const stageW=Math.max(1,boxW*scale),stageH=Math.max(1,boxH*scale);
+    const oldRects=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el.getBoundingClientRect()]));
+    const existing=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el]));
     const fragment=document.createDocumentFragment();
     if(settings.layout==='puzzle' && globalThis.BaliMosaic){
-      const mosaic=globalThis.BaliMosaic.compute(all,grid.clientWidth||screen.clientWidth,grid.clientHeight||screen.clientHeight,settings.gap);
+      const mosaic=globalThis.BaliMosaic.compute(all,stageW,stageH,settings.gap);
       for(const rowData of mosaic.rows){
         const row=document.createElement('div');
         row.className='wall-grid-row wall-puzzle-row';
@@ -237,7 +246,7 @@ if(page==='screen'){
         fragment.append(row);
       }
     } else {
-      const ratio=Math.max(.65,screen.clientWidth/Math.max(1,screen.clientHeight));
+      const ratio=Math.max(.65,stageW/Math.max(1,stageH));
       let cols=settings.columns||Math.max(1,Math.round(Math.sqrt(n*ratio)));
       if(!settings.columns && n===3)cols=3;
       cols=Math.min(n,Math.max(1,cols));
@@ -255,7 +264,26 @@ if(page==='screen'){
         fragment.append(row);
       }
     }
-    grid.replaceChildren(fragment);
+    stage.style.width=stageW+'px';
+    stage.style.height=stageH+'px';
+    stage.replaceChildren(fragment);
+    if(stage.parentElement!==grid)grid.replaceChildren(stage);
+    // Only animate a reasonably sized gallery. Hundreds of animated tiles
+    // would overload a modest LED controller and delay new photographs.
+    if(n<=80 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+      const nextRects=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el.getBoundingClientRect()]));
+      for(const tile of stage.querySelectorAll('.wall-tile')){
+        const id=Number(tile.dataset.id),was=oldRects.get(id),next=nextRects.get(id);
+        if(!next)continue;
+        const from=was?
+          {transform:'translate('+(was.left-next.left)+'px,'+(was.top-next.top)+'px) scale('+(was.width/Math.max(1,next.width))+','+(was.height/Math.max(1,next.height))+')',opacity:1}:
+          {transform:'scale(.92)',opacity:0};
+        if(was && Math.abs(was.left-next.left)+Math.abs(was.top-next.top)+Math.abs(was.width-next.width)<1)continue;
+        tile.animate([from,{transform:'none',opacity:1}],{
+          duration:620,easing:'cubic-bezier(.18,.8,.18,1)'
+        });
+      }
+    }
   }
   function clearWall(){
     photos=[];signature='';eventId=null;
