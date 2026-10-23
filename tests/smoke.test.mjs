@@ -68,6 +68,7 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
     const served = await request('/api/photos/'+uploaded.id,{headers:{Cookie:screenCookie}});
     assert.equal(served.status,200);
     assert.match(served.headers.get('content-type'),/image\/webp/);
+    assert.match(served.headers.get('cache-control'),/no-store/);
     const screen = await (await request('/api/screen',{headers:{Cookie:screenCookie}})).json();
     assert.ok(screen.photos.some(p=>p.id===uploaded.id));
     const newEvent = await request('/api/admin/events',{method:'POST',headers,body:JSON.stringify({name:'SMOKE TEST EVENT'})});
