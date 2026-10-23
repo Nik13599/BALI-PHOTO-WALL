@@ -278,10 +278,22 @@ const servePhoto = (row,res,privateView=false,fullView=false) => {
   return res.type('image/webp').sendFile(filename);
 };
 app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res));
+// Keep LED transfers bounded. The newest 500 approved photos are enough
+// for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, (_req,res) => {
   const event = currentEvent.get();
-  const photos = event ? db.prepare("SELECT id,created_at FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC,id DESC").all(event.id) : [];
+  const photos = event ? db.prepare("SELECT id,created_at FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
   res.json({event,photos});
+});
+// Only approved photos may appear in the LED mosaic, even as thumbnails.
+// Unapproved originals remain accessible to the moderator only.
+app.get('/api/screen/thumbnail/:id', screenAuth, (req,res) => {
+  const photo = selectPhoto.get(Number(req.params.id));
+  if(!photo || photo.status!=='approved')return res.status(404).end();
+  const thumbnail=path.join(THUMBS,photo.filename);
+  const original=path.join(PHOTOS,photo.filename);
+  res.set('Cache-Control','private,no-store');
+  res.type('image/webp').sendFile(fs.existsSync(thumbnail)?thumbnail:original);
 });
 
 const loginLimiter = rateLimit({windowMs:900000,limit:10,standardHeaders:'draft-8',legacyHeaders:false});
