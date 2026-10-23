@@ -51,7 +51,7 @@ if (-not (Test-Path -LiteralPath $envFile)) {
     "SCREEN_PASSWORD=$screen",
     "SESSION_SECRET=$secret",
     'RETENTION_DAYS=7',
-    'MAX_PHOTOS_PER_GUEST=3',
+    'MAX_PHOTOS_PER_GUEST=0',
     'MAX_PHOTOS_PER_EVENT=0',
     'UPLOAD_REQUESTS_PER_HOUR=0',
     'MIN_FREE_DISK_MB=512',
