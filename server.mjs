@@ -207,7 +207,7 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
 }));
 const servePhoto = (row,res,privateView=false) => {
   if (!row || (!privateView && row.status !== 'approved')) return res.status(404).end();
-  res.set('Cache-Control', privateView ? 'private,no-store' : 'private,max-age=300');
+  res.set('Cache-Control', 'private,no-store');
   const filename = privateView && fs.existsSync(path.join(THUMBS,row.filename))
     ? path.join(THUMBS,row.filename) : path.join(PHOTOS,row.filename);
   return res.type('image/webp').sendFile(filename);
