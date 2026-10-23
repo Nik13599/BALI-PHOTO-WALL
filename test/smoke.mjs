@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import sharp from 'sharp';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 
@@ -29,7 +30,7 @@ try {
   assert.equal(r.status,200);
   const ev=(await data(r)).event;
   assert(ev?.id,'Active event missing');
-  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL/nwAAAABJRU5ErkJggg==','base64');
+  const png=await sharp({create:{width:3,height:3,channels:3,background:'#d7ff4d'}}).png().toBuffer();
   const body=new FormData();
   body.append('photo',new Blob([png],{type:'image/png'}),'test.png');
   body.append('consent','yes');
