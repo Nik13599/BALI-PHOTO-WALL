@@ -66,14 +66,18 @@ const secureEqual = (a, b) => {
   const x = Buffer.from(a); const y = Buffer.from(b);
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 };
-const mac = value => crypto.createHmac('sha256', SECRET).update(value).digest('base64url');
-const signed = value => value + '.' + mac(value);
-function checked(value) {
-  if (!value) return null;
+// Scope every signed cookie to its purpose. A screen token MUST never grant
+// admin access even if copied or renamed to "bali_admin".
+const PURPOSES = Object.freeze({bali_guest:'guest',bali_screen:'screen',bali_admin:'admin'});
+const mac = (value,purpose) => crypto.createHmac('sha256', SECRET)
+  .update('bali-photo-wall:v2:' + purpose + ':' + value).digest('base64url');
+const signed = (value,purpose) => value + '.' + mac(value,purpose);
+function checked(value,purpose) {
+  if (!value || !Object.values(PURPOSES).includes(purpose)) return null;
   const dot = value.lastIndexOf('.');
   if (dot < 1) return null;
   const data = value.slice(0, dot);
-  return secureEqual(mac(data), value.slice(dot + 1)) ? data : null;
+  return secureEqual(mac(data,purpose), value.slice(dot + 1)) ? data : null;
 }
 function cookies(req) {
   const out = {};
@@ -93,14 +97,14 @@ function cookieOptions(req, maxAge) {
   return { httpOnly: true, secure: req.secure || (!localHost && process.env.NODE_ENV === 'production'), sameSite: 'strict', path: '/', maxAge };
 }
 function guestIdentity(req, res) {
-  const id = checked(cookies(req).bali_guest);
+  const id = checked(cookies(req).bali_guest,PURPOSES.bali_guest);
   if (id && /^[a-f0-9-]{36}$/.test(id)) return id;
   const fresh = crypto.randomUUID();
-  res.cookie('bali_guest', signed(fresh), cookieOptions(req, 30 * 86400000));
+  res.cookie('bali_guest', signed(fresh,PURPOSES.bali_guest), cookieOptions(req, 30 * 86400000));
   return fresh;
 }
 function validSession(req, name) {
-  const raw = checked(cookies(req)[name]);
+  const raw = checked(cookies(req)[name],PURPOSES[name]);
   const expires = Number(raw);
   return Boolean(raw && Number.isSafeInteger(expires) && expires >= Date.now());
 }
@@ -226,12 +230,12 @@ app.get('/api/screen', screenAuth, (_req,res) => {
 const loginLimiter = rateLimit({windowMs:900000,limit:10,standardHeaders:'draft-8',legacyHeaders:false});
 app.post('/api/screen/login', loginLimiter, (req,res) => {
   if (!verifyPassword(req.body?.password, SCREEN_PASSWORD)) return res.status(401).json({error:'Неверный пароль экрана'});
-  res.cookie('bali_screen',signed(String(Date.now()+24*3600000)),cookieOptions(req,24*3600000));
+  res.cookie('bali_screen',signed(String(Date.now()+24*3600000),PURPOSES.bali_screen),cookieOptions(req,24*3600000));
   res.json({ok:true});
 });
 app.post('/api/admin/login', loginLimiter, (req,res) => {
   if (!verifyPassword(req.body?.password, PASSWORD)) return res.status(401).json({error:'Неверный пароль'});
-  res.cookie('bali_admin',signed(String(Date.now()+12*3600000)),cookieOptions(req,12*3600000));
+  res.cookie('bali_admin',signed(String(Date.now()+12*3600000),PURPOSES.bali_admin),cookieOptions(req,12*3600000));
   res.json({ok:true});
 });
 app.post('/api/admin/logout', requireAction, (_req,res) => {
