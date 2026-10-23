@@ -157,7 +157,7 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
   const event = currentEvent.get();
   if (!event) return res.status(409).json({error:'Сейчас нет активного мероприятия'});
   if (req.body?.consent !== 'yes') return res.status(400).json({error:'Необходимо согласие на показ фотографии'});
-  if (!req.file?.buffer) return res.status(400).json({error:'Выберите фотографию'});
+  if (!req.file?.path) return res.status(400).json({error:'Выберите фотографию'});
   const guest = guestIdentity(req,res);
   const used = db.prepare('SELECT count(*) AS n FROM photos WHERE event_id=? AND guest_id=?').get(event.id,guest).n;
   if (used >= 3) return res.status(429).json({error:'Лимит: 3 фотографии за мероприятие'});
