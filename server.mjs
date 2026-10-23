@@ -221,10 +221,13 @@ app.post('/api/upload', uploadLimiter, upload.single('photo'), asyncRoute(async 
     const result = db.prepare(`INSERT INTO photos(event_id,filename,guest_id,status,created_at)
       SELECT ?, ?, ?, 'pending', ?
       WHERE (SELECT COUNT(*) FROM photos WHERE event_id=? AND guest_id=?) < 3
-        AND (SELECT COUNT(*) FROM photos WHERE event_id=?) < ?`)
-      .run(event.id,filename,guest,Date.now(),event.id,guest,event.id,MAX_PHOTOS_PER_EVENT);
+        AND (SELECT COUNT(*) FROM photos WHERE event_id=?) < ?
+        AND EXISTS (SELECT 1 FROM events WHERE id=? AND active=1)`)
+      .run(event.id,filename,guest,Date.now(),event.id,guest,event.id,MAX_PHOTOS_PER_EVENT,event.id);
     if (!result.changes) {
       await discardProcessed();
+      if (currentEvent.get()?.id !== event.id)
+        return res.status(409).json({error:'Мероприятие изменилось во время загрузки. Повторите отправку.'});
       const total = db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(event.id).n;
       return res.status(total>=MAX_PHOTOS_PER_EVENT ? 409 : 429)
         .json({error:total>=MAX_PHOTOS_PER_EVENT?'Достигнут лимит фотографий мероприятия':'Лимит: 3 фотографии за мероприятие'});
