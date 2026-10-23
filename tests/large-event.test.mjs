@@ -37,6 +37,14 @@ test('300 approved photos are visible on screen and paginated for moderator', {t
     assert.doesNotMatch(adminLogin.headers.get('set-cookie'),/;\s*Secure/i,
       'localhost-only HTTP operator access should not set Secure cookie');
     const admin=adminLogin.headers.get('set-cookie').split(';')[0];
+    const publicLogin=await req('/api/admin/login',{
+      method:'POST',
+      headers:{'content-type':'application/json','Host':'baliminsk.online','X-Forwarded-Host':'localhost'},
+      body:JSON.stringify({password:'test-admin-password-12345'})
+    });
+    assert.equal(publicLogin.status,200);
+    assert.match(publicLogin.headers.get('set-cookie'),/;\s*Secure/i,
+      'public domain must always use Secure cookie despite forwarded-host spoofing');
     const screenLogin=await req('/api/screen/login',{
       method:'POST',headers:{'content-type':'application/json'},
       body:JSON.stringify({password:'test-screen-password-12345'})
