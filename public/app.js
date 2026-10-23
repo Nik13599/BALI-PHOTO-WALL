@@ -53,12 +53,16 @@ if(page==='guest') {
 }
 if(page==='admin') {
   let busy=false;
+  let previousDashboard=null;
   const root=$('#adminRoot');
   async function loadDashboard(){
     if(busy) return;
     busy=true;
     try {
       const data=await api('/api/admin/dashboard');
+      const signature=JSON.stringify([data.active,data.events,data.photos]);
+      if(signature===previousDashboard) return;
+      previousDashboard=signature;
       if(!$('#dashboard')) {
         root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div></div><div class="admin-section-head"><h2>Очередь фотографий</h2><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="alert" id="adminMessage" role="status"></div></section>';
       }
@@ -103,7 +107,7 @@ if(page==='admin') {
   setInterval(()=>{if($('#dashboard')&&!document.hidden)loadDashboard();},6000);
 }
 if(page==='screen'){
-  let photos=[],index=0,signature='',shownId=null;
+  let photos=[],index=0,signature='',shownId=null,renderToken=0;
   const center=$('#screenCenter'),background=$('#photoBackground'),login=$('#screenLogin');
   $('#screenLoginForm').addEventListener('submit',async event=>{
     event.preventDefault();
@@ -118,6 +122,7 @@ if(page==='screen'){
     finally {button.disabled=false;}
   });
   function render(){
+    const token=++renderToken;
     if(!photos.length){
       if(shownId!==null){center.innerHTML='<div class="screen-placeholder"><div class="line">ПОДЕЛИСЬ <span class="glow">МОМЕНТОМ</span></div><p>Твои фотографии на экранах BALI</p></div>';background.style.backgroundImage='none';shownId=null;}
       return;
@@ -125,7 +130,7 @@ if(page==='screen'){
     const id=photos[index%photos.length]?.id;index++;
     if(!id || id===shownId && photos.length>1)return;
     shownId=id;const url='/api/photos/'+id;
-    const img=new Image();img.onload=()=>{center.replaceChildren(img);background.style.backgroundImage='url("'+url+'")';};
+    const img=new Image();img.onload=()=>{if(token!==renderToken || !photos.some(p=>p.id===id))return;center.replaceChildren(img);background.style.backgroundImage='url("'+url+'")';};
     img.alt='Фото гостя BALI';img.className='screen-photo';img.src=url;
   }
   async function refresh(){
