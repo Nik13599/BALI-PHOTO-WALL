@@ -15,5 +15,6 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run check
       - run: node --test tests/*.test.mjs
