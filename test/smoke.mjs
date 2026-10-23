@@ -6,7 +6,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 const origin='http://127.0.0.1:39991';
 const server=spawn(process.execPath,['server.mjs'],{
   cwd:process.cwd(),env:{...process.env,NODE_ENV:'development',HOST:'127.0.0.1',PORT:'39991',
-    ADMIN_PASSWORD:'test-password-only-123456',SESSION_SECRET:'test-only-32-character-secret-do-not-use-prod'},
+    ADMIN_PASSWORD:'test-password-only-123456',SCREEN_PASSWORD:'test-screen-only-123456',SESSION_SECRET:'test-only-32-character-secret-do-not-use-prod'},
   stdio:['ignore','pipe','pipe']
 });
 let output='';
@@ -39,9 +39,9 @@ try {
   const photo=await data(r);
   assert(photo.id);
   r=await call('/api/photos/'+photo.id);
-  assert.equal(r.status,404,'Pending photo must be private');
+  assert.equal(r.status,401,'Unauthenticated photo access must be blocked');
   r=await call('/api/screen');
-  assert.equal((await data(r)).photos.length,0);
+  assert.equal(r.status,401,'Unauthenticated screen API must be blocked');
   r=await call('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'wrong'})});
   assert.equal(r.status,401);
   r=await call('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'test-password-only-123456'})});
@@ -49,6 +49,12 @@ try {
   const auth=r.headers.get('set-cookie')?.split(';')[0];
   assert(auth?.startsWith('bali_admin='));
   const authHeaders={Cookie:auth,'X-BALI-Action':'1','Content-Type':'application/json'};
+  r=await call('/api/screen/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'test-screen-only-123456'})});
+  assert.equal(r.status,200);
+  const screenCookie=r.headers.get('set-cookie')?.split(';')[0];
+  assert(screenCookie?.startsWith('bali_screen='));
+  r=await call('/api/photos/'+photo.id,{headers:{Cookie:screenCookie}});
+  assert.equal(r.status,404,'Pending photo must remain hidden from screen');
   r=await call('/api/admin/dashboard',{headers:{Cookie:auth}});
   assert.equal(r.status,200);
   assert((await data(r)).photos.some(p=>p.id===photo.id));
@@ -56,17 +62,17 @@ try {
   assert.equal(r.status,200);
   r=await call('/api/admin/photos/'+photo.id+'/status',{method:'POST',headers:authHeaders,body:JSON.stringify({status:'approved'})});
   assert.equal(r.status,200);
-  r=await call('/api/photos/'+photo.id);
-  assert.equal(r.status,200,'Approved photo should be public');
-  r=await call('/api/screen');
+  r=await call('/api/photos/'+photo.id,{headers:{Cookie:screenCookie}});
+  assert.equal(r.status,200,'Approved photo should be visible to authenticated screen');
+  r=await call('/api/screen',{headers:{Cookie:screenCookie}});
   assert((await data(r)).photos.some(p=>p.id===photo.id));
   r=await call('/api/admin/events',{method:'POST',headers:authHeaders,body:JSON.stringify({name:'Тестовая вечеринка'})});
   assert.equal(r.status,201);
-  r=await call('/api/screen');
+  r=await call('/api/screen',{headers:{Cookie:screenCookie}});
   const active=await data(r);
   assert.equal(active.event.name,'Тестовая вечеринка');
   assert.equal(active.photos.length,0,'New event must have its own slideshow');
-  console.log('PASS: pages, guest upload, private pending media, admin login, moderation, public screen, event isolation');
+  console.log('PASS: pages, guest upload, private pending media, admin login, moderation, protected screen, event isolation');
 }finally{
   server.kill('SIGTERM');
 }
