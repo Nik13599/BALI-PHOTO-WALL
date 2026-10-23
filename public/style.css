@@ -101,3 +101,15 @@ body[data-page="screen"]{overflow:hidden;background:#050705}
 .wall-tile.wall-tile-contain img{object-fit:contain}
 @media(max-width:700px){.event-upload-policy-controls{flex-direction:column;align-items:stretch}.event-upload-policy-controls button{width:100%}.crop-editor{padding:12px}}
 @media(prefers-reduced-motion:reduce){.wall-cluster{transition:none}}
+
+/* Individually place each overlay on any edge, with separate X/Y nudges. */
+.wall-floating{position:absolute;z-index:5;pointer-events:none;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px)}
+.wall-logo.wall-floating{height:var(--wall-logo-size);width:auto}
+.wall-event-name.wall-floating{max-width:min(70vw,1000px);text-align:left}
+.wall-event-hint.wall-floating{max-width:min(70vw,1000px);text-align:left}
+.wall-qr.wall-floating{max-width:none;max-height:none}
+.wall-setting-note{font-size:11px;line-height:1.5;color:#b7c7b0;margin:0}
+.wall-cluster{justify-content:center}
+.wall-puzzle-row{justify-content:center}
+.wall-puzzle-row .wall-tile{flex-shrink:0;flex-grow:0}
+.wall-puzzle-row .wall-tile img{object-fit:contain}
