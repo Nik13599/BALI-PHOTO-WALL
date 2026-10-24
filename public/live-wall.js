@@ -8,6 +8,7 @@ const reduced=()=>root.matchMedia?.('(prefers-reduced-motion: reduce)').matches=
 let stage=null,grid=null,photos=[],eventId=null,options=null,getPhotoUrl=null;
 let signature='',sequence=[],position=0,round=0,layoutSeed=0,interval=null,intervalMs=0;
 let active=false;
+const photoLookup=new Map();
 const nodes=new Map();
 function makeSequence(newItems,changed){
   const all=newItems.map(p=>p.id);
@@ -15,8 +16,11 @@ function makeSequence(newItems,changed){
   const missing=all.filter(id=>!sequence.includes(id));
   const previous=sequence.filter(id=>all.includes(id));
   const upcoming=previous.slice(position).concat(previous.slice(0,position));
-  // Newly approved images become featured next, rather than waiting a full tour.
-  sequence=[...missing,...upcoming];
+  // On first entry shuffle the first tour; newly approved images are then
+  // prioritised without losing the current tour of existing photos.
+  sequence=previous.length===0
+    ? engine.focusOrder(newItems,(Date.now() ^ layoutSeed)>>>0)
+    : [...engine.focusOrder(missing.map(id=>newItems.find(p=>p.id===id)),(Date.now() ^ layoutSeed)>>>0),...upcoming];
   if(!sequence.length)sequence=engine.focusOrder(newItems,(++round)*314159);
   position=0;
 }
@@ -53,13 +57,14 @@ function draw(){
     gap:options.gap,focusSize:options.liveFocus
   });
   const animate=!reduced() && photos.length<=125 && options.liveTransition>0;
+  stage.classList.toggle('is-animated',animate);
   stage.style.setProperty('--live-transition',animate?options.liveTransition+'ms':'0ms');
   const keys=new Set(result.tiles.map(item=>item.id));
   for(const [id,node] of nodes){
     if(!keys.has(id)){node.remove();nodes.delete(id);}
   }
   for(const rect of result.tiles){
-    const photo=photos.find(p=>p.id===rect.id);
+    const photo=photoLookup.get(rect.id);
     if(!photo)continue;
     const node=makeNode(photo,photos.length);
     const prominent=rect.id===focusId;
@@ -92,12 +97,13 @@ function render(args){
   const ids=newPhotos.map(p=>[p.id,p.width,p.height].join('/')).join(',');
   const changed=signature!==ids || eventId!==newEventId;
   if(eventId!==newEventId){
-    sequence=[];position=0;round=0;layoutSeed=0;
+    sequence=[];position=0;round=0;layoutSeed=(Date.now()>>>0);
   }
   eventId=newEventId;
   signature=ids;
   grid=target;
   photos=newPhotos;
+  photoLookup.clear();for(const p of photos)photoLookup.set(p.id,p);
   options=settings;
   getPhotoUrl=src;
   active=true;
@@ -118,7 +124,7 @@ function stop(){
   intervalMs=0;
   if(stage){stage.remove();stage=null;}
   nodes.clear();
-  grid=null;options=null;getPhotoUrl=null;
+  grid=null;options=null;getPhotoUrl=null;photoLookup.clear();
 }
 function reset(){
   stop();photos=[];eventId=null;sequence=[];position=0;signature='';round=0;layoutSeed=0;
