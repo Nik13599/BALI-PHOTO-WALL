@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#080b09"><meta name="robots" content="noindex,nofollow">
 <title>BALI PHOTO WALL · LIVE SCREEN</title>
-<link rel="stylesheet" href="/style.css"><script defer src="/mosaic.js"></script><script defer src="/app.js"></script>
+<link rel="stylesheet" href="/style.css"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/app.js"></script>
 </head>
 <body data-page="screen">
 <main class="screen" id="wallScreen">
@@ -33,7 +33,23 @@
     <div class="wall-settings-head"><div><strong>Настройки фотостены</strong><small>Сохраняются на этом экране</small></div><button type="button" class="screen-close" id="wallSettingsClose" aria-label="Закрыть">×</button></div>
     <div class="wall-settings-scroll">
       <label class="wall-toggle"><input id="setCenterGrowth" data-wall-setting="centerGrowth" type="checkbox" checked> Центрировать и расширять композицию от центра</label>
-      <label class="wall-setting" for="setLayout"><span>Расположение фотографий</span><select id="setLayout" data-wall-setting="layout"><option value="puzzle">Пазл: квадратные, вертикальные, горизонтальные</option><option value="grid">Обычная сетка с одинаковыми ячейками</option></select></label>
+      <label class="wall-setting" for="setLayout"><span>Расположение фотографий</span><select id="setLayout" data-wall-setting="layout"><option value="puzzle">Пазл: квадратные, вертикальные, горизонтальные</option><option value="grid">Обычная сетка с одинаковыми ячейками</option>
+<option value="carousel-quad">Карусель 4 полосы: две большие и две маленькие</option>
+<option value="carousel-double">Карусель 2 полосы: встречные потоки</option>
+<option value="carousel-triple">Карусель 3 полосы: крупная по центру</option>
+<option value="carousel-festival">Фестивальная: четыре чередующиеся ленты</option></select></label>
+      <div class="carousel-settings" id="carouselSettings" hidden>
+        <div class="wall-setting-separator">Настройки движущихся каруселей</div>
+        <p class="wall-setting-note">При менее чем 10 одобренных снимках по умолчанию показывается неподвижная композиция. Снимки сначала проходят крупную ленту, затем переходят в соответствующую маленькую.</p>
+        <label class="wall-setting"><span>Старт движения от <output id="outCarouselStart">10</output> фотографий</span><input id="setCarouselStart" data-wall-setting="carouselStart" type="range" min="5" max="30" value="10"></label>
+        <label class="wall-setting"><span>Скорость крупных лент <output id="outCarouselSpeed">85</output> px/сек</span><input id="setCarouselSpeed" data-wall-setting="carouselSpeed" type="range" min="20" max="260" step="5" value="85"></label>
+        <label class="wall-setting"><span>Скорость маленьких лент <output id="outCarouselOuterSpeed">120</output> px/сек</span><input id="setCarouselOuterSpeed" data-wall-setting="carouselOuterSpeed" type="range" min="20" max="300" step="5" value="120"></label>
+        <label class="wall-setting"><span>Высота верхней маленькой ленты <output id="outCarouselTopHeight">12</output>%</span><input id="setCarouselTopHeight" data-wall-setting="carouselTopHeight" type="range" min="6" max="25" value="12"></label>
+        <label class="wall-setting"><span>Высота нижней маленькой ленты <output id="outCarouselBottomHeight">12</output>%</span><input id="setCarouselBottomHeight" data-wall-setting="carouselBottomHeight" type="range" min="6" max="25" value="12"></label>
+        <label class="wall-setting"><span>Размер верхней крупной строки <output id="outCarouselCenterSplit">50</output>% от центральной области</span><input id="setCarouselCenterSplit" data-wall-setting="carouselCenterSplit" type="range" min="25" max="75" value="50"></label>
+        <label class="wall-toggle"><input id="setCarouselPause" data-wall-setting="carouselPause" type="checkbox"> Приостановить движение (без отключения карусели)</label>
+        <p class="wall-setting-note">Для каждой фотографии поток «верх / низ / авто» выбирается в панели /admin. Скорость и высота лент сохраняются на этом устройстве LED.</p>
+      </div>
       <label class="wall-setting" for="setMaxPhotos"><span>Фотографий на экране <output id="outMaxPhotos">500</output></span><input id="setMaxPhotos" data-wall-setting="maxPhotos" type="range" min="1" max="500" step="1" value="500"></label>
       <label class="wall-setting" for="setColumns" id="columnsSettings"><span>Столбцов <output id="outColumns">Авто</output></span><input id="setColumns" data-wall-setting="columns" type="range" min="0" max="40" step="1" value="0"><small>0 — автоматически под размер экрана</small></label>
       <label class="wall-setting" for="setGap"><span>Промежуток между фото <output id="outGap">2</output> px</span><input id="setGap" data-wall-setting="gap" type="range" min="0" max="16" step="1" value="2"></label>
