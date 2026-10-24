@@ -333,6 +333,69 @@ app.post('/api/admin/logout', requireAction, (_req,res) => {
 });
 app.get('/api/admin/me', adminAuth, (_req,res) => res.json({ok:true}));
 app.get('/api/admin/photos/:id', adminAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res,true,req.query.full==='1'));
+// Moderator bulk import: bounded 8-file batches to avoid exhausting club hardware.
+// Auth and CSRF-action checks happen BEFORE parsing multipart uploads.
+const adminBatchUpload=multer({
+  storage:multer.diskStorage({
+    destination:(_req,_file,callback)=>callback(null,UPLOADS),
+    filename:(_req,_file,callback)=>callback(null,crypto.randomUUID()+'.tmp')
+  }),
+  limits:{fileSize:8*1024*1024,files:8,fields:3,parts:11}
+});
+app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
+  adminBatchUpload.array('photos',8),asyncRoute(async(req,res)=>{
+  const files=Array.isArray(req.files)?req.files:[];
+  const clean=()=>Promise.all(files.map(file=>fsp.unlink(file.path).catch(()=>{})));
+  try {
+    if(!files.length)return res.status(400).json({error:'Выберите фотографии для загрузки'});
+    const id=Number(req.body?.eventId);
+    const event=Number.isSafeInteger(id)&&id>0?
+      db.prepare('SELECT id,upload_shape FROM events WHERE id=?').get(id):null;
+    if(!event)return res.status(404).json({error:'Мероприятие не найдено'});
+    const status=req.body?.status==='pending'?'pending':'approved';
+    const lane=['top','bottom'].includes(req.body?.lane)?req.body.lane:'auto';
+    const results=[];
+    const insert=db.prepare('INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,screen_lane) VALUES (?,?,?,?,?,?,?,?)');
+    for(const file of files){
+      const result={name:file.originalname.slice(0,180)};
+      let filename=null;
+      try{
+        if(MAX_PHOTOS_PER_EVENT>0){
+          const count=db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(event.id).n;
+          if(count>=MAX_PHOTOS_PER_EVENT)throw new Error('Достигнут лимит фото мероприятия');
+        }
+        const filesystem=await fsp.statfs(DATA);
+        if(Number(filesystem.bavail)*Number(filesystem.bsize)<MIN_FREE_DISK_MB*1048576)
+          throw new Error('Недостаточно свободного места на диске');
+        const photo=sharp(file.path,{limitInputPixels:36_000_000,failOn:'error'});
+        const info=await photo.metadata();
+        if(!['jpeg','png','webp'].includes(info.format))throw new Error('Поддерживаются только JPEG, PNG и WebP');
+        const image=await photo.rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
+          .webp({quality:77,effort:4}).toBuffer();
+        const size=await sharp(image).metadata();
+        if(event.upload_shape==='square'&&size.width!==size.height)
+          throw new Error('Для мероприятия разрешены только квадратные фото 1:1');
+        const thumbnail=await sharp(image).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
+          .webp({quality:65}).toBuffer();
+        filename=crypto.randomUUID()+'.webp';
+        await fsp.writeFile(path.join(PHOTOS,filename),image,{flag:'wx'});
+        await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
+        const record=insert.run(event.id,filename,'moderator-import',status,Date.now(),size.width,size.height,lane);
+        result.id=Number(record.lastInsertRowid);result.ok=true;
+      }catch(error){
+        result.ok=false;
+        result.error=error.message||'Не удалось обработать фото';
+        if(filename){
+          await fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{});
+          await fsp.unlink(path.join(THUMBS,filename)).catch(()=>{});
+        }
+      }
+      results.push(result);
+    }
+    const imported=results.filter(x=>x.ok).length;
+    res.json({ok:imported===files.length,imported,failed:files.length-imported,results});
+  }finally{await clean();}
+}));
 app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   const events = db.prepare('SELECT id,name,active,created_at,upload_shape FROM events ORDER BY id DESC').all();
   const active = currentEvent.get();
