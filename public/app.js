@@ -113,7 +113,7 @@ if(page==='admin') {
         '<div class="event-choice"><button type="button" class="chip '+(e.id===data.selected?.id?'selected':'')+'" data-view="'+e.id+'">'+esc(e.name)+(e.active?' · ИДЁТ':'')+'</button>'+(e.active?'':'<button type="button" class="chip activate" data-activate="'+e.id+'" title="Вывести фото этого мероприятия на экраны">СДЕЛАТЬ АКТИВНЫМ</button>')+'</div>'
       ).join('');
       $('#photoGrid').innerHTML=data.photos.length ? data.photos.map(p=>
-        '<article class="photo-card"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото гостя" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+'</span><span class="status '+p.status+'">'+({pending:'НА ПРОВЕРКЕ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div><div class="photo-actions"><button class="button small approve" data-photo="'+p.id+'" data-status="approved">✓ Одобрить</button><button class="button small reject" data-photo="'+p.id+'" data-status="rejected">× Отклонить</button><button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
+        '<article class="photo-card"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото гостя" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+'</span><span class="status '+p.status+'">'+({pending:'НА ПРОВЕРКЕ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div><label class="photo-lane-label">Карусель <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Автоматически</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верхняя</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Нижняя</option></select></label><div class="photo-actions"><button class="button small approve" data-photo="'+p.id+'" data-status="approved">✓ Одобрить</button><button class="button small reject" data-photo="'+p.id+'" data-status="rejected">× Отклонить</button><button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
       ).join('') : '<div class="empty">В выбранном мероприятии фотографий нет.</div>';
       $('#pageControls').innerHTML = data.pages>1
         ? '<button class="button secondary" type="button" data-page="prev" '+(data.page<=1?'disabled':'')+'>← НАЗАД</button><span>Страница '+data.page+' из '+data.pages+'</span><button class="button secondary" type="button" data-page="next" '+(data.page>=data.pages?'disabled':'')+'>ВПЕРЁД →</button>'
@@ -138,6 +138,21 @@ if(page==='admin') {
       if(!name) return;
       try{await action('/api/admin/events',{name});selectedEventId=null;pageNumber=1;$('#newEvent').value='';await loadDashboard();}
       catch(error){notice('#adminMessage',error.message,true);}
+    }
+  });
+  root.addEventListener('change',async event=>{
+    const input=event.target.closest('[data-lane-photo]');
+    if(!input)return;
+    const id=Number(input.dataset.lanePhoto);
+    const value=input.value;
+    try{
+      await action('/api/admin/photos/'+id+'/screen-lane',{lane:value});
+      previousDashboard=null;
+      await loadDashboard();
+      notice('#adminMessage','Поток фотографии сохранён.');
+    }catch(error){
+      notice('#adminMessage',error.message,true);
+      previousDashboard=null;await loadDashboard();
     }
   });
   root.addEventListener('click',async event=>{
