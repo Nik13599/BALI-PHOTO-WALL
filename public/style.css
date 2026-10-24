@@ -113,3 +113,33 @@ body[data-page="screen"]{overflow:hidden;background:#050705}
 .wall-puzzle-row{justify-content:center}
 .wall-puzzle-row .wall-tile{flex-shrink:0;flex-grow:0}
 .wall-puzzle-row .wall-tile img{object-fit:contain}
+
+/* Optional animated multi-row carousel layouts, deliberately separate from mosaic. */
+.carousel-stage{position:absolute;inset:0;display:flex;flex-direction:column;gap:var(--wall-gap);width:100%;height:100%;overflow:hidden;background:#060906}
+.carousel-band{position:relative;min-width:0;min-height:0;width:100%;flex-grow:0;flex-shrink:0;overflow:hidden;background:#111912}
+.carousel-main{background:#0c140c}
+.carousel-small{background:#152013}
+.carousel-ticker{height:100%;width:max-content;display:flex;align-items:stretch;gap:var(--carousel-gap,2px);will-change:transform;animation-timing-function:linear;animation-iteration-count:infinite}
+.carousel-sequence{height:100%;flex:none;width:max-content;display:flex;gap:var(--carousel-gap,2px)}
+.carousel-tile{height:100%;flex:none;min-width:16px;overflow:hidden;background:#243021;border-radius:2px}
+.carousel-tile img{width:100%;height:100%;display:block;object-fit:contain;object-position:center;background:#121712}
+.carousel-band-empty{height:100%;display:flex;justify-content:center;align-items:center;font-size:clamp(10px,1vw,16px);font-weight:700;letter-spacing:.12em;color:#4f6a48}
+.carousel-move-left{animation-name:bali-scroll-left}
+.carousel-move-right{animation-name:bali-scroll-right}
+@keyframes bali-scroll-left{from{transform:translateX(0)}to{transform:translateX(calc(-1 * var(--carousel-distance,500px)))}}
+@keyframes bali-scroll-right{from{transform:translateX(calc(-1 * var(--carousel-distance,500px)))}to{transform:translateX(0)}}
+.carousel-settings[hidden]{display:none!important}
+.carousel-settings{display:flex;flex-direction:column;gap:12px;padding:12px;border:1px solid #4e6346;border-radius:9px;background:#1a2618}
+.admin-bulk-panel{display:flex;flex-direction:column;gap:12px;margin:18px 0}
+.admin-bulk-panel h2{font-size:16px;margin:0}
+.admin-bulk-panel p{margin:0}
+#bulkPhotoForm{display:flex;flex-direction:column;gap:12px}
+#bulkPhotoFiles{padding:10px;max-width:100%;min-width:0}
+.bulk-form-row{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.bulk-form-row label{flex:1 1 130px;display:flex;flex-direction:column;gap:6px;font-size:12px}
+.bulk-form-row select{width:100%;min-width:0}
+.bulk-form-row button{flex:1 1 190px}
+.bulk-progress{font-size:12px;color:#d7ff4d;min-height:18px}
+.photo-lane-label{display:flex;align-items:center;gap:8px;font-size:11px;color:#bfccb8;padding:0 10px 10px}
+.photo-lane-select{flex:1;min-width:0;background:#162014;color:#eef7e7;border:1px solid #4c6145;border-radius:6px;padding:7px}
+@media(prefers-reduced-motion:reduce){.carousel-ticker{animation-play-state:paused!important}}
