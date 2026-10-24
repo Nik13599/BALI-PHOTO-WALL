@@ -79,6 +79,7 @@ if(!eventFields.includes('upload_shape'))db.exec("ALTER TABLE events ADD COLUMN 
 const photoFields=db.pragma('table_info(photos)').map(x=>x.name);
 if(!photoFields.includes('width'))db.exec('ALTER TABLE photos ADD COLUMN width INTEGER');
 if(!photoFields.includes('height'))db.exec('ALTER TABLE photos ADD COLUMN height');
+if(!photoFields.includes('screen_lane'))db.exec("ALTER TABLE photos ADD COLUMN screen_lane TEXT NOT NULL DEFAULT 'auto' CHECK(screen_lane IN ('auto','top','bottom'))");
 const currentEvent = db.prepare('SELECT id,name,upload_shape FROM events WHERE active=1 ORDER BY id DESC LIMIT 1');
 const selectPhoto = db.prepare('SELECT * FROM photos WHERE id=?');
 const secureEqual = (a, b) => {
@@ -291,7 +292,7 @@ app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(N
 // for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
   const event = currentEvent.get();
-  const photos = event ? db.prepare("SELECT id,created_at,width,height,filename FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
+  const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
   const update=db.prepare('UPDATE photos SET width=?,height=? WHERE id=? AND (width IS NULL OR height IS NULL)');
   // Upgrade photos created before width/height metadata existed, once per photo.
   for(const photo of photos){
@@ -302,7 +303,7 @@ app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
       update.run(photo.width,photo.height,photo.id);
     } catch {photo.width=1;photo.height=1;update.run(1,1,photo.id);}
   }
-  res.json({event,photos:photos.map(({id,created_at,width,height})=>({id,created_at,width,height}))});
+  res.json({event,photos:photos.map(({id,created_at,width,height,screen_lane})=>({id,created_at,width,height,screen_lane}))});
 }));
 // Only approved photos may appear in the LED mosaic, even as thumbnails.
 // Unapproved originals remain accessible to the moderator only.
@@ -348,7 +349,7 @@ app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   const total = selected ? db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(selected.id).n : 0;
   const pages = Math.max(1,Math.ceil(total/PAGE_SIZE));
   const page = Math.min(Number(rawPage),pages);
-  const photos = selected ? db.prepare('SELECT id,status,created_at FROM photos WHERE event_id=? ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT ? OFFSET ?')
+  const photos = selected ? db.prepare('SELECT id,status,created_at,screen_lane FROM photos WHERE event_id=? ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT ? OFFSET ?')
     .all(selected.id,'pending',PAGE_SIZE,(page-1)*PAGE_SIZE) : [];
   res.json({events,active,selected,photos,page,pages,total,pageSize:PAGE_SIZE});
 });
@@ -381,6 +382,15 @@ app.post('/api/admin/events/:id/upload-shape', adminAuth, requireAction, (req,re
 app.post('/api/admin/events/:id/activate', adminAuth, requireAction, (req,res) => {
   if (!activateEvent(Number(req.params.id))) return res.status(404).json({error:'Мероприятие не найдено'});
   res.json({ok:true});
+});
+app.post('/api/admin/photos/:id/screen-lane', adminAuth, requireAction, (req,res) => {
+  const lane=req.body?.lane;
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<1 || !['auto','top','bottom'].includes(lane))
+    return res.status(400).json({error:'Выберите верхний, нижний или автоматический поток'});
+  const result=db.prepare('UPDATE photos SET screen_lane=? WHERE id=?').run(lane,id);
+  if(!result.changes)return res.status(404).json({error:'Фотография не найдена'});
+  res.json({ok:true,lane});
 });
 app.post('/api/admin/photos/:id/status', adminAuth, requireAction, (req,res) => {
   const status = req.body?.status;
