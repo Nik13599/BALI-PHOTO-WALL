@@ -143,3 +143,20 @@ body[data-page="screen"]{overflow:hidden;background:#050705}
 .photo-lane-label{display:flex;align-items:center;gap:8px;font-size:11px;color:#bfccb8;padding:0 10px 10px}
 .photo-lane-select{flex:1;min-width:0;background:#162014;color:#eef7e7;border:1px solid #4c6145;border-radius:6px;padding:7px}
 @media(prefers-reduced-motion:reduce){.carousel-ticker{animation-play-state:paused!important}}
+
+/* Optional live random full-screen photo mosaic.
+   The existing "Puzzle", "Grid" and carousels remain unchanged. */
+.live-mosaic-settings[hidden]{display:none!important}
+.live-mosaic-settings{display:flex;flex-direction:column;gap:12px;border:1px solid #4e6346;background:#1a2618;border-radius:9px;padding:12px}
+.live-mosaic-stage{position:absolute;inset:0;overflow:hidden;background:#080b08;width:100%;height:100%;isolation:isolate}
+.live-mosaic-tile{position:absolute;box-sizing:border-box;overflow:hidden;background:#1b2619;z-index:1;border-radius:2px}
+.live-mosaic-tile img{display:block;width:100%;height:100%;object-position:center;user-select:none;pointer-events:none}
+.live-mosaic-stage.is-animated .live-mosaic-tile{
+  transition:top var(--live-transition,1400ms) cubic-bezier(.25,.75,.18,1),
+    left var(--live-transition,1400ms) cubic-bezier(.25,.75,.18,1),
+    width var(--live-transition,1400ms) cubic-bezier(.25,.75,.18,1),
+    height var(--live-transition,1400ms) cubic-bezier(.25,.75,.18,1),
+    box-shadow .5s ease;
+}
+.live-mosaic-tile.live-mosaic-feature{z-index:2;box-shadow:0 0 0 2px #d7ff4d,0 0 28px #0009}
+@media(prefers-reduced-motion:reduce){.live-mosaic-stage .live-mosaic-tile{transition:none!important}}
