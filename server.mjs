@@ -79,6 +79,7 @@ if(!eventFields.includes('upload_shape'))db.exec("ALTER TABLE events ADD COLUMN 
 const photoFields=db.pragma('table_info(photos)').map(x=>x.name);
 if(!photoFields.includes('width'))db.exec('ALTER TABLE photos ADD COLUMN width INTEGER');
 if(!photoFields.includes('height'))db.exec('ALTER TABLE photos ADD COLUMN height');
+if(!photoFields.includes('screen_lane'))db.exec("ALTER TABLE photos ADD COLUMN screen_lane TEXT NOT NULL DEFAULT 'auto' CHECK(screen_lane IN ('auto','top','bottom'))");
 const currentEvent = db.prepare('SELECT id,name,upload_shape FROM events WHERE active=1 ORDER BY id DESC LIMIT 1');
 const selectPhoto = db.prepare('SELECT * FROM photos WHERE id=?');
 const secureEqual = (a, b) => {
@@ -291,7 +292,7 @@ app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(N
 // for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
   const event = currentEvent.get();
-  const photos = event ? db.prepare("SELECT id,created_at,width,height,filename FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
+  const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
   const update=db.prepare('UPDATE photos SET width=?,height=? WHERE id=? AND (width IS NULL OR height IS NULL)');
   // Upgrade photos created before width/height metadata existed, once per photo.
   for(const photo of photos){
@@ -302,7 +303,7 @@ app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
       update.run(photo.width,photo.height,photo.id);
     } catch {photo.width=1;photo.height=1;update.run(1,1,photo.id);}
   }
-  res.json({event,photos:photos.map(({id,created_at,width,height})=>({id,created_at,width,height}))});
+  res.json({event,photos:photos.map(({id,created_at,width,height,screen_lane})=>({id,created_at,width,height,screen_lane}))});
 }));
 // Only approved photos may appear in the LED mosaic, even as thumbnails.
 // Unapproved originals remain accessible to the moderator only.
@@ -332,6 +333,69 @@ app.post('/api/admin/logout', requireAction, (_req,res) => {
 });
 app.get('/api/admin/me', adminAuth, (_req,res) => res.json({ok:true}));
 app.get('/api/admin/photos/:id', adminAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res,true,req.query.full==='1'));
+// Moderator bulk import: bounded 8-file batches to avoid exhausting club hardware.
+// Auth and CSRF-action checks happen BEFORE parsing multipart uploads.
+const adminBatchUpload=multer({
+  storage:multer.diskStorage({
+    destination:(_req,_file,callback)=>callback(null,UPLOADS),
+    filename:(_req,_file,callback)=>callback(null,crypto.randomUUID()+'.tmp')
+  }),
+  limits:{fileSize:8*1024*1024,files:8,fields:3,parts:11}
+});
+app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
+  adminBatchUpload.array('photos',8),asyncRoute(async(req,res)=>{
+  const files=Array.isArray(req.files)?req.files:[];
+  const clean=()=>Promise.all(files.map(file=>fsp.unlink(file.path).catch(()=>{})));
+  try {
+    if(!files.length)return res.status(400).json({error:'Выберите фотографии для загрузки'});
+    const id=Number(req.body?.eventId);
+    const event=Number.isSafeInteger(id)&&id>0?
+      db.prepare('SELECT id,upload_shape FROM events WHERE id=?').get(id):null;
+    if(!event)return res.status(404).json({error:'Мероприятие не найдено'});
+    const status=req.body?.status==='pending'?'pending':'approved';
+    const lane=['top','bottom'].includes(req.body?.lane)?req.body.lane:'auto';
+    const results=[];
+    const insert=db.prepare('INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,screen_lane) VALUES (?,?,?,?,?,?,?,?)');
+    for(const file of files){
+      const result={name:file.originalname.slice(0,180)};
+      let filename=null;
+      try{
+        if(MAX_PHOTOS_PER_EVENT>0){
+          const count=db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(event.id).n;
+          if(count>=MAX_PHOTOS_PER_EVENT)throw new Error('Достигнут лимит фото мероприятия');
+        }
+        const filesystem=await fsp.statfs(DATA);
+        if(Number(filesystem.bavail)*Number(filesystem.bsize)<MIN_FREE_DISK_MB*1048576)
+          throw new Error('Недостаточно свободного места на диске');
+        const photo=sharp(file.path,{limitInputPixels:36_000_000,failOn:'error'});
+        const info=await photo.metadata();
+        if(!['jpeg','png','webp'].includes(info.format))throw new Error('Поддерживаются только JPEG, PNG и WebP');
+        const image=await photo.rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
+          .webp({quality:77,effort:4}).toBuffer();
+        const size=await sharp(image).metadata();
+        if(event.upload_shape==='square'&&size.width!==size.height)
+          throw new Error('Для мероприятия разрешены только квадратные фото 1:1');
+        const thumbnail=await sharp(image).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
+          .webp({quality:65}).toBuffer();
+        filename=crypto.randomUUID()+'.webp';
+        await fsp.writeFile(path.join(PHOTOS,filename),image,{flag:'wx'});
+        await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
+        const record=insert.run(event.id,filename,'moderator-import',status,Date.now(),size.width,size.height,lane);
+        result.id=Number(record.lastInsertRowid);result.ok=true;
+      }catch(error){
+        result.ok=false;
+        result.error=error.message||'Не удалось обработать фото';
+        if(filename){
+          await fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{});
+          await fsp.unlink(path.join(THUMBS,filename)).catch(()=>{});
+        }
+      }
+      results.push(result);
+    }
+    const imported=results.filter(x=>x.ok).length;
+    res.json({ok:imported===files.length,imported,failed:files.length-imported,results});
+  }finally{await clean();}
+}));
 app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   const events = db.prepare('SELECT id,name,active,created_at,upload_shape FROM events ORDER BY id DESC').all();
   const active = currentEvent.get();
@@ -348,7 +412,7 @@ app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   const total = selected ? db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(selected.id).n : 0;
   const pages = Math.max(1,Math.ceil(total/PAGE_SIZE));
   const page = Math.min(Number(rawPage),pages);
-  const photos = selected ? db.prepare('SELECT id,status,created_at FROM photos WHERE event_id=? ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT ? OFFSET ?')
+  const photos = selected ? db.prepare('SELECT id,status,created_at,screen_lane FROM photos WHERE event_id=? ORDER BY CASE status WHEN ? THEN 0 ELSE 1 END,created_at DESC,id DESC LIMIT ? OFFSET ?')
     .all(selected.id,'pending',PAGE_SIZE,(page-1)*PAGE_SIZE) : [];
   res.json({events,active,selected,photos,page,pages,total,pageSize:PAGE_SIZE});
 });
@@ -381,6 +445,15 @@ app.post('/api/admin/events/:id/upload-shape', adminAuth, requireAction, (req,re
 app.post('/api/admin/events/:id/activate', adminAuth, requireAction, (req,res) => {
   if (!activateEvent(Number(req.params.id))) return res.status(404).json({error:'Мероприятие не найдено'});
   res.json({ok:true});
+});
+app.post('/api/admin/photos/:id/screen-lane', adminAuth, requireAction, (req,res) => {
+  const lane=req.body?.lane;
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<1 || !['auto','top','bottom'].includes(lane))
+    return res.status(400).json({error:'Выберите верхний, нижний или автоматический поток'});
+  const result=db.prepare('UPDATE photos SET screen_lane=? WHERE id=?').run(lane,id);
+  if(!result.changes)return res.status(404).json({error:'Фотография не найдена'});
+  res.json({ok:true,lane});
 });
 app.post('/api/admin/photos/:id/status', adminAuth, requireAction, (req,res) => {
   const status = req.body?.status;

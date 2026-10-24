@@ -101,7 +101,7 @@ if(page==='admin') {
       if(signature===previousDashboard) return;
       previousDashboard=signature;
       if(!$('#dashboard')) {
-        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
+        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="panel admin-bulk-panel"><h2>МАССОВАЯ ЗАГРУЗКА ФОТОГРАФИЙ</h2><p class="muted">Выдели сразу много файлов. Приложение подготовит фотографии и отправит партиями по 8. Поддерживаются JPEG, PNG, WebP.</p><form id="bulkPhotoForm"><input type="file" class="field" id="bulkPhotoFiles" accept="image/jpeg,image/png,image/webp" multiple required><div class="bulk-form-row"><label>Поток <select class="field" id="bulkPhotoLane"><option value="auto">Автоматически</option><option value="top">↑ Верхний</option><option value="bottom">↓ Нижний</option></select></label><label>Публикация <select class="field" id="bulkPhotoStatus"><option value="approved">Сразу на экран</option><option value="pending">Оставить на модерации</option></select></label><button type="submit" class="button primary" id="bulkPhotoSubmit">ЗАГРУЗИТЬ ФОТОГРАФИИ</button></div><div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div></form></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
       }
       $('#activeEvent').textContent=data.active?.name || 'Не выбрано';
       $('#photoCount').textContent=data.total+' всего · '+data.page+' / '+data.pages+' стр.';
@@ -113,7 +113,7 @@ if(page==='admin') {
         '<div class="event-choice"><button type="button" class="chip '+(e.id===data.selected?.id?'selected':'')+'" data-view="'+e.id+'">'+esc(e.name)+(e.active?' · ИДЁТ':'')+'</button>'+(e.active?'':'<button type="button" class="chip activate" data-activate="'+e.id+'" title="Вывести фото этого мероприятия на экраны">СДЕЛАТЬ АКТИВНЫМ</button>')+'</div>'
       ).join('');
       $('#photoGrid').innerHTML=data.photos.length ? data.photos.map(p=>
-        '<article class="photo-card"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото гостя" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+'</span><span class="status '+p.status+'">'+({pending:'НА ПРОВЕРКЕ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div><div class="photo-actions"><button class="button small approve" data-photo="'+p.id+'" data-status="approved">✓ Одобрить</button><button class="button small reject" data-photo="'+p.id+'" data-status="rejected">× Отклонить</button><button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
+        '<article class="photo-card"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото гостя" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+'</span><span class="status '+p.status+'">'+({pending:'НА ПРОВЕРКЕ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div><label class="photo-lane-label">Карусель <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Автоматически</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верхняя</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Нижняя</option></select></label><div class="photo-actions"><button class="button small approve" data-photo="'+p.id+'" data-status="approved">✓ Одобрить</button><button class="button small reject" data-photo="'+p.id+'" data-status="rejected">× Отклонить</button><button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
       ).join('') : '<div class="empty">В выбранном мероприятии фотографий нет.</div>';
       $('#pageControls').innerHTML = data.pages>1
         ? '<button class="button secondary" type="button" data-page="prev" '+(data.page<=1?'disabled':'')+'>← НАЗАД</button><span>Страница '+data.page+' из '+data.pages+'</span><button class="button secondary" type="button" data-page="next" '+(data.page>=data.pages?'disabled':'')+'>ВПЕРЁД →</button>'
@@ -132,12 +132,63 @@ if(page==='admin') {
         root.innerHTML='<div class="panel"><p class="muted">Загружаем панель модерации…</p><div id="adminMessage" class="alert" role="status"></div></div>';await loadDashboard();
       } catch(error){notice('#adminMessage',error.message,true);}
     }
+    if(event.target.id==='bulkPhotoForm'){
+      event.preventDefault();
+      const files=[...$('#bulkPhotoFiles').files];
+      if(!displayedEventId||!files.length)return;
+      const allowed=files.filter(file=>['image/jpeg','image/png','image/webp'].includes(file.type));
+      if(allowed.length!==files.length){
+        notice('#adminMessage','Выбери только JPEG, PNG или WebP.',true);return;
+      }
+      const button=$('#bulkPhotoSubmit'),progress=$('#bulkProgress');
+      button.disabled=true;
+      let imported=0,failed=0,done=0;
+      try{
+        for(let index=0;index<files.length;index+=8){
+          const form=new FormData();
+          form.append('eventId',String(displayedEventId));
+          form.append('lane',$('#bulkPhotoLane').value);
+          form.append('status',$('#bulkPhotoStatus').value);
+          for(const file of files.slice(index,index+8)){
+            const optimized=await optimizePhoto(file);
+            form.append('photos',optimized,file.name);
+          }
+          const result=await api('/api/admin/photos/bulk',{
+            method:'POST',headers:{'X-BALI-Action':'1'},body:form
+          });
+          imported+=result.imported;failed+=result.failed;
+          done+=Math.min(8,files.length-index);
+          progress.textContent='Обработано '+done+' из '+files.length+' · загружено '+imported+' · ошибок '+failed;
+        }
+        $('#bulkPhotoFiles').value='';
+        previousDashboard=null;await loadDashboard();
+        notice('#adminMessage','Массовая загрузка завершена: '+imported+' фото. Ошибок: '+failed,failed>0);
+      }catch(error){
+        progress.textContent='Загрузка остановлена после '+done+' из '+files.length+' файлов.';
+        notice('#adminMessage',error.message+'. Уже импортированные фотографии сохранены.',true);
+      }finally{button.disabled=false;}
+    }
     if(event.target.id==='eventForm'){
       event.preventDefault();
       const name=$('#newEvent').value.trim();
       if(!name) return;
       try{await action('/api/admin/events',{name});selectedEventId=null;pageNumber=1;$('#newEvent').value='';await loadDashboard();}
       catch(error){notice('#adminMessage',error.message,true);}
+    }
+  });
+  root.addEventListener('change',async event=>{
+    const input=event.target.closest('[data-lane-photo]');
+    if(!input)return;
+    const id=Number(input.dataset.lanePhoto);
+    const value=input.value;
+    try{
+      await action('/api/admin/photos/'+id+'/screen-lane',{lane:value});
+      previousDashboard=null;
+      await loadDashboard();
+      notice('#adminMessage','Поток фотографии сохранён.');
+    }catch(error){
+      notice('#adminMessage',error.message,true);
+      previousDashboard=null;await loadDashboard();
     }
   });
   root.addEventListener('click',async event=>{
@@ -170,6 +221,7 @@ if(page==='screen'){
   const LOGO_KEY='bali-photo-wall-screen-logo-v1';
   const defaults={
     maxPhotos:500,columns:0,gap:2,fit:'contain',layout:'puzzle',centerGrowth:true,
+    carouselStart:10,carouselSpeed:85,carouselOuterSpeed:120,carouselTopHeight:12,carouselBottomHeight:12,carouselCenterSplit:50,carouselPause:false,
     logoPos:'tl',livePos:'tr',eventPos:'bl',hintPos:'bc',qrPos:'br',
     logoX:0,logoY:0,liveX:0,liveY:0,eventX:0,eventY:0,hintX:0,hintY:0,qrX:0,qrY:0,
     logoSize:28,liveSize:20,eventSize:32,qrSize:92,inset:18,
@@ -177,6 +229,7 @@ if(page==='screen'){
   };
   const limits={
     maxPhotos:[1,500],columns:[0,40],gap:[0,16],
+    carouselStart:[5,30],carouselSpeed:[20,260],carouselOuterSpeed:[20,300],carouselTopHeight:[6,25],carouselBottomHeight:[6,25],carouselCenterSplit:[25,75],
     logoX:[-250,250],logoY:[-250,250],liveX:[-250,250],liveY:[-250,250],
     eventX:[-250,250],eventY:[-250,250],hintX:[-250,250],hintY:[-250,250],
     qrX:[-250,250],qrY:[-250,250],
@@ -191,7 +244,7 @@ if(page==='screen'){
         if(key in limits && Number.isFinite(Number(saved[key])))
           settings[key]=Math.round(Math.min(limits[key][1],Math.max(limits[key][0],Number(saved[key]))));
         else if(key==='fit' && ['cover','contain'].includes(saved[key]))settings.fit=saved.fit;
-        else if(key==='layout' && ['puzzle','grid'].includes(saved[key]))settings.layout=saved.layout;
+        else if(key==='layout' && ['puzzle','grid',...(globalThis.BaliCarousel?.variants||[])].includes(saved[key]))settings.layout=saved.layout;
         else if(key.endsWith('Pos') && ['tl','tc','tr','ml','mc','mr','bl','bc','br'].includes(saved[key]))settings[key]=saved[key];
         else if(typeof defaults[key]==='boolean' && typeof saved[key]==='boolean')
           settings[key]=saved[key];
@@ -247,6 +300,7 @@ if(page==='screen'){
     setShown($('#wallQR'),settings.showQr);
     positionFloating();syncShiftControls();
     $('#columnsSettings').hidden=settings.layout!=='grid';
+    $('#carouselSettings').hidden=!globalThis.BaliCarousel?.isCarousel(settings.layout);
     for(const control of controls){
       const key=control.dataset.wallSetting;
       if(control.type==='checkbox')control.checked=settings[key];
@@ -283,7 +337,13 @@ if(page==='screen'){
     const all=photos.slice(0,settings.maxPhotos);
     const n=all.length;
     setShown(empty,n===0);
-    if(!n){grid.replaceChildren();return;}
+    if(!n){grid.replaceChildren();globalThis.BaliCarouselWall?.stop();return;}
+    if(globalThis.BaliCarousel?.isCarousel(settings.layout) && n>=settings.carouselStart &&
+        globalThis.BaliCarouselWall){
+      globalThis.BaliCarouselWall.render({grid,photos:all,eventId,settings,getPhotoUrl});
+      return;
+    }
+    globalThis.BaliCarouselWall?.stop();
     const stage=grid.querySelector('.wall-cluster')||document.createElement('div');
     stage.className='wall-cluster';
     const boxW=grid.clientWidth||screen.clientWidth;
@@ -301,7 +361,7 @@ if(page==='screen'){
     const oldRects=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el.getBoundingClientRect()]));
     const existing=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el]));
     const fragment=document.createDocumentFragment();
-    if(settings.layout==='puzzle' && globalThis.BaliMosaic){
+    if((settings.layout==='puzzle'||globalThis.BaliCarousel?.isCarousel(settings.layout)) && globalThis.BaliMosaic){
       const mosaic=globalThis.BaliMosaic.compute(all,stageW,stageH,settings.gap);
       for(const rowData of mosaic.rows){
         const row=document.createElement('div');
@@ -333,7 +393,7 @@ if(page==='screen'){
         fragment.append(row);
       }
     }
-    stage.style.setProperty('--wall-fit',settings.layout==='puzzle'?'contain':settings.fit);
+    stage.style.setProperty('--wall-fit',(settings.layout==='puzzle'||globalThis.BaliCarousel?.isCarousel(settings.layout))?'contain':settings.fit);
     stage.style.width=stageW+'px';
     stage.style.height=stageH+'px';
     stage.replaceChildren(fragment);
@@ -357,6 +417,7 @@ if(page==='screen'){
   }
   function clearWall(){
     photos=[];signature='';eventId=null;
+    globalThis.BaliCarouselWall?.reset();
     layout();
   }
   async function refresh(){
@@ -370,8 +431,9 @@ if(page==='screen'){
       $('#screenEvent').textContent=eventName;
       // Update on photos or event identity changes; do not redraw every poll.
       const incoming=(data.photos||[]).slice(0,MAX_WALL_PHOTOS);
-      const nextSignature=event+':'+incoming.map(photo=>[photo.id,photo.width,photo.height].join('/')).join(',');
+      const nextSignature=event+':'+incoming.map(photo=>[photo.id,photo.width,photo.height,photo.screen_lane].join('/')).join(',');
       if(nextSignature!==signature){
+        if(eventId!==event)globalThis.BaliCarouselWall?.reset();
         eventId=event;
         signature=nextSignature;
         photos=incoming;
