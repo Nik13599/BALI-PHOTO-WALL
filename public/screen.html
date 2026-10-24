@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#080b09"><meta name="robots" content="noindex,nofollow">
 <title>BALI PHOTO WALL · LIVE SCREEN</title>
-<link rel="stylesheet" href="/style.css"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/carousel-wall.js"></script><script defer src="/app.js"></script>
+<link rel="stylesheet" href="/style.css"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/carousel-wall.js"></script><script defer src="/live-mosaic.js"></script><script defer src="/live-wall.js"></script><script defer src="/app.js"></script>
 </head>
 <body data-page="screen">
 <main class="screen" id="wallScreen">
@@ -33,7 +33,7 @@
     <div class="wall-settings-head"><div><strong>Настройки фотостены</strong><small>Сохраняются на этом экране</small></div><button type="button" class="screen-close" id="wallSettingsClose" aria-label="Закрыть">×</button></div>
     <div class="wall-settings-scroll">
       <label class="wall-toggle"><input id="setCenterGrowth" data-wall-setting="centerGrowth" type="checkbox" checked> Центрировать и расширять композицию от центра</label>
-      <label class="wall-setting" for="setLayout"><span>Расположение фотографий</span><select id="setLayout" data-wall-setting="layout"><option value="puzzle">Пазл: квадратные, вертикальные, горизонтальные</option><option value="grid">Обычная сетка с одинаковыми ячейками</option>
+      <label class="wall-setting" for="setLayout"><span>Расположение фотографий</span><select id="setLayout" data-wall-setting="layout"><option value="puzzle">Пазл: квадратные, вертикальные, горизонтальные</option><option value="grid">Обычная сетка с одинаковыми ячейками</option><option value="live-mosaic">Живая мозаика: случайные перестройки и увеличение</option>
 <option value="carousel-quad">Карусель 4 полосы: две большие и две маленькие</option>
 <option value="carousel-double">Карусель 2 полосы: встречные потоки</option>
 <option value="carousel-triple">Карусель 3 полосы: крупная по центру</option>
@@ -49,6 +49,17 @@
         <label class="wall-setting"><span>Размер верхней крупной строки <output id="outCarouselCenterSplit">50</output>% от центральной области</span><input id="setCarouselCenterSplit" data-wall-setting="carouselCenterSplit" type="range" min="25" max="75" value="50"></label>
         <label class="wall-toggle"><input id="setCarouselPause" data-wall-setting="carouselPause" type="checkbox"> Приостановить движение (без отключения карусели)</label>
         <p class="wall-setting-note">Для каждой фотографии поток «верх / низ / авто» выбирается в панели /admin. Скорость и высота лент сохраняются на этом устройстве LED.</p>
+      </div>
+      <div class="live-mosaic-settings" id="liveMosaicSettings" hidden>
+        <div class="wall-setting-separator">Случайная живая мозаика</div>
+        <p class="wall-setting-note">Фотографии по очереди становятся крупными, меняют места и образуют новые полноэкранные мозаики. Все одобренные снимки остаются в композиции.</p>
+        <label class="wall-setting" for="setLiveInterval"><span>Новая мозаика каждые <output id="outLiveInterval">8</output> секунд</span><input id="setLiveInterval" data-wall-setting="liveInterval" type="range" min="3" max="45" value="8"></label>
+        <label class="wall-setting" for="setLiveFocus"><span>Размер выделенной фотографии <output id="outLiveFocus">40</output>%</span><input id="setLiveFocus" data-wall-setting="liveFocus" type="range" min="25" max="65" value="40"></label>
+        <label class="wall-setting" for="setLiveTransition"><span>Плавность перестройки <output id="outLiveTransition">1400</output> мс</span><input id="setLiveTransition" data-wall-setting="liveTransition" type="range" min="300" max="2500" step="100" value="1400"></label>
+        <label class="wall-setting" for="setLiveFit"><span>Фотографии в мозаике</span><select id="setLiveFit" data-wall-setting="liveFit"><option value="cover">Заполнить ячейку, подрезая края</option><option value="contain">Показать фотографию целиком</option></select></label>
+        <label class="wall-toggle"><input id="setLivePause" data-wall-setting="livePause" type="checkbox"> Пауза автоматической перестройки</label>
+        <button id="liveMosaicNext" class="button secondary" type="button">Следующая мозаика сейчас ↻</button>
+        <p class="wall-setting-note">При уменьшении движения в настройках Windows перестройка останавливается. Для больших галерей анимация упрощается, чтобы LED-экран не тормозил.</p>
       </div>
       <label class="wall-setting" for="setMaxPhotos"><span>Фотографий на экране <output id="outMaxPhotos">500</output></span><input id="setMaxPhotos" data-wall-setting="maxPhotos" type="range" min="1" max="500" step="1" value="500"></label>
       <label class="wall-setting" for="setColumns" id="columnsSettings"><span>Столбцов <output id="outColumns">Авто</output></span><input id="setColumns" data-wall-setting="columns" type="range" min="0" max="40" step="1" value="0"><small>0 — автоматически под размер экрана</small></label>
