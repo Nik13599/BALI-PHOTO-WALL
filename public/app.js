@@ -101,7 +101,7 @@ if(page==='admin') {
       if(signature===previousDashboard) return;
       previousDashboard=signature;
       if(!$('#dashboard')) {
-        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
+        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="panel admin-bulk-panel"><h2>МАССОВАЯ ЗАГРУЗКА ФОТОГРАФИЙ</h2><p class="muted">Выдели сразу много файлов. Приложение подготовит фотографии и отправит партиями по 8. Поддерживаются JPEG, PNG, WebP.</p><form id="bulkPhotoForm"><input type="file" class="field" id="bulkPhotoFiles" accept="image/jpeg,image/png,image/webp" multiple required><div class="bulk-form-row"><label>Поток <select class="field" id="bulkPhotoLane"><option value="auto">Автоматически</option><option value="top">↑ Верхний</option><option value="bottom">↓ Нижний</option></select></label><label>Публикация <select class="field" id="bulkPhotoStatus"><option value="approved">Сразу на экран</option><option value="pending">Оставить на модерации</option></select></label><button type="submit" class="button primary" id="bulkPhotoSubmit">ЗАГРУЗИТЬ ФОТОГРАФИИ</button></div><div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div></form></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
       }
       $('#activeEvent').textContent=data.active?.name || 'Не выбрано';
       $('#photoCount').textContent=data.total+' всего · '+data.page+' / '+data.pages+' стр.';
@@ -131,6 +131,42 @@ if(page==='admin') {
         await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#password').value})});
         root.innerHTML='<div class="panel"><p class="muted">Загружаем панель модерации…</p><div id="adminMessage" class="alert" role="status"></div></div>';await loadDashboard();
       } catch(error){notice('#adminMessage',error.message,true);}
+    }
+    if(event.target.id==='bulkPhotoForm'){
+      event.preventDefault();
+      const files=[...$('#bulkPhotoFiles').files];
+      if(!displayedEventId||!files.length)return;
+      const allowed=files.filter(file=>['image/jpeg','image/png','image/webp'].includes(file.type));
+      if(allowed.length!==files.length){
+        notice('#adminMessage','Выбери только JPEG, PNG или WebP.',true);return;
+      }
+      const button=$('#bulkPhotoSubmit'),progress=$('#bulkProgress');
+      button.disabled=true;
+      let imported=0,failed=0,done=0;
+      try{
+        for(let index=0;index<files.length;index+=8){
+          const form=new FormData();
+          form.append('eventId',String(displayedEventId));
+          form.append('lane',$('#bulkPhotoLane').value);
+          form.append('status',$('#bulkPhotoStatus').value);
+          for(const file of files.slice(index,index+8)){
+            const optimized=await optimizePhoto(file);
+            form.append('photos',optimized,file.name);
+          }
+          const result=await api('/api/admin/photos/bulk',{
+            method:'POST',headers:{'X-BALI-Action':'1'},body:form
+          });
+          imported+=result.imported;failed+=result.failed;
+          done+=Math.min(8,files.length-index);
+          progress.textContent='Обработано '+done+' из '+files.length+' · загружено '+imported+' · ошибок '+failed;
+        }
+        $('#bulkPhotoFiles').value='';
+        previousDashboard=null;await loadDashboard();
+        notice('#adminMessage','Массовая загрузка завершена: '+imported+' фото. Ошибок: '+failed,failed>0);
+      }catch(error){
+        progress.textContent='Загрузка остановлена после '+done+' из '+files.length+' файлов.';
+        notice('#adminMessage',error.message+'. Уже импортированные фотографии сохранены.',true);
+      }finally{button.disabled=false;}
     }
     if(event.target.id==='eventForm'){
       event.preventDefault();
