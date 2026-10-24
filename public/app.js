@@ -185,6 +185,7 @@ if(page==='screen'){
   const LOGO_KEY='bali-photo-wall-screen-logo-v1';
   const defaults={
     maxPhotos:500,columns:0,gap:2,fit:'contain',layout:'puzzle',centerGrowth:true,
+    carouselStart:10,carouselSpeed:85,carouselOuterSpeed:120,carouselTopHeight:12,carouselBottomHeight:12,carouselCenterSplit:50,carouselPause:false,
     logoPos:'tl',livePos:'tr',eventPos:'bl',hintPos:'bc',qrPos:'br',
     logoX:0,logoY:0,liveX:0,liveY:0,eventX:0,eventY:0,hintX:0,hintY:0,qrX:0,qrY:0,
     logoSize:28,liveSize:20,eventSize:32,qrSize:92,inset:18,
@@ -192,6 +193,7 @@ if(page==='screen'){
   };
   const limits={
     maxPhotos:[1,500],columns:[0,40],gap:[0,16],
+    carouselStart:[5,30],carouselSpeed:[20,260],carouselOuterSpeed:[20,300],carouselTopHeight:[6,25],carouselBottomHeight:[6,25],carouselCenterSplit:[25,75],
     logoX:[-250,250],logoY:[-250,250],liveX:[-250,250],liveY:[-250,250],
     eventX:[-250,250],eventY:[-250,250],hintX:[-250,250],hintY:[-250,250],
     qrX:[-250,250],qrY:[-250,250],
@@ -206,7 +208,7 @@ if(page==='screen'){
         if(key in limits && Number.isFinite(Number(saved[key])))
           settings[key]=Math.round(Math.min(limits[key][1],Math.max(limits[key][0],Number(saved[key]))));
         else if(key==='fit' && ['cover','contain'].includes(saved[key]))settings.fit=saved.fit;
-        else if(key==='layout' && ['puzzle','grid'].includes(saved[key]))settings.layout=saved.layout;
+        else if(key==='layout' && ['puzzle','grid',...(globalThis.BaliCarousel?.variants||[])].includes(saved[key]))settings.layout=saved.layout;
         else if(key.endsWith('Pos') && ['tl','tc','tr','ml','mc','mr','bl','bc','br'].includes(saved[key]))settings[key]=saved[key];
         else if(typeof defaults[key]==='boolean' && typeof saved[key]==='boolean')
           settings[key]=saved[key];
@@ -262,6 +264,7 @@ if(page==='screen'){
     setShown($('#wallQR'),settings.showQr);
     positionFloating();syncShiftControls();
     $('#columnsSettings').hidden=settings.layout!=='grid';
+    $('#carouselSettings').hidden=!globalThis.BaliCarousel?.isCarousel(settings.layout);
     for(const control of controls){
       const key=control.dataset.wallSetting;
       if(control.type==='checkbox')control.checked=settings[key];
@@ -298,7 +301,13 @@ if(page==='screen'){
     const all=photos.slice(0,settings.maxPhotos);
     const n=all.length;
     setShown(empty,n===0);
-    if(!n){grid.replaceChildren();return;}
+    if(!n){grid.replaceChildren();globalThis.BaliCarouselWall?.stop();return;}
+    if(globalThis.BaliCarousel?.isCarousel(settings.layout) && n>=settings.carouselStart &&
+        globalThis.BaliCarouselWall){
+      globalThis.BaliCarouselWall.render({grid,photos:all,eventId,settings,getPhotoUrl});
+      return;
+    }
+    globalThis.BaliCarouselWall?.stop();
     const stage=grid.querySelector('.wall-cluster')||document.createElement('div');
     stage.className='wall-cluster';
     const boxW=grid.clientWidth||screen.clientWidth;
@@ -316,7 +325,7 @@ if(page==='screen'){
     const oldRects=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el.getBoundingClientRect()]));
     const existing=new Map([...stage.querySelectorAll('.wall-tile')].map(el=>[Number(el.dataset.id),el]));
     const fragment=document.createDocumentFragment();
-    if(settings.layout==='puzzle' && globalThis.BaliMosaic){
+    if((settings.layout==='puzzle'||globalThis.BaliCarousel?.isCarousel(settings.layout)) && globalThis.BaliMosaic){
       const mosaic=globalThis.BaliMosaic.compute(all,stageW,stageH,settings.gap);
       for(const rowData of mosaic.rows){
         const row=document.createElement('div');
@@ -348,7 +357,7 @@ if(page==='screen'){
         fragment.append(row);
       }
     }
-    stage.style.setProperty('--wall-fit',settings.layout==='puzzle'?'contain':settings.fit);
+    stage.style.setProperty('--wall-fit',(settings.layout==='puzzle'||globalThis.BaliCarousel?.isCarousel(settings.layout))?'contain':settings.fit);
     stage.style.width=stageW+'px';
     stage.style.height=stageH+'px';
     stage.replaceChildren(fragment);
@@ -372,6 +381,7 @@ if(page==='screen'){
   }
   function clearWall(){
     photos=[];signature='';eventId=null;
+    globalThis.BaliCarouselWall?.reset();
     layout();
   }
   async function refresh(){
@@ -385,8 +395,9 @@ if(page==='screen'){
       $('#screenEvent').textContent=eventName;
       // Update on photos or event identity changes; do not redraw every poll.
       const incoming=(data.photos||[]).slice(0,MAX_WALL_PHOTOS);
-      const nextSignature=event+':'+incoming.map(photo=>[photo.id,photo.width,photo.height].join('/')).join(',');
+      const nextSignature=event+':'+incoming.map(photo=>[photo.id,photo.width,photo.height,photo.screen_lane].join('/')).join(',');
       if(nextSignature!==signature){
+        if(eventId!==event)globalThis.BaliCarouselWall?.reset();
         eventId=event;
         signature=nextSignature;
         photos=incoming;
