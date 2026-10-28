@@ -19,7 +19,7 @@ function card(entry,contest){
   el.className='contest-tile';
   el.style.cssText='height:'+height+'px;width:'+Math.max(90,width)+'px';
   const img=document.createElement('img');
-  img.src=photoUrl(entry.id);img.alt='';
+  img.src=photoUrl(entry.id);img.alt='';img.loading='lazy';img.decoding='async';
   el.append(img);
   const label=document.createElement('span');
   label.className='contest-tile-label';
@@ -40,7 +40,7 @@ function renderStrip(data){
   let i=0;
   const ratio={square:1,portrait:9/16,landscape:16/9}[data.contest.shape]||1;
   const cardWidth=Math.max(90,Math.round((data.contest.tileHeight-32)*ratio))+14;
-  const repeatCount=Math.min(400,Math.max(people.length,Math.ceil((window.innerWidth*1.6)/cardWidth)));
+  const repeatCount=Math.min(1000,Math.max(people.length,Math.ceil((window.innerWidth*1.6)/cardWidth)));
   while(i<repeatCount){first.append(card(people[i%people.length],data.contest));i++;}
   strip.append(first);
   strip.append(first.cloneNode(true));
