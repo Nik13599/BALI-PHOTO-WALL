@@ -4,11 +4,17 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#080b09"><meta name="robots" content="noindex,nofollow">
 <title>BALI PHOTO WALL · LIVE SCREEN</title>
-<link rel="stylesheet" href="/style.css"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/carousel-wall.js"></script><script defer src="/live-mosaic.js"></script><script defer src="/live-wall.js"></script><script defer src="/app.js"></script>
+<link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/contest.css"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/carousel-wall.js"></script><script defer src="/live-mosaic.js"></script><script defer src="/live-wall.js"></script><script defer src="/app.js"></script><script defer src="/contest-screen.js"></script>
 </head>
 <body data-page="screen">
 <main class="screen" id="wallScreen">
   <div class="wall-grid" id="wallGrid" aria-label="Фотостена BALI"></div>
+  <section class="contest-overlay" id="contestOverlay" hidden aria-label="Конкурс Король и Королева ночи">
+    <div class="contest-overlay-title" id="contestOverlayTitle"></div>
+    <div class="contest-strip-wrap" id="contestStripWrap" hidden><div class="contest-strip" id="contestStrip"></div></div>
+    <div class="contest-overlay-timer" id="contestOverlayTimer" hidden></div>
+    <div class="contest-winners" id="contestWinners" hidden></div>
+  </section>
   <div class="wall-empty" id="wallEmpty"><div class="wall-empty-title">ТВОЙ МОМЕНТ <span class="glow">НА ЭКРАНЕ</span></div><p>Отсканируй QR-код и загрузи фотографию</p></div>
   <img class="wall-logo wall-floating" id="wallLogo" src="/bali-logo.svg" alt="BALI Night Club">
   <div class="wall-live wall-floating" id="wallLive"><span class="pulse"></span><span>PHOTO LIVE</span></div>
