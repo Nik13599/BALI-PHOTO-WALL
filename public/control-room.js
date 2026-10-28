@@ -6,7 +6,7 @@ const $=id=>document.getElementById(id);
 const escapeHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({
  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let active='screen',photoPage=1,screenLoaded=false,refreshing=false;
-let latestStatus=null,photoData=null,contestData=null;
+let latestStatus=null,photoData=null,contestData=null,replacingEntryId=null;
 const notice=(message,bad=false)=>{
  const target=$('controlMessage');target.textContent=message;target.classList.toggle('bad',bad);
 };
@@ -240,11 +240,12 @@ async function loadContest(){
  $('contestPhotoGrid').innerHTML=!a.entries?.length?
   '<div class="control-empty">Заявки ещё не поступали. Регистрация и номера карт проверяются на сервере BALI-MENU.</div>':
   a.entries.slice(0,100).map(e=>'<article class="control-photo">'+
-  '<img loading="lazy" src="/api/admin/contest/photo/'+e.id+'" alt="Конкурсное фото №'+e.id+'">'+
+  '<img loading="lazy" src="/api/admin/contest/photo/'+e.id+'?rev='+(e.imageRevision||0)+'" alt="Конкурсное фото №'+e.id+'">'+
   '<strong>№'+e.id+' · '+escapeHtml(e.display_name)+'</strong>'+
   '<small>BALI Card: '+escapeHtml(e.card_id||'не установлена')+'</small>'+
   '<small>'+({pending:'Ожидает модерации',approved:'Допущен',rejected:'Отклонён'}[e.status]||e.status)+'</small>'+
   '<div class="control-photo-actions">'+
+  (c?.state==='draft'?'<button type="button" data-replace-entry="'+e.id+'">↥ Заменить фото</button>':'')+
   (c?.state==='draft'&&e.status!=='approved'?'<button class="approve" data-entry-id="'+e.id+'" data-entry-status="approved">Одобрить</button>':'')+
   (c?.state==='draft'&&e.status!=='rejected'?'<button class="reject" data-entry-id="'+e.id+'" data-entry-status="rejected">Отклонить</button>':'')+
   '<a href="/admin/contest" class="button secondary">Кадр / настройки ↗</a></div></article>').join('');
@@ -260,12 +261,37 @@ async function loadContest(){
  }).join('');
 }
 $('contestPhotoGrid').addEventListener('click',async event=>{
- const button=event.target.closest('button[data-entry-id]');if(!button)return;
+ const button=event.target.closest('button');if(!button)return;
  if(!contestData?.contest||contestData.contest.state!=='draft')return;
+ if(button.dataset.replaceEntry){
+   replacingEntryId=Number(button.dataset.replaceEntry);
+   const input=$('controlReplaceFile');input.value='';input.click();return;
+ }
+ if(!button.dataset.entryId)return;
  button.disabled=true;
  try{await action('/api/admin/contest/entries/'+button.dataset.entryId+'/status',{status:button.dataset.entryStatus});
   await loadContest();notice('Статус конкурсной заявки изменён.');}
  catch(e){notice(e.message,true);button.disabled=false;}
+});
+$('controlReplaceFile').addEventListener('change',async()=>{
+ const input=$('controlReplaceFile'),file=input.files?.[0],id=replacingEntryId;
+ if(!id||!file)return;
+ if(contestData?.contest?.state!=='draft'){notice('Голосование уже началось. Замена закрыта.',true);return;}
+ if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>8*1024*1024||file.size<=0){
+   notice('Нужна фотография JPG, PNG или WebP до 8 МБ.',true);return;
+ }
+ const entry=contestData.entries.find(e=>e.id===id);
+ if(!confirm('Заменить фотографию участника №'+id+' ('+(entry?.display_name||'участник')+')? Номер BALI Card не изменится.'))return;
+ const form=new FormData();form.append('photo',file,file.name);
+ try{
+   const response=await fetch('/api/admin/contest/entries/'+id+'/replace',{
+     method:'POST',credentials:'same-origin',headers:{'X-BALI-Action':'1'},body:form});
+   const result=await response.json().catch(()=>({}));
+   if(!response.ok)throw Error(result.error||'Не удалось заменить изображение.');
+   await loadContest();
+   notice('Конкурсная фотография №'+id+' заменена файлом с компьютера. Карта и номер сохранены.');
+ }catch(err){notice(err.message,true);}
+ finally{input.value='';replacingEntryId=null;}
 });
 async function refreshPanel(){
  if($('controlDashboard').hidden)return;
