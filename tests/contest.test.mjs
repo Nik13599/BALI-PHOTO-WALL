@@ -31,6 +31,10 @@ test('BALI contest: external signup, moderation, votes, winners and durable rewa
   }
   assert.ok(ready,'Server not ready: '+output);
   assert.equal((await request('/admin/contest')).status,200);
+  const online=await (await request('/api/public/photo-wall-status')).json();
+  assert.equal(online.online,true,'Ordinary photo uploads can work independently of the contest');
+  assert.equal((await request('/api/integrations/contest-state')).status,401,
+   'Unauthenticated website bridge must be denied');
   const adminLogin=await request('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({password:'contest-admin-test-secret'})});
   const adminCookie=adminLogin.headers.get('set-cookie').split(';')[0];
@@ -76,6 +80,12 @@ test('BALI contest: external signup, moderation, votes, winners and durable rewa
   const active=await (await request('/api/screen/contest',{headers:screen})).json();
   assert.equal(active.contest.state,'live');
   assert.equal(active.entries.length,3);
+  const websiteMirror=await (await request('/api/integrations/contest-state',{headers:bridgeHeaders})).json();
+  assert.equal(websiteMirror.contest.phase,'voting');
+  assert.deepEqual(websiteMirror.entries.map(p=>p.number),idList);
+  assert.equal(websiteMirror.entries.every(p=>typeof p.externalId==='string'),true);
+  assert.equal((await request('/api/public/contest-photo/'+idList[0])).status,200,
+   'Voting gallery images are public only after moderation and contest launch');
   assert.equal((await request('/api/screen/contest/photo/'+idList[0],{headers:screen})).status,200);
   const vote=(person,voter)=>request('/api/integrations/contest-vote',{method:'POST',
    headers:{...bridgeHeaders,'Content-Type':'application/json'},
@@ -91,6 +101,9 @@ test('BALI contest: external signup, moderation, votes, winners and durable rewa
   assert.equal(complete.contest.state,'complete');
   assert.deepEqual(complete.winners.map(x=>x.place),[1,2,3]);
   assert.deepEqual(complete.winners.map(x=>x.votes),[5,3,1]);
+  const websiteWinners=await (await request('/api/integrations/contest-state',{headers:bridgeHeaders})).json();
+  assert.deepEqual(websiteWinners.entries.map(e=>e.number),idList);
+  assert.equal(websiteWinners.contest.phase,'complete');
   assert.equal((await request('/api/screen/contest/photo/'+idList[0],{headers:screen})).status,200);
   assert.equal((await request('/api/integrations/contest-vote',{method:'POST',
    headers:{...bridgeHeaders,'Content-Type':'application/json'},body:JSON.stringify({externalId:'person_1',voterId:'late'})})).status,409);
