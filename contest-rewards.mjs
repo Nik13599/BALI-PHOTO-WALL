@@ -7,6 +7,14 @@ const BONUSES=['free_entry','shot','cocktail','hookah'];
 const json=value=>JSON.stringify(value);
 const safeId=value=>Number.isSafeInteger(Number(value))&&Number(value)>0?Number(value):null;
 const now=()=>Date.now();
+const validRewardTarget=url=>{
+  try{
+    const endpoint=new URL(url);
+    if(endpoint.username||endpoint.password)return false;
+    if(endpoint.protocol==='https:')return true;
+    return endpoint.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(endpoint.hostname);
+  }catch{return false;}
+};
 const fail=(res,status,error)=>res.status(status).json({error});
 
 export function registerContestRewards({app,db,adminAuth,requireAction}) {
@@ -77,7 +85,7 @@ export function registerContestRewards({app,db,adminAuth,requireAction}) {
       'SELECT reward_id,place,card_id,status,attempts,last_error,credited_at,last_attempt_at FROM contest_reward_outbox WHERE contest_id=? ORDER BY place'
     ).all(contest.id);
     res.json({prizes:prizesFor(contest.id),deliveries,configured:Boolean(
-      /^https:\/\//.test(process.env.BALI_REWARDS_WEBHOOK_URL||'')&&process.env.BALI_REWARDS_SECRET&&process.env.BALI_REWARDS_SECRET.length>=32
+      validRewardTarget(process.env.BALI_REWARDS_WEBHOOK_URL||'')&&process.env.BALI_REWARDS_SECRET&&process.env.BALI_REWARDS_SECRET.length>=32
     )});
   });
 
@@ -119,10 +127,7 @@ export function registerContestRewards({app,db,adminAuth,requireAction}) {
       enqueue();
       const url=process.env.BALI_REWARDS_WEBHOOK_URL||'';
       const secret=process.env.BALI_REWARDS_SECRET||'';
-      if(!/^https:\/\//.test(url)||secret.length<32||secret.includes('CHANGE_'))return;
-      const endpoint=new URL(url);
-      if(endpoint.username||endpoint.password||!endpoint.hostname||
-        /^(localhost|127\.|10\.|192\.168\.|169\.254\.|\[::1\])/.test(endpoint.hostname))return;
+      if(!validRewardTarget(url)||secret.length<32||secret.includes('CHANGE_'))return;
       const pending=db.prepare(
         "SELECT reward_id,prize_json,attempts FROM contest_reward_outbox WHERE status='pending' AND next_attempt_at<=? ORDER BY created_at LIMIT 5"
       ).all(now());
