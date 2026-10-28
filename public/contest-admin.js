@@ -74,7 +74,7 @@ async function refresh(force=false){
   busy=true;
   try{
     const [contest,rewards]=await Promise.all([api('/api/admin/contest'),api('/api/admin/contest/rewards')]);
-    const next=JSON.stringify([contest,rewards]);state=contest;
+    const next=JSON.stringify([contest.contest,contest.entries,contest.winners,contest.counts,rewards]);state=contest;
     if(!force&&next===last)return;
     last=next;root.innerHTML=panel(contest,rewards);
   }catch(e){
