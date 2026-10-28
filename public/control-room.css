@@ -64,3 +64,14 @@
 .control-empty{padding:19px;border:1px dashed #50604b;border-radius:12px;color:#acbda5;grid-column:1/-1;font-size:12px}
 @media(max-width:790px){.control-shell{padding:18px 13px}.control-servers{grid-template-columns:1fr}.control-fields{grid-template-columns:1fr}.control-nav-item{font-size:10px;min-height:63px;padding:10px 7px}.control-nav{gap:6px}.control-panel{padding:14px}.control-heading{flex-direction:column}.control-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.control-reward-list{grid-template-columns:1fr}.control-photo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.control-photo img{height:150px}}
 @media(max-width:410px){.control-photo-grid{grid-template-columns:1fr 1fr;gap:7px}.control-photo-actions{grid-template-columns:1fr}.control-server-metric{font-size:20px}.control-photo img{height:140px}.control-panel-head h2{font-size:19px}}
+
+.control-config{padding:18px;border:1px solid #384e34;border-radius:13px;background:#151f15;margin:15px 0 21px}
+.control-config>h2{font-size:19px;margin:0 0 7px}
+.control-config>p{margin:0 0 18px;font-size:12px;line-height:1.5}
+.control-prize-grid{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;align-items:start}
+.control-prize{border:1px solid #43573d;background:#172116;border-radius:11px;padding:12px;min-width:0;display:grid;gap:9px}
+.control-prize[hidden]{display:none!important}
+.control-prize legend{font-size:13px;font-weight:900;color:#d7ff4d;padding:0 5px}
+.control-prize label{display:flex;flex-direction:column;gap:5px;font-size:11px;color:#c7d4bb;min-width:0}
+.control-prize .field{width:100%;padding:8px}
+@media(max-width:790px){.control-prize-grid{grid-template-columns:1fr}}
