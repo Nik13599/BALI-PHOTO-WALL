@@ -172,6 +172,8 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
     const contest=selectActive.get();
     if(!contest)return error(res,404,'Создайте конкурс в настройках');
     if(contest.state!=='draft')return error(res,409,'Конкурс уже запускался');
+    if(process.env.CONTEST_ALLOW_LOCAL_RESULTS!=='1'&&contest.starts_at&&now()<contest.starts_at)
+      return error(res,409,'Голосование откроется автоматически в 00:00');
     const count=db.prepare("SELECT COUNT(*) AS n FROM contest_entries WHERE contest_id=? AND status='approved'").get(contest.id).n;
     if(count<contest.prize_places)return error(res,409,'Одобренных участников меньше количества призовых мест');
     const started=now();
