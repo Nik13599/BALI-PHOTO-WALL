@@ -70,13 +70,14 @@ export function registerContestRewards({app,db,adminAuth,requireAction}) {
   ).all(contestId).map(p=>({place:p.place,baliCoins:p.coin_amount,bonuses:JSON.parse(p.bonuses)}));
 
   app.get('/api/admin/contest/rewards',adminAuth,(_req,res)=>{
+    enqueue();
     const contest=selectContest();
     if(!contest)return res.json({prizes:[],deliveries:[],configured:false});
     const deliveries=db.prepare(
       'SELECT reward_id,place,card_id,status,attempts,last_error,credited_at,last_attempt_at FROM contest_reward_outbox WHERE contest_id=? ORDER BY place'
     ).all(contest.id);
     res.json({prizes:prizesFor(contest.id),deliveries,configured:Boolean(
-      process.env.BALI_REWARDS_WEBHOOK_URL&&process.env.BALI_REWARDS_SECRET&&process.env.BALI_REWARDS_SECRET.length>=32
+      /^https:\/\//.test(process.env.BALI_REWARDS_WEBHOOK_URL||'')&&process.env.BALI_REWARDS_SECRET&&process.env.BALI_REWARDS_SECRET.length>=32
     )});
   });
 
