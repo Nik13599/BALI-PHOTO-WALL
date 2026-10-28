@@ -10,6 +10,7 @@ const api=async(url,opts={})=>{
 };
 const post=(url,value={})=>api(url,{method:'POST',headers:{'Content-Type':'application/json','X-BALI-Action':'1'},body:JSON.stringify(value)});
 function notify(text,error=false){msg.textContent=text;msg.className='alert '+(error?'bad':'good');}
+const canEdit=c=>Boolean(c?.state==='draft'&&(!c.startsAt||Date.now()<c.startsAt));
 const bonusNames={free_entry:'Бесплатный вход',shot:'Шоты',cocktail:'Коктейли',hookah:'Кальяны'};
 function rewardForm(index,current){
   const have=new Map((current?.bonuses||[]).map(b=>[b.code,b.quantity]));
@@ -19,7 +20,7 @@ function rewardForm(index,current){
 }
 function panel(data,rewards){
   const c=data.contest,counts=data.counts||{pending:0,approved:0,rejected:0,votes:0};
-  const prizes=rewards.prizes||[],places=c?.prizePlaces||3;
+  const prizes=rewards.prizes||[],places=c?.prizePlaces||3,allowEdit=canEdit(c);
   return '<div class="admin-heading contest-heading"><div><div class="eyebrow">LIVE CONTROL · BALI</div><h1>КОРОЛЬ И <span class="glow">КОРОЛЕВА НОЧИ</span></h1></div>'+
     '<div class="contest-status">'+(c?({draft:'ПРИЁМ ЗАЯВОК',live:'ИДЁТ ГОЛОСОВАНИЕ',awaiting_results:'СВЕРКА ИТОГОВ',complete:'ЗАВЕРШЁН'}[c.state]):'НЕ СОЗДАН')+'</div></div>'+
     '<div class="contest-metrics">'+[['pending','Заявок на проверке'],['approved','Допущено'],['votes','Голосов (зеркало)'],['rejected','Отклонено']].map(([key,label])=>
@@ -34,7 +35,7 @@ function panel(data,rewards){
     '<label>Высота конкурсной ленты, px<input class="field" type="number" name="tileHeight" min="100" max="550" value="'+(c?.tileHeight||240)+'" required></label>'+
     '<label>Скорость движения, px/сек<input class="field" type="number" name="tileSpeed" min="20" max="250" value="'+(c?.tileSpeed||80)+'" required></label>'+
     '<label>Время голосования, минуты<input class="field" type="number" name="durationMinutes" min="1" max="120" value="'+(c?Math.round(c.durationSeconds/60)||10:10)+'" required></label>'+
-    '<div class="contest-form-actions"><button class="button secondary" type="submit" '+(c?.state&&c.state!=='draft'?'disabled':'')+'>СОХРАНИТЬ НАСТРОЙКИ</button>'+
+    '<div class="contest-form-actions"><button class="button secondary" type="submit" '+(!allowEdit?'disabled':'')+'>СОХРАНИТЬ НАСТРОЙКИ</button>'+
     '<button class="button primary" id="contestStart" type="button" '+(!c||c.state!=='draft'||(c.startsAt&&Date.now()<c.startsAt)?'disabled':'')+'>▶ ЗАПУСТИТЬ ГОЛОСОВАНИЕ</button></div></form>'+
     (c?.state==='live'?'<div class="contest-live-timer" id="contestTimer"></div>':'')+
     '<p class="muted">Заявки принимаются с 23:00 до 00:00 по Минску. Голосование запускается автоматически в 00:00. Итоги сверяются с BALI-MENU; фотомозаика продолжает движение.</p></section>'+
@@ -50,7 +51,7 @@ function entryCard(e,c){
   return '<article class="contest-entry"><div class="contest-entry-image"><img alt="Конкурсное фото" loading="lazy" src="/api/admin/contest/photo/'+e.id+'?rev='+(e.imageRevision||0)+'"></div>'+
   '<div class="contest-entry-info"><strong>#'+e.id+' · '+esc(e.display_name)+'</strong><small>'+
   ({pending:'Ожидает проверки',approved:'Допущен',rejected:'Отклонён'}[e.status]||e.status)+' · BALI Card '+esc(e.card_id||'не подтверждена')+' · '+e.votes+' голосов (зеркало)</small></div>'+
-  '<div class="contest-entry-actions"><button class="button secondary small" data-crop="'+e.id+'" '+(c?.state!=='draft'?'disabled':'')+'>✂ Кадр</button>'+
+  '<div class="contest-entry-actions"><button class="button secondary small" data-crop="'+e.id+'" '+(!canEdit(c)?'disabled':'')+'>✂ Кадр</button>'+
   '<button class="button secondary small" data-replace="'+e.id+'" '+(c?.state!=='draft'?'disabled':'')+'>↥ Заменить с ПК</button>'+
   (e.status!=='approved'?'<button class="button approve small" data-id="'+e.id+'" data-status="approved" '+(c?.state!=='draft'?'disabled':'')+'>Одобрить</button>':'')+
   (e.status!=='rejected'?'<button class="button reject small" data-id="'+e.id+'" data-status="rejected" '+(c?.state!=='draft'?'disabled':'')+'>Отклонить</button>':'')+'</div></article>';
@@ -118,7 +119,7 @@ root.addEventListener('click',async e=>{
     }else if(btn.dataset.id){
       await post('/api/admin/contest/entries/'+btn.dataset.id+'/status',{status:btn.dataset.status});await refresh(true);
     }else if(btn.dataset.replace){
-       if(state?.contest?.state!=='draft')throw Error('После старта голосования замена запрещена');
+       if(!canEdit(state?.contest))throw Error('После старта голосования замена запрещена');
        replacingId=Number(btn.dataset.replace);
        const input=document.getElementById('contestReplaceFile');
        input.value='';input.click();
@@ -135,7 +136,7 @@ const replaceInput=document.getElementById('contestReplaceFile');
 replaceInput.addEventListener('change',async()=>{
   const file=replaceInput.files?.[0],id=replacingId;
   if(!file||!id)return;
-  if(state?.contest?.state!=='draft'){notify('После старта голосования изменения закрыты',true);return;}
+  if(!canEdit(state?.contest)){notify('После старта голосования изменения закрыты',true);return;}
   if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>8*1024*1024||file.size===0){
     notify('Выберите JPG, PNG или WebP размером до 8 МБ',true);return;
   }
