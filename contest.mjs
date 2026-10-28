@@ -186,10 +186,11 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
     try{
       const revision=now();
       db.transaction(()=>{
-        db.prepare("UPDATE contest_entries SET crop_filename=?,image_updated_at=? WHERE id=? AND "+
+        const updated=db.prepare("UPDATE contest_entries SET crop_filename=?,image_updated_at=? WHERE id=? AND "+
           "EXISTS(SELECT 1 FROM contests WHERE id=? AND state='draft' AND (?=1 OR starts_at IS NULL OR starts_at>?))")
           .run(filename,revision,entry.id,entry.contest_id,
             process.env.CONTEST_ALLOW_LOCAL_RESULTS==='1'?1:0,now());
+        if(!updated.changes)throw Object.assign(new Error('Изменение запрещено после начала голосования'),{status:409});
         audit.run(entry.contest_id,entry.id,'crop',entry.crop_filename||entry.filename,filename,revision);
       })();
       if(entry.crop_filename)await fsp.unlink(path.join(directory,entry.crop_filename)).catch(()=>{});
@@ -231,7 +232,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
         const updated=db.transaction(()=>{
           const result=db.prepare("UPDATE contest_entries SET filename=?,crop_filename=NULL,"+
             "image_updated_at=? WHERE id=? AND filename=? AND "+
-            "EXISTS(SELECT 1 FROM contests WHERE id=? AND state='draft')")
+            "EXISTS(SELECT 1 FROM contests WHERE id=? AND state='draft' AND (?=1 OR starts_at IS NULL OR starts_at>?))")
             .run(filename,revision,entry.id,entry.filename,entry.contest_id,
               process.env.CONTEST_ALLOW_LOCAL_RESULTS==='1'?1:0,now());
           if(!result.changes)return false;
