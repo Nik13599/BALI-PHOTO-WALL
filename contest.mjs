@@ -107,7 +107,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
   app.get('/api/admin/contest',adminAuth,(_req,res)=>{
     const contest=finishDue();
     if(!contest)return res.json({contest:null,entries:[],winners:[],counts:{pending:0,approved:0,rejected:0,votes:0}});
-    const entries=db.prepare("SELECT e.id,e.external_id,e.display_name,e.status,e.created_at,e.crop_filename IS NOT NULL AS cropped,COUNT(v.voter_hash) AS votes FROM contest_entries e LEFT JOIN contest_votes v ON v.entry_id=e.id WHERE e.contest_id=? GROUP BY e.id ORDER BY CASE e.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,e.id DESC LIMIT 500").all(contest.id);
+    const entries=db.prepare("SELECT e.id,e.external_id,e.card_id,e.display_name,e.status,e.created_at,e.crop_filename IS NOT NULL AS cropped,COUNT(v.voter_hash) AS votes FROM contest_entries e LEFT JOIN contest_votes v ON v.entry_id=e.id WHERE e.contest_id=? GROUP BY e.id ORDER BY CASE e.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,e.id DESC LIMIT 500").all(contest.id);
     const counts={pending:0,approved:0,rejected:0,votes:db.prepare('SELECT COUNT(*) AS n FROM contest_votes WHERE contest_id=?').get(contest.id).n};
     for(const item of entries)counts[item.status]++;
     res.json({...publicState(contest),entries,counts});
