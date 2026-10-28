@@ -23,7 +23,7 @@ function card(entry,contest){
   el.append(img);
   const label=document.createElement('span');
   label.className='contest-tile-label';
-  label.textContent='#'+entry.id+' · '+entry.display_name;
+  label.textContent='№'+entry.id;
   el.append(label);
   return el;
 }
@@ -106,7 +106,7 @@ async function refresh(){
     const next=JSON.stringify([data.contest,data.entries,data.winners]);
     if(signature!==next){
       signature=next;
-      if(!data.contest||data.contest.state==='draft'){
+      if(!data.contest||data.contest.state==='draft'||data.contest.state==='awaiting_results'){
         overlay.hidden=true;return;
       }
       title.textContent=data.contest.title;
