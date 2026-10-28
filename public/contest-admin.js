@@ -21,8 +21,8 @@ function panel(data,rewards){
   const c=data.contest,counts=data.counts||{pending:0,approved:0,rejected:0,votes:0};
   const prizes=rewards.prizes||[],places=c?.prizePlaces||3;
   return '<div class="admin-heading contest-heading"><div><div class="eyebrow">LIVE CONTROL · BALI</div><h1>КОРОЛЬ И <span class="glow">КОРОЛЕВА НОЧИ</span></h1></div>'+
-    '<div class="contest-status">'+(c?({draft:'ПОДГОТОВКА',live:'ИДЁТ ГОЛОСОВАНИЕ',complete:'ЗАВЕРШЁН'}[c.state]):'НЕ СОЗДАН')+'</div></div>'+
-    '<div class="contest-metrics">'+[['pending','Заявок на проверке'],['approved','Допущено'],['votes','Голосов'],['rejected','Отклонено']].map(([key,label])=>
+    '<div class="contest-status">'+(c?({draft:'ПРИЁМ ЗАЯВОК',live:'ИДЁТ ГОЛОСОВАНИЕ',awaiting_results:'СВЕРКА ИТОГОВ',complete:'ЗАВЕРШЁН'}[c.state]):'НЕ СОЗДАН')+'</div></div>'+
+    '<div class="contest-metrics">'+[['pending','Заявок на проверке'],['approved','Допущено'],['votes','Голосов (зеркало)'],['rejected','Отклонено']].map(([key,label])=>
       '<div><strong>'+counts[key]+'</strong><span>'+label+'</span></div>').join('')+'</div>'+
     '<section class="panel contest-panel"><h2>Параметры конкурса и LED-трансляции</h2>'+
     '<form id="contestSettingsForm" class="contest-form">'+
@@ -35,9 +35,9 @@ function panel(data,rewards){
     '<label>Скорость движения, px/сек<input class="field" type="number" name="tileSpeed" min="20" max="250" value="'+(c?.tileSpeed||80)+'" required></label>'+
     '<label>Время голосования, минуты<input class="field" type="number" name="durationMinutes" min="1" max="120" value="'+(c?Math.round(c.durationSeconds/60)||10:10)+'" required></label>'+
     '<div class="contest-form-actions"><button class="button secondary" type="submit" '+(c?.state&&c.state!=='draft'?'disabled':'')+'>СОХРАНИТЬ НАСТРОЙКИ</button>'+
-    '<button class="button primary" id="contestStart" type="button" '+(!c||c.state!=='draft'?'disabled':'')+'>▶ ЗАПУСТИТЬ ГОЛОСОВАНИЕ</button></div></form>'+
+    '<button class="button primary" id="contestStart" type="button" '+(!c||c.state!=='draft'||(c.startsAt&&Date.now()<c.startsAt)?'disabled':'')+'>▶ ЗАПУСТИТЬ ГОЛОСОВАНИЕ</button></div></form>'+
     (c?.state==='live'?'<div class="contest-live-timer" id="contestTimer"></div>':'')+
-    '<p class="muted">Лента участников будет наложена на действующую мозаику. После завершения показываются только победители; обычные фото продолжают движение.</p></section>'+
+    '<p class="muted">Заявки принимаются с 23:00 до 00:00 по Минску. Голосование запускается автоматически в 00:00. Итоги сверяются с BALI-MENU; фотомозаика продолжает движение.</p></section>'+
     '<section class="panel contest-panel"><div class="contest-panel-heading"><h2>Призы BALI Card</h2><small>'+ (rewards.configured?'Сервер начислений настроен':'⚠ Адрес сервера начислений пока не указан')+'</small></div>'+
     '<form id="contestPrizesForm"><div class="contest-prizes">'+Array.from({length:places},(_,i)=>rewardForm(i,prizes.find(p=>p.place===i+1))).join('')+'</div>'+
     '<button type="submit" class="button primary" '+(!c||c.state!=='draft'?'disabled':'')+'>СОХРАНИТЬ ПРИЗЫ</button></form>'+
@@ -49,7 +49,7 @@ function panel(data,rewards){
 function entryCard(e,c){
   return '<article class="contest-entry"><div class="contest-entry-image"><img alt="Конкурсное фото" loading="lazy" src="/api/admin/contest/photo/'+e.id+'?v='+(e.cropped?'1':'0')+'"></div>'+
   '<div class="contest-entry-info"><strong>#'+e.id+' · '+esc(e.display_name)+'</strong><small>'+
-  ({pending:'Ожидает проверки',approved:'Допущен',rejected:'Отклонён'}[e.status]||e.status)+' · '+e.votes+' голосов</small></div>'+
+  ({pending:'Ожидает проверки',approved:'Допущен',rejected:'Отклонён'}[e.status]||e.status)+' · BALI Card '+esc(e.card_id||'не подтверждена')+' · '+e.votes+' голосов (зеркало)</small></div>'+
   '<div class="contest-entry-actions"><button class="button secondary small" data-crop="'+e.id+'" '+(c?.state!=='draft'?'disabled':'')+'>✂ Кадр</button>'+
   (e.status!=='approved'?'<button class="button approve small" data-id="'+e.id+'" data-status="approved" '+(c?.state!=='draft'?'disabled':'')+'>Одобрить</button>':'')+
   (e.status!=='rejected'?'<button class="button reject small" data-id="'+e.id+'" data-status="rejected" '+(c?.state!=='draft'?'disabled':'')+'>Отклонить</button>':'')+'</div></article>';
