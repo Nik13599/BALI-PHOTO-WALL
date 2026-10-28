@@ -1,5 +1,6 @@
 import express from 'express';
 import { registerContestRoutes } from './contest.mjs';
+import { registerCentralContest } from './contest-central.mjs';
 import { registerContestRewards } from './contest-rewards.mjs';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -171,6 +172,7 @@ app.get('/screen', (_req,res) => res.sendFile(path.join(ROOT,'public','screen.ht
 app.get('/healthz', (_req,res) => res.json({ok:true}));
 app.get('/admin/contest', (_req,res) => res.sendFile(path.join(ROOT,'public','contest-admin.html')));
 registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,requireAction,asyncRoute});
+registerCentralContest({app,db,DATA});
 registerContestRewards({app,db,adminAuth,requireAction});
 
 app.get('/api/public', (req,res) => {
