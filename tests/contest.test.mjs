@@ -15,6 +15,7 @@ test('BALI contest: external signup, moderation, votes, winners and durable rewa
    SCREEN_PASSWORD:'contest-screen-test-secret',
    SESSION_SECRET:'test-only-session-secret-is-long-enough-123456',
    CONTEST_BRIDGE_KEY:'test-only-bridge-key-is-long-enough-123456',
+   CONTEST_ALLOW_LOCAL_RESULTS:'1',
    BALI_REWARDS_WEBHOOK_URL:'',BALI_REWARDS_SECRET:''},
   stdio:['ignore','pipe','pipe']
  });
