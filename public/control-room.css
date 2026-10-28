@@ -1,0 +1,66 @@
+/* BALI two-server control room: functional admin views, no unnecessary third backend. */
+.control-shell{max-width:1300px}
+.control-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-top:24px}
+.control-heading h1{font-size:clamp(27px,4vw,52px);margin:8px 0 11px}
+.control-heading>.muted,.control-heading p{max-width:610px}
+.control-heading-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.control-heading-actions .button{font-size:12px}
+.control-login{max-width:670px;margin:55px auto}
+.control-login h1{font-size:clamp(28px,5.5vw,61px)}
+.control-login p{margin:16px 0}
+.control-login form{display:grid;gap:12px}
+.control-servers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin:24px 0 9px}
+.control-server{background:linear-gradient(125deg,#182517,#101811);border:1px solid #3f5139;border-radius:17px;padding:19px;min-width:0}
+.control-server-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:14px;letter-spacing:.02em}
+.control-server small{display:block;color:#9eaf98;margin:8px 0;font-size:11px;line-height:1.45}
+.control-dot{display:inline-block;width:10px;height:10px;flex:none;border-radius:50%;background:#7b8077;box-shadow:0 0 0 4px #717a6929}
+.control-dot.online{background:#c6fb7a;box-shadow:0 0 13px #bdfb74bb}
+.control-dot.offline{background:#eb977c;box-shadow:0 0 12px #ff775577}
+.control-status-label{margin-left:auto;border:1px solid #576c49;border-radius:99px;padding:5px 9px;font-size:10px;color:#d1dec4}
+.control-server-metric{font-size:clamp(19px,2.3vw,29px);font-weight:900;margin:14px 0 8px;color:#dbf4c3;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.control-server-footer{font-size:11px;color:#b4c4a6;line-height:1.5}
+.control-sync{font-size:11px;text-align:right;color:#a8b59e;min-height:15px}
+.control-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:24px 0 16px}
+.control-nav-item{border:1px solid #3b5336;background:#152013;color:#cedac4;min-height:63px;border-radius:14px;font-weight:850;font-size:12px;text-align:left;padding:11px 14px;letter-spacing:.025em}
+.control-nav-item b{font-size:11px;color:#b9ed80;display:block;margin-bottom:4px}
+.control-nav-item.active{background:#d7ff4d;color:#0a1206;border-color:#d7ff4d}
+.control-nav-item.active b{color:#344f1b}
+.control-nav-item span{background:#8aac532a;border-radius:99px;padding:2px 5px}
+.control-alert{min-height:0;font-size:12px;line-height:1.5}
+.control-alert:not(:empty){padding:10px 14px;margin-bottom:12px;border:1px solid #5b7842;border-radius:10px;background:#18291b;color:#caefa9}
+.control-alert.bad{border-color:#ad6e55;color:#f5c2aa;background:#291b14}
+.control-panel{border:1px solid #354631;border-radius:18px;padding:20px;background:#121912;margin-bottom:30px}
+.control-panel[hidden],#controlDashboard[hidden],#controlLogin[hidden]{display:none!important}
+.control-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:3px 0 17px}
+.control-panel-head h2{margin:0 0 8px;font-size:22px}
+.control-panel-head .muted{margin:0;max-width:720px;line-height:1.5;font-size:12px}
+.control-panel-head .button{font-size:12px}
+.control-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.control-fields>label{display:flex;flex-direction:column;gap:7px;font-size:12px;color:#b9cdb0;font-weight:700;min-width:0}
+.control-fields .field{width:100%;min-width:0}
+.control-switches{grid-column:1/-1;display:flex;gap:12px 22px;flex-wrap:wrap;align-items:center;border-top:1px solid #ffffff16;padding-top:17px}
+.control-switches label{display:flex;gap:7px;align-items:center;font-size:12px;font-weight:750}
+.control-switches input{width:17px;height:17px;accent-color:#d7ff4d}
+.control-form-actions{grid-column:1/-1;display:flex;gap:15px;align-items:center;flex-wrap:wrap}
+.control-form-actions .button{min-width:220px}
+.control-hint{color:#93a18e;font-size:12px;line-height:1.55;margin:19px 0 0}
+.control-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:25px}
+.control-metrics>div{background:#1a2418;border:1px solid #3b5035;border-radius:12px;padding:13px;min-width:0}
+.control-metrics strong{font-size:clamp(20px,3vw,32px);color:#d7ff4d;font-variant-numeric:tabular-nums;display:block}
+.control-metrics small{font-size:11px;color:#abbca6}
+.control-photo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:12px}
+.control-photo{background:#1a2319;border:1px solid #41523b;border-radius:13px;padding:8px;min-width:0}
+.control-photo img{display:block;width:100%;height:185px;object-fit:contain;background:#070d08;border-radius:9px}
+.control-photo strong{display:block;font-size:12px;margin:9px 2px 3px;overflow-wrap:anywhere}
+.control-photo small{display:block;color:#a6b89e;font-size:11px;line-height:1.45;overflow-wrap:anywhere}
+.control-photo-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.control-photo-actions button{min-width:0;border-radius:7px;padding:9px 5px;border:1px solid #5a704e;font-weight:800;font-size:11px;background:#22311f;color:#e7f4dc}
+.control-photo-actions .approve{background:#d7ff4d;color:#15220a;border-color:#d7ff4d}
+.control-photo-actions .reject{border-color:#955b51;color:#fcc5bc;background:#301e18}
+.control-reward-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.control-reward{padding:14px;background:#1b241a;border:1px solid #445238;border-radius:12px;font-size:12px;line-height:1.6}
+.control-reward strong{display:block;font-size:17px;margin-bottom:5px}
+.control-contest-status{padding:14px;border:1px solid #435e3b;border-radius:12px;background:#1b2819;margin-bottom:16px;font-size:13px;line-height:1.5}
+.control-empty{padding:19px;border:1px dashed #50604b;border-radius:12px;color:#acbda5;grid-column:1/-1;font-size:12px}
+@media(max-width:790px){.control-shell{padding:18px 13px}.control-servers{grid-template-columns:1fr}.control-fields{grid-template-columns:1fr}.control-nav-item{font-size:10px;min-height:63px;padding:10px 7px}.control-nav{gap:6px}.control-panel{padding:14px}.control-heading{flex-direction:column}.control-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.control-reward-list{grid-template-columns:1fr}.control-photo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.control-photo img{height:150px}}
+@media(max-width:410px){.control-photo-grid{grid-template-columns:1fr 1fr;gap:7px}.control-photo-actions{grid-template-columns:1fr}.control-server-metric{font-size:20px}.control-photo img{height:140px}.control-panel-head h2{font-size:19px}}
