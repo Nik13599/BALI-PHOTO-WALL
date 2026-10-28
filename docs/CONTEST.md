@@ -14,7 +14,7 @@
 ## .env только на клубном компьютере
 
 CONTEST_BRIDGE_KEY — случайный секрет минимум 32 символа.
-BALI_REWARDS_WEBHOOK_URL — фактический HTTPS endpoint сервера BALI Card для начисления призов.
+BALI_REWARDS_WEBHOOK_URL — HTTPS endpoint сервера BALI Card, либо http://127.0.0.1:ПОРТ/путь, если сервер BALI Card работает на том же Windows-компьютере. Открытый HTTP на других адресах запрещён.
 BALI_REWARDS_SECRET — отдельный секрет HMAC минимум 32 символа.
 
 НЕ размещать секреты в Telegram Mini App, JavaScript браузера и GitHub. Адрес начислений пока не утверждён, это настройка для будущей интеграции. При отсутствии endpoint записи наград остаются в SQLite PHOTO WALL.
@@ -51,7 +51,7 @@ POST /api/integrations/contest-vote с заголовками Content-Type: appl
 
 По завершении конкурса PHOTO WALL создаёт для каждого призового места, где есть ненулевая награда, отдельную неизменную запись в SQLite outbox.
 
-POST на BALI_REWARDS_WEBHOOK_URL с:
+POST на BALI_REWARDS_WEBHOOK_URL (HTTPS, либо localhost через локальное соединение) с:
 - Content-Type: application/json
 - X-BALI-Reward-Id: bali-photo-wall:contest:19:place:1
 - X-BALI-Signature: sha256=HMAC_SHA256(точные байты JSON, BALI_REWARDS_SECRET)
