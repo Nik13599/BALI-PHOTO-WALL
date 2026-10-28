@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0e0c"><meta name="robots" content="noindex,nofollow">
+<title>BALI · Единая панель управления клубным экраном</title>
+<link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/contest.css">
+<link rel="stylesheet" href="/control-room.css"><script defer src="/control-room.js"></script></head>
+<body data-page="control-room"><div class="noise"></div><div class="shell control-shell">
+<header class="header"><a href="/admin/control" class="wordmark">BALI<span class="accent">.</span></a>
+ <span class="header-note">PHOTO WALL × BALI-MENU · CONTROL ROOM</span></header>
+<main>
+ <section id="controlLogin" class="login-card control-login">
+  <div class="eyebrow">ЕДИНАЯ АДМИН-ПАНЕЛЬ</div>
+  <h1>ДВА СЕРВЕРА.<br><span class="glow">ОДИН КОНТРОЛЬ.</span></h1>
+  <p class="muted">Войдите с учётными данными администратора PHOTO WALL. Доступ к BALI-MENU осуществляется только по защищённому соединению между серверами.</p>
+  <form id="controlLoginForm"><label>Пароль администратора</label>
+   <input id="controlPassword" class="field" type="password" autocomplete="current-password" required>
+   <button class="button primary" type="submit">ВОЙТИ В ПАНЕЛЬ</button></form>
+  <div class="alert" id="controlLoginMessage" role="status"></div>
+ </section>
+ <section id="controlDashboard" hidden>
+  <div class="control-heading"><div><span class="eyebrow">ОПЕРАТОРСКАЯ BALI</span><h1>УПРАВЛЕНИЕ <span class="glow">НОЧЬЮ</span></h1>
+    <p class="muted">Все фотографии остаются на клубном Windows. Участники и голоса конкурса учитываются в BALI-MENU.</p></div>
+   <div class="control-heading-actions"><button type="button" id="controlRefresh" class="button secondary">↻ Обновить</button>
+    <button type="button" id="controlLogout" class="button secondary">Выйти</button></div></div>
+  <section class="control-servers" aria-label="Связь между серверами">
+   <article class="control-server" id="statusClub"><div class="control-server-top"><span class="control-dot" id="clubDot"></span>
+    <strong>PHOTO WALL</strong><span class="control-status-label" id="clubOnline">Проверка…</span></div>
+    <small>Windows · хранение фотографий · LED-мозаика</small>
+    <div class="control-server-metric" id="clubMetric">—</div>
+    <div class="control-server-footer" id="clubScreen">LED-экран: проверка соединения</div>
+   </article>
+   <article class="control-server" id="statusBali"><div class="control-server-top"><span class="control-dot" id="baliDot"></span>
+    <strong>BALI-MENU</strong><span class="control-status-label" id="baliOnline">Проверка…</span></div>
+    <small>Cloudflare D1 · BALI Card · конкурсные голоса</small>
+    <div class="control-server-metric" id="baliMetric">—</div>
+    <div class="control-server-footer" id="baliDetail">Идёт проверка защищённого API</div>
+   </article>
+  </section>
+  <div class="control-sync" id="syncText">Проверяем состояние соединений…</div>
+  <nav class="control-nav" aria-label="Разделы единой панели">
+   <button type="button" class="control-nav-item active" data-tab="screen" aria-selected="true"><b>01</b> ОБЩИЙ ЭКРАН</button>
+   <button type="button" class="control-nav-item" data-tab="photos" aria-selected="false"><b>02</b> ФОТО ГОСТЕЙ <span id="photosCounter"></span></button>
+   <button type="button" class="control-nav-item" data-tab="contest" aria-selected="false"><b>03</b> КОНКУРС <span id="contestCounter"></span></button>
+  </nav>
+  <div class="control-alert" id="controlMessage" role="status" aria-live="polite"></div>
+  <section data-panel="screen" class="control-panel">
+    <div class="control-panel-head"><div><h2>Настройки общего LED-экрана</h2>
+     <p class="muted">Настройки сохраняются на клубном компьютере. Подключённый LED-экран автоматически получает изменения.</p></div>
+     <a href="/screen" target="_blank" rel="noopener" class="button secondary">Открыть LED ↗</a></div>
+    <form id="screenForm" class="control-fields">
+      <label>Режим показа<select name="layout" class="field">
+       <option value="live-mosaic">Живая мозаика · динамические перестройки</option>
+       <option value="puzzle">Пазл из фотографий</option><option value="grid">Статическая сетка</option>
+       <option value="carousel-quad">Карусель · 4 ленты</option><option value="carousel-double">Карусель · 2 ленты</option>
+       <option value="carousel-triple">Карусель · 3 ленты</option>
+       <option value="carousel-festival">Фестивальная карусель</option></select></label>
+      <label>Максимум фотографий на экране<input name="maxPhotos" class="field" type="number" min="1" max="500"></label>
+      <label>Зазор между фото, пиксели<input name="gap" class="field" type="number" min="0" max="16"></label>
+      <label>Обрезка фотографий<select name="fit" class="field"><option value="contain">Показывать целиком</option>
+       <option value="cover">Заполнить область</option></select></label>
+      <label>Обновление живой мозаики, секунд<input name="liveInterval" class="field" type="number" min="3" max="45"></label>
+      <label>Размер выделенного фото, %<input name="liveFocus" class="field" type="number" min="25" max="65"></label>
+      <label>Скорость больших лент, px/сек<input name="carouselSpeed" class="field" type="number" min="20" max="260"></label>
+      <label>Скорость малых лент, px/сек<input name="carouselOuterSpeed" class="field" type="number" min="20" max="300"></label>
+      <div class="control-switches">
+       <label><input type="checkbox" name="showLogo"> Логотип BALI</label>
+       <label><input type="checkbox" name="showLive"> PHOTO LIVE</label>
+       <label><input type="checkbox" name="showEvent"> Название вечеринки</label>
+       <label><input type="checkbox" name="showQr"> QR загрузки</label>
+       <label><input type="checkbox" name="showHint"> Подсказка гостям</label>
+      </div>
+      <div class="control-form-actions"><button class="button primary" type="submit">СОХРАНИТЬ НА ЭКРАНЕ</button>
+       <span class="muted" id="screenSaved">Параметры с клубного сервера</span></div>
+    </form>
+    <p class="control-hint">Расширенные настройки положения логотипа, QR и композиции по-прежнему доступны на самом LED-экране.</p>
+  </section>
+  <section data-panel="photos" class="control-panel" hidden>
+   <div class="control-panel-head"><div><h2>Фотографии гостей на экран</h2>
+    <p class="muted">Обычные фотографии и их модерация остаются исключительно на PHOTO WALL. Квоты D1 и BALI-MENU не расходуются.</p></div>
+    <div class="control-heading-actions"><a href="/" target="_blank" rel="noopener" class="button secondary">Ссылка для гостей ↗</a>
+     <a href="/admin" class="button secondary">Полная модерация ↗</a></div></div>
+   <div class="control-metrics" id="ordinaryStats"></div>
+   <div class="control-panel-head"><h2>Очередь проверки</h2><div class="control-heading-actions">
+    <button type="button" id="photosPrev" class="button secondary">←</button>
+    <span class="muted" id="photosPage">1 / 1</span>
+    <button type="button" id="photosNext" class="button secondary">→</button></div></div>
+   <div id="ordinaryPhotoGrid" class="control-photo-grid"></div>
+  </section>
+  <section data-panel="contest" class="control-panel" hidden>
+   <div class="control-panel-head"><div><h2>Король и Королева ночи</h2>
+    <p class="muted">Участники, их карты и голоса находятся в базе BALI-MENU. На PHOTO WALL остаются копии конкурсных снимков для модерации и LED-показа.</p></div>
+    <a href="/admin/contest" class="button secondary">Расширенные настройки конкурса ↗</a></div>
+   <div id="contestStatus" class="control-contest-status"></div>
+   <div class="control-metrics" id="contestStats"></div>
+   <div class="control-panel-head"><h2>Заявки и фотографии участников</h2>
+    <p class="muted">На экране видны номер и фото. Модератору дополнительно доступны имя и номер BALI Card.</p></div>
+   <div id="contestPhotoGrid" class="control-photo-grid"></div>
+   <div class="control-panel-head"><h2>Призы и начисления</h2></div>
+   <div id="contestRewards" class="control-reward-list"></div>
+  </section>
+ </section>
+</main></div></body></html>
