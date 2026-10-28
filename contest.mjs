@@ -84,7 +84,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
     if(!contest)return {contest:null,entries:[],winners:[],serverNow:now()};
     const winners=winnerList.all(contest.id);
     const entries=contest.state==='live'
-      ?db.prepare("SELECT id,display_name FROM contest_entries WHERE contest_id=? AND status='approved' ORDER BY id LIMIT 250").all(contest.id)
+      ?db.prepare("SELECT id,display_name FROM contest_entries WHERE contest_id=? AND status='approved' ORDER BY id LIMIT 500").all(contest.id)
       :[];
     return {contest:{id:contest.id,title:contest.title,prizePlaces:contest.prize_places,shape:contest.shape,
       tileHeight:contest.tile_height,tileSpeed:contest.tile_speed,durationSeconds:contest.duration_seconds,state:contest.state,
