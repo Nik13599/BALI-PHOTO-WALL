@@ -45,7 +45,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
   );
   const selectActive=db.prepare("SELECT c.* FROM contests c JOIN events e ON e.id=c.event_id WHERE e.active=1 ORDER BY c.id DESC LIMIT 1");
   const selectById=db.prepare('SELECT * FROM contests WHERE id=?');
-  const winnerList=db.prepare('SELECT entry_id AS id,place,votes FROM contest_winners WHERE contest_id=? ORDER BY place');
+  const winnerList=db.prepare('SELECT w.entry_id AS id,w.place,w.votes,e.display_name FROM contest_winners w JOIN contest_entries e ON e.id=w.entry_id WHERE w.contest_id=? ORDER BY w.place');
   const entryById=db.prepare('SELECT * FROM contest_entries WHERE id=?');
   const ranked=db.prepare("SELECT e.id,COUNT(v.voter_hash) AS votes FROM contest_entries e LEFT JOIN contest_votes v ON v.entry_id=e.id WHERE e.contest_id=? AND e.status='approved' GROUP BY e.id ORDER BY votes DESC,e.created_at ASC,e.id ASC");
   const closeDue=db.transaction(()=>{
@@ -87,7 +87,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
       ?db.prepare("SELECT id,display_name FROM contest_entries WHERE contest_id=? AND status='approved' ORDER BY id LIMIT 250").all(contest.id)
       :[];
     return {contest:{id:contest.id,title:contest.title,prizePlaces:contest.prize_places,shape:contest.shape,
-      tileHeight:contest.tile_height,tileSpeed:contest.tile_speed,state:contest.state,
+      tileHeight:contest.tile_height,tileSpeed:contest.tile_speed,durationSeconds:contest.duration_seconds,state:contest.state,
       startedAt:contest.started_at,endsAt:contest.ends_at,finishedAt:contest.finished_at},
       entries,winners,serverNow:now()};
   }
@@ -182,8 +182,9 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
       try{
         const contest=finishDue(),externalId=String(req.body?.externalId||'').trim();
         const name=String(req.body?.name||'').trim();
+        const cardId=String(req.body?.baliCardId||'').trim();
         if(!contest||contest.state!=='draft')return error(res,409,'Приём заявок закрыт');
-        if(!/^[a-zA-Z0-9:_-]{3,100}$/.test(externalId)||name.length<2||name.length>70||
+        if(!/^[a-zA-Z0-9:_-]{3,100}$/.test(externalId)||!/^[0-9]{6}$/.test(cardId)||name.length<2||name.length>70||
           req.body?.consent!=='yes'||!req.file)return error(res,400,'Недостаточно данных или согласия участника');
         if(db.prepare('SELECT 1 FROM contest_entries WHERE contest_id=? AND external_id=?').get(contest.id,externalId))
           return error(res,409,'Такая заявка уже получена');
@@ -195,8 +196,8 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
         const filename=crypto.randomUUID()+'.webp';
         await fsp.writeFile(path.join(directory,filename),data,{flag:'wx'});
         try{
-          const result=db.prepare('INSERT INTO contest_entries(contest_id,external_id,display_name,filename,status,created_at) VALUES (?,?,?,?,?,?)')
-            .run(contest.id,externalId,name,filename,'pending',now());
+          const result=db.prepare('INSERT INTO contest_entries(contest_id,external_id,display_name,filename,card_id,status,created_at) VALUES (?,?,?,?,?,?,?)')
+            .run(contest.id,externalId,name,filename,cardId,'pending',now());
           res.status(201).json({ok:true,entryId:Number(result.lastInsertRowid),status:'pending'});
         }catch(err){await fsp.unlink(path.join(directory,filename)).catch(()=>{});throw err;}
       }finally{await cleanup();}
