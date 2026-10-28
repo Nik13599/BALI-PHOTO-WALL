@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ru"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0a0b09"><meta name="robots" content="noindex,nofollow">
+<title>BALI PHOTO WALL · Конкурс</title>
+<link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/contest.css">
+<script defer src="/contest-admin.js"></script>
+</head><body data-page="contest-admin"><div class="noise"></div>
+<div class="shell admin-shell">
+<header class="header"><a class="wordmark" href="/admin">BALI<span class="accent">.</span></a><span class="header-note">PHOTO WALL · CONTEST CONTROL</span></header>
+<nav class="contest-tabs" aria-label="Разделы модератора">
+<a href="/admin">Фотографии</a><a href="/admin/contest" aria-current="page">👑 Конкурс</a><a href="/screen" target="_blank" rel="noopener">LED-экран ↗</a>
+</nav>
+<main id="contestAdminRoot" class="contest-admin-root">
+<section class="login-card" id="contestLogin"><div class="eyebrow">СЛУЖЕБНЫЙ ДОСТУП</div><h1>УПРАВЛЕНИЕ<br><span class="glow">КОНКУРСОМ</span></h1>
+<form id="contestLoginForm"><label for="contestPassword">Пароль модератора</label><input class="field" id="contestPassword" type="password" autocomplete="current-password" required>
+<button class="button primary" type="submit">ВОЙТИ</button></form></section>
+<div class="alert" id="contestAdminMessage" role="status" aria-live="polite"></div>
+</main></div>
+<dialog id="contestCropDialog" class="contest-crop-dialog" aria-label="Настройка кадра">
+<form method="dialog" class="crop-dialog-inner"><div class="crop-dialog-head"><h2>Кадрировать участника</h2><button class="button secondary" value="cancel" type="submit">Закрыть ×</button></div>
+<p class="muted">Перемещай снимок пальцем или ползунками. Формат кадра выбран в настройках конкурса.</p>
+<div class="crop-preview" id="contestCropPreview"><img id="contestCropImage" alt="Кадрирование фотографии"></div>
+<label>Смещение по горизонтали <input id="contestCropX" type="range" min="0" max="100" value="50"></label>
+<label>Смещение по вертикали <input id="contestCropY" type="range" min="0" max="100" value="50"></label>
+<button class="button primary" id="contestSaveCrop" type="button">СОХРАНИТЬ КАДР</button>
+</form></dialog>
+</body></html>
