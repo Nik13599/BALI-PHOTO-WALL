@@ -188,7 +188,10 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
         const contest=finishDue(),externalId=String(req.body?.externalId||'').trim();
         const name=String(req.body?.name||'').trim();
         const cardId=String(req.body?.baliCardId||'').trim();
-        if(!contest||contest.state!=='draft')return error(res,409,'Приём заявок закрыт');
+        if(!contest||contest.state!=='draft'||
+          (process.env.CONTEST_ALLOW_LOCAL_RESULTS!=='1'&&
+            (!contest.starts_at||now()<contest.starts_at-3600000||now()>=contest.starts_at)))
+          return error(res,409,'Приём заявок открыт только с 23:00 до 00:00');
         if(!/^[a-zA-Z0-9:_-]{3,100}$/.test(externalId)||!/^[0-9]{6}$/.test(cardId)||name.length<2||name.length>70||
           req.body?.consent!=='yes'||!req.file)return error(res,400,'Недостаточно данных или согласия участника');
         const existing=db.prepare('SELECT id,status FROM contest_entries WHERE contest_id=? AND external_id=?').get(contest.id,externalId);
