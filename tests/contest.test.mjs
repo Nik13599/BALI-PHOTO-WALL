@@ -92,7 +92,7 @@ test('BALI contest: external signup, moderation, votes, winners and durable rewa
   beforeReplaceDb.close();
   replaceResponse=await request('/api/admin/contest/entries/'+idList[0]+'/replace',{
    method:'POST',headers:{Cookie:adminCookie,'X-BALI-Action':'1'},body:newPhoto()});
-  assert.equal(replaceResponse.status,200,await replaceResponse.text());
+  assert.equal(replaceResponse.status,200);
   const swapped=await replaceResponse.json();
   assert.equal(swapped.entryId,idList[0]);
   assert.equal(swapped.baliCardId,'100001');
