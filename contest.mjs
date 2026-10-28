@@ -77,6 +77,11 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
       db.prepare("UPDATE contests SET state='complete',finished_at=? WHERE id=? AND state='live'").run(now(),contest.id);
     }
   });
+  // Midnight is a hard cutoff: an asynchronous scheduler cannot extend the
+  // moderation window even briefly while transitioning draft -> live.
+  const isEditable=contest=>Boolean(contest&&contest.state==='draft'&&
+    (process.env.CONTEST_ALLOW_LOCAL_RESULTS==='1'||
+     !contest.starts_at||now()<contest.starts_at));
   const finishDue=()=>{closeDue();return selectActive.get()||null;};
   setInterval(()=>{try{closeDue();}catch(err){console.error('Contest close failed:',err.message)}},1000).unref();
 
@@ -143,7 +148,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
       !Number.isInteger(tileSpeed)||tileSpeed<20||tileSpeed>250||!Number.isInteger(duration)||duration<60||duration>7200||
       title.length<5||title.length>90)return error(res,400,'Проверьте настройки конкурса');
     const old=db.prepare('SELECT * FROM contests WHERE event_id=?').get(active.id);
-    if(old && old.state!=='draft')return error(res,409,'Изменять настройки можно до запуска конкурса');
+    if(old&&!isEditable(old))return error(res,409,'Настройки заблокированы с началом голосования');
     if(old)db.prepare('UPDATE contests SET title=?,prize_places=?,shape=?,tile_height=?,tile_speed=?,duration_seconds=? WHERE id=?')
       .run(title,prize,shape,tileHeight,tileSpeed,duration,old.id);
     else db.prepare('INSERT INTO contests(event_id,title,prize_places,shape,tile_height,tile_speed,duration_seconds,created_at) VALUES (?,?,?,?,?,?,?,?)')
@@ -153,7 +158,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
   app.post('/api/admin/contest/entries/:id/status',adminAuth,requireAction,(req,res)=>{
     const entry=entryById.get(positiveId(req.params.id)),contest=entry&&selectById.get(entry.contest_id);
     if(!entry||!contest)return error(res,404,'Заявка не найдена');
-    if(contest.state!=='draft')return error(res,409,'Модерация недоступна после начала голосования');
+    if(!isEditable(contest))return error(res,409,'Модерация недоступна после начала голосования');
     if(!['approved','rejected','pending'].includes(req.body?.status))return error(res,400,'Недопустимый статус');
     const result=db.transaction(()=>{
       db.prepare('UPDATE contest_entries SET status=? WHERE id=?').run(req.body.status,entry.id);
@@ -164,7 +169,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
   app.post('/api/admin/contest/entries/:id/crop',adminAuth,requireAction,asyncRoute(async(req,res)=>{
     const entry=entryById.get(positiveId(req.params.id)),contest=entry&&selectById.get(entry.contest_id);
     if(!entry||!contest)return error(res,404,'Заявка не найдена');
-    if(contest.state!=='draft')return error(res,409,'Кадрирование закрыто после запуска');
+    if(!isEditable(contest))return error(res,409,'Кадрирование закрыто после запуска');
     const x=Number(req.body?.x),y=Number(req.body?.y);
     if(!Number.isFinite(x)||!Number.isFinite(y)||x<0||x>100||y<0||y>100)return error(res,400,'Смещение: от 0 до 100%');
     const src=path.join(directory,entry.filename),info=await sharp(src).metadata();
@@ -182,8 +187,9 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
       const revision=now();
       db.transaction(()=>{
         db.prepare("UPDATE contest_entries SET crop_filename=?,image_updated_at=? WHERE id=? AND "+
-          "EXISTS(SELECT 1 FROM contests WHERE id=? AND state='draft')")
-          .run(filename,revision,entry.id,entry.contest_id);
+          "EXISTS(SELECT 1 FROM contests WHERE id=? AND state='draft' AND (?=1 OR starts_at IS NULL OR starts_at>?))")
+          .run(filename,revision,entry.id,entry.contest_id,
+            process.env.CONTEST_ALLOW_LOCAL_RESULTS==='1'?1:0,now());
         audit.run(entry.contest_id,entry.id,'crop',entry.crop_filename||entry.filename,filename,revision);
       })();
       if(entry.crop_filename)await fsp.unlink(path.join(directory,entry.crop_filename)).catch(()=>{});
@@ -201,7 +207,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
         const entry=entryById.get(positiveId(req.params.id));
         const contest=entry&&selectById.get(entry.contest_id);
         if(!entry||!contest)return error(res,404,'Заявка не найдена');
-        if(contest.state!=='draft')return error(res,409,
+        if(!isEditable(contest))return error(res,409,
           'Фотографии можно заменять только до запуска голосования');
         if(!req.file)return error(res,400,'Выберите файл фотографии');
         if(!['image/jpeg','image/png','image/webp'].includes(req.file.mimetype))
@@ -226,7 +232,8 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
           const result=db.prepare("UPDATE contest_entries SET filename=?,crop_filename=NULL,"+
             "image_updated_at=? WHERE id=? AND filename=? AND "+
             "EXISTS(SELECT 1 FROM contests WHERE id=? AND state='draft')")
-            .run(filename,revision,entry.id,entry.filename,entry.contest_id);
+            .run(filename,revision,entry.id,entry.filename,entry.contest_id,
+              process.env.CONTEST_ALLOW_LOCAL_RESULTS==='1'?1:0,now());
           if(!result.changes)return false;
           audit.run(entry.contest_id,entry.id,'replace',
             entry.crop_filename||entry.filename,filename,revision);
