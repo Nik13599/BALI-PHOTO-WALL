@@ -72,7 +72,15 @@ function renderWinners(data){
     wrap.append(photo);
     const crownEl=document.createElement('span');
     crownEl.className='contest-crown';
-    crownEl.textContent='♛';crownEl.setAttribute('aria-label','Корона');
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 100 80');svg.setAttribute('width','100%');svg.setAttribute('height','100%');
+    const polygon=document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    polygon.setAttribute('points','8,22 28,43 50,9 72,43 92,22 84,65 16,65');
+    polygon.setAttribute('fill','currentColor');polygon.setAttribute('stroke','#fff8');polygon.setAttribute('stroke-width','1.5');
+    const base=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    base.setAttribute('x','16');base.setAttribute('y','66');base.setAttribute('width','68');base.setAttribute('height','10');
+    base.setAttribute('rx','2');base.setAttribute('fill','currentColor');
+    svg.append(polygon,base);crownEl.append(svg);crownEl.setAttribute('aria-label','Корона');
     wrap.append(crownEl);
     const name=document.createElement('div');
     name.className='contest-winner-name';
