@@ -160,12 +160,77 @@ function contestPhase(c){
  if(c.state==='live')return 'Голосование идёт · осталось '+Math.max(0,Math.ceil((c.endsAt-Date.now())/60000))+' мин';
  return 'Конкурс завершён · '+(c.finishedAt?new Date(c.finishedAt).toLocaleString('ru-RU'):'итоги готовы');
 }
+function renderContestControls(c,rewards){
+ const formHost=$('contestConfig');
+ if(document.activeElement?.closest('#controlContestForm'))return;
+ const locked=Boolean(c&&c.state!=='draft');
+ const places=c?.prizePlaces||3;
+ const bonusNames={free_entry:'Бесплатный вход',shot:'Шоты',cocktail:'Коктейли',hookah:'Кальян'};
+ const prizeForm=[1,2,3].map(n=>{
+  const prize=(rewards.prizes||[]).find(p=>p.place===n);
+  const current=new Map((prize?.bonuses||[]).map(b=>[b.code,b.quantity]));
+  return '<fieldset class="control-prize" data-prize-place="'+n+'" '+(n>places?'hidden':'')+'>'+
+   '<legend>'+({1:'🥇 1 место',2:'🥈 2 место',3:'🥉 3 место'}[n])+'</legend>'+
+   '<label>BALI Coin<input name="coins'+n+'" type="number" class="field" min="0" max="100000" value="'+(prize?.baliCoins||0)+'"></label>'+
+   Object.entries(bonusNames).map(([code,name])=>
+    '<label>'+name+'<input class="field" type="number" min="0" max="100" name="bonus'+n+code+'" value="'+(current.get(code)||0)+'"></label>').join('')+
+   '</fieldset>';
+ }).join('');
+ formHost.innerHTML='<h2>Параметры конкурса и призовые места</h2>'+
+  '<p class="muted">Управление подготовкой до 00:00. Заявки поступают из BALI-MENU, а модерация выполняется на клубном компьютере.</p>'+
+  '<form id="controlContestForm" class="control-fields" '+(locked?'data-locked="1"':'')+'>'+
+  '<label>Название<input name="title" class="field" maxlength="90" required value="'+escapeHtml(c?.title||'КОРОЛЬ И КОРОЛЕВА НОЧИ')+'"></label>'+
+  '<label>Количество призовых мест<select name="prizePlaces" class="field"><option value="1" '+(places===1?'selected':'')+'>1 · Золотая корона</option><option value="3" '+(places===3?'selected':'')+'>3 · Золото, серебро, бронза</option></select></label>'+
+  '<label>Форма конкурсных фотографий<select name="shape" class="field">'+
+  [['square','Квадрат 1:1'],['portrait','Вертикальная 9:16'],['landscape','Горизонтальная 16:9']].map(([k,t])=>'<option value="'+k+'" '+((c?.shape||'square')===k?'selected':'')+'>'+t+'</option>').join('')+'</select></label>'+
+  '<label>Длительность голосования, мин<input name="durationMinutes" class="field" type="number" min="1" max="120" value="'+Math.round((c?.durationSeconds||600)/60)+'"></label>'+
+  '<label>Высота ленты, px<input name="tileHeight" class="field" type="number" min="100" max="550" value="'+(c?.tileHeight||240)+'"></label>'+
+  '<label>Скорость ленты, px/сек<input name="tileSpeed" class="field" type="number" min="20" max="250" value="'+(c?.tileSpeed||80)+'"></label>'+
+  '<div class="control-prize-grid">'+prizeForm+'</div>'+
+  '<div class="control-form-actions"><button type="submit" class="button primary" '+(locked?'disabled':'')+'>СОХРАНИТЬ КОНКУРС И ПРИЗЫ</button>'+
+  '<small class="muted">'+(locked?'Настройки закреплены после старта голосования.':
+   'Призовые места и бонусы сохраняются до запуска в 00:00.')+'</small></div></form>';
+ if(locked)formHost.querySelectorAll('input,select').forEach(element=>element.disabled=true);
+}
+$('contestConfig').addEventListener('change',event=>{
+ if(event.target.name!=='prizePlaces')return;
+ const places=Number(event.target.value);
+ for(const box of $('contestConfig').querySelectorAll('[data-prize-place]'))
+  box.hidden=Number(box.dataset.prizePlace)>places;
+});
+$('contestConfig').addEventListener('submit',async event=>{
+ if(event.target.id!=='controlContestForm')return;
+ event.preventDefault();
+ const form=event.target,button=form.querySelector('button[type="submit"]');
+ if(button.disabled)return;
+ button.disabled=true;
+ const val=name=>form.elements.namedItem(name).value;
+ const places=Number(val('prizePlaces'));
+ const bonuses=['free_entry','shot','cocktail','hookah'];
+ const prizes=Array.from({length:places},(_,i)=>{
+  const n=i+1;
+  return {baliCoins:Number(val('coins'+n)),bonuses:bonuses.map(code=>({
+   code,quantity:Number(val('bonus'+n+code))
+  })).filter(b=>b.quantity>0)};
+ });
+ try{
+  await action('/api/admin/contest/settings',{
+   title:val('title'),prizePlaces:places,shape:val('shape'),
+   tileHeight:Number(val('tileHeight')),tileSpeed:Number(val('tileSpeed')),
+   durationSeconds:Number(val('durationMinutes'))*60
+  });
+  await action('/api/admin/contest/prizes',{prizes});
+  notice('Параметры конкурса и награды записаны на PHOTO WALL. Голоса и карты остаются в BALI-MENU.');
+  await loadContest();
+ }catch(error){notice('Не удалось завершить сохранение: '+error.message,true);button.disabled=false;}
+});
 async function loadContest(){
  const [a,rewards]=await Promise.all([
   api('/api/admin/contest'),api('/api/admin/contest/rewards')
  ]);
  contestData=a;
  const c=a.contest,local=a.counts||{},remote=latestStatus?.baliMenu;
+ renderContestControls(c,rewards);
  $('contestStatus').textContent=contestPhase(c)+' · голосование с 00:00 · '+(c?.prizePlaces||3)+' призовых мест.';
  const stats=$('contestStats');stats.replaceChildren();
  metric(stats,'Одобрено на PHOTO WALL',local.approved||0);
