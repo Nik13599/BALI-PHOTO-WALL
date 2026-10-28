@@ -68,6 +68,45 @@ test('BALI contest: external signup, moderation, votes, winners and durable rewa
    const received=await (await request('/api/admin/contest',{headers:{Cookie:adminCookie}})).json();
    idList.push(received.entries.find(e=>e.external_id==='person_'+i).id);
   }
+  // A moderator may replace a submitted photo with a Photoshop-exported
+  // JPG/PNG/WebP before voting, without changing participant or BALI Card ID.
+  const replacement=await sharp({create:{width:320,height:440,channels:3,
+   background:'#ce324a'}}).png().toBuffer();
+  const newPhoto=()=>{const form=new FormData();
+    form.append('photo',new Blob([replacement],{type:'image/png'}),'photoshop-export.png');
+    return form;
+  };
+  let replaceResponse=await request('/api/admin/contest/entries/'+idList[0]+'/replace',{
+   method:'POST',body:newPhoto()});
+  assert.equal(replaceResponse.status,401,'No anonymous replacement');
+  replaceResponse=await request('/api/admin/contest/entries/'+idList[0]+'/replace',{
+   method:'POST',headers:{Cookie:adminCookie},body:newPhoto()});
+  assert.equal(replaceResponse.status,403,'Admin CSRF header required');
+  const invalid=new FormData();invalid.append('photo',
+    new Blob(['<html>unsafe</html>'],{type:'image/png'}),'fake.png');
+  replaceResponse=await request('/api/admin/contest/entries/'+idList[0]+'/replace',{
+   method:'POST',headers:{Cookie:adminCookie,'X-BALI-Action':'1'},body:invalid});
+  assert.equal(replaceResponse.status>=400,true,'Malicious input must be rejected');
+  const beforeReplaceDb=new Database(path.join(dir,'bali-photo-wall.sqlite'));
+  const originalEntry=beforeReplaceDb.prepare('SELECT * FROM contest_entries WHERE id=?').get(idList[0]);
+  beforeReplaceDb.close();
+  replaceResponse=await request('/api/admin/contest/entries/'+idList[0]+'/replace',{
+   method:'POST',headers:{Cookie:adminCookie,'X-BALI-Action':'1'},body:newPhoto()});
+  assert.equal(replaceResponse.status,200,await replaceResponse.text());
+  const swapped=await replaceResponse.json();
+  assert.equal(swapped.entryId,idList[0]);
+  assert.equal(swapped.baliCardId,'100001');
+  const afterReplaceDb=new Database(path.join(dir,'bali-photo-wall.sqlite'));
+  const updatedEntry=afterReplaceDb.prepare('SELECT * FROM contest_entries WHERE id=?').get(idList[0]);
+  assert.notEqual(updatedEntry.filename,originalEntry.filename);
+  assert.equal(updatedEntry.external_id,originalEntry.external_id);
+  assert.equal(updatedEntry.card_id,originalEntry.card_id);
+  assert.equal(updatedEntry.status,'pending');
+  assert.equal(updatedEntry.crop_filename,null);
+  const log=afterReplaceDb.prepare(
+    "SELECT action FROM contest_photo_moderation_log WHERE entry_id=? ORDER BY id").all(idList[0]);
+  assert(log.some(row=>row.action==='replace'));
+  afterReplaceDb.close();
   assert.equal((await request('/api/screen/contest/photo/'+idList[0],{headers:screen})).status,404);
   for(const id of idList){
    r=await mutation('/api/admin/contest/entries/'+id+'/crop',{x:50,y:50});
@@ -87,6 +126,12 @@ test('BALI contest: external signup, moderation, votes, winners and durable rewa
   assert.equal((await request('/api/public/contest-photo/'+idList[0])).status,200,
    'Voting gallery images are public only after moderation and contest launch');
   assert.equal((await request('/api/screen/contest/photo/'+idList[0],{headers:screen})).status,200);
+  replaceResponse=await request('/api/admin/contest/entries/'+idList[0]+'/replace',{
+   method:'POST',headers:{Cookie:adminCookie,'X-BALI-Action':'1'},body:newPhoto()});
+  assert.equal(replaceResponse.status,409,
+   'After 00:00 no moderator may change the published photo while users vote');
+  assert.equal((await mutation('/api/admin/contest/entries/'+idList[0]+'/status',
+   {status:'rejected'})).status,409);
   const vote=(person,voter)=>request('/api/integrations/contest-vote',{method:'POST',
    headers:{...bridgeHeaders,'Content-Type':'application/json'},
    body:JSON.stringify({externalId:person,voterId:voter})});
