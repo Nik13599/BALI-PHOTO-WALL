@@ -43,6 +43,20 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
     "entry_id INTEGER NOT NULL REFERENCES contest_entries(id) ON DELETE CASCADE,"+
     "place INTEGER NOT NULL,votes INTEGER NOT NULL,PRIMARY KEY(contest_id,place),UNIQUE(contest_id,entry_id));"
   );
+  // Local audit and image revision never leave the PHOTO WALL computer.
+  // A revision changes image URLs in the LED and BALI-MENU voting gallery,
+  // while keeping the same contestant, BALI Card, and voting number.
+  const entryFields=db.pragma('table_info(contest_entries)').map(item=>item.name);
+  if(!entryFields.includes('image_updated_at'))
+    db.exec('ALTER TABLE contest_entries ADD COLUMN image_updated_at INTEGER NOT NULL DEFAULT 0');
+  db.exec("CREATE TABLE IF NOT EXISTS contest_photo_moderation_log ("+
+    "id INTEGER PRIMARY KEY AUTOINCREMENT,contest_id INTEGER NOT NULL,entry_id INTEGER NOT NULL,"+
+    "action TEXT NOT NULL CHECK(action IN ('replace','approved','rejected','pending','crop')),"+
+    "old_filename TEXT,new_filename TEXT,created_at INTEGER NOT NULL);"+
+    "CREATE INDEX IF NOT EXISTS contest_photo_moderation_log_entry "+
+    "ON contest_photo_moderation_log(contest_id,entry_id,created_at)");
+  const audit=db.prepare('INSERT INTO contest_photo_moderation_log '+
+    '(contest_id,entry_id,action,old_filename,new_filename,created_at) VALUES(?,?,?,?,?,?)');
   const selectActive=db.prepare("SELECT c.* FROM contests c JOIN events e ON e.id=c.event_id WHERE e.active=1 ORDER BY c.id DESC LIMIT 1");
   const selectById=db.prepare('SELECT * FROM contests WHERE id=?');
   const winnerList=db.prepare('SELECT w.entry_id AS id,w.place,w.votes,e.display_name FROM contest_winners w JOIN contest_entries e ON e.id=w.entry_id WHERE w.contest_id=? ORDER BY w.place');
@@ -87,7 +101,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
     if(!contest)return {contest:null,entries:[],winners:[],serverNow:now()};
     const winners=winnerList.all(contest.id);
     const entries=contest.state==='live'
-      ?db.prepare("SELECT id,display_name FROM contest_entries WHERE contest_id=? AND status='approved' ORDER BY id LIMIT 500").all(contest.id)
+      ?db.prepare("SELECT id,display_name,image_updated_at AS imageRevision FROM contest_entries WHERE contest_id=? AND status='approved' ORDER BY id LIMIT 500").all(contest.id)
       :[];
     return {contest:{id:contest.id,title:contest.title,prizePlaces:contest.prize_places,shape:contest.shape,
       tileHeight:contest.tile_height,tileSpeed:contest.tile_speed,durationSeconds:contest.duration_seconds,
@@ -107,7 +121,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
   app.get('/api/admin/contest',adminAuth,(_req,res)=>{
     const contest=finishDue();
     if(!contest)return res.json({contest:null,entries:[],winners:[],counts:{pending:0,approved:0,rejected:0,votes:0}});
-    const entries=db.prepare("SELECT e.id,e.external_id,e.card_id,e.display_name,e.status,e.created_at,e.crop_filename IS NOT NULL AS cropped,COUNT(v.voter_hash) AS votes FROM contest_entries e LEFT JOIN contest_votes v ON v.entry_id=e.id WHERE e.contest_id=? GROUP BY e.id ORDER BY CASE e.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,e.id DESC LIMIT 500").all(contest.id);
+    const entries=db.prepare("SELECT e.id,e.external_id,e.card_id,e.display_name,e.status,e.created_at,e.crop_filename IS NOT NULL AS cropped,e.image_updated_at AS imageRevision,COUNT(v.voter_hash) AS votes FROM contest_entries e LEFT JOIN contest_votes v ON v.entry_id=e.id WHERE e.contest_id=? GROUP BY e.id ORDER BY CASE e.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,e.id DESC LIMIT 500").all(contest.id);
     const counts={pending:0,approved:0,rejected:0,votes:db.prepare('SELECT COUNT(*) AS n FROM contest_votes WHERE contest_id=?').get(contest.id).n};
     for(const item of entries)counts[item.status]++;
     res.json({...publicState(contest),entries,counts});
@@ -141,7 +155,10 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
     if(!entry||!contest)return error(res,404,'Заявка не найдена');
     if(contest.state!=='draft')return error(res,409,'Модерация недоступна после начала голосования');
     if(!['approved','rejected','pending'].includes(req.body?.status))return error(res,400,'Недопустимый статус');
-    db.prepare('UPDATE contest_entries SET status=? WHERE id=?').run(req.body.status,entry.id);
+    const result=db.transaction(()=>{
+      db.prepare('UPDATE contest_entries SET status=? WHERE id=?').run(req.body.status,entry.id);
+      audit.run(entry.contest_id,entry.id,req.body.status,null,null,now());
+    })();
     res.json({ok:true});
   });
   app.post('/api/admin/contest/entries/:id/crop',adminAuth,requireAction,asyncRoute(async(req,res)=>{
@@ -162,11 +179,71 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
     const filename=entry.id+'-'+crypto.randomUUID()+'.webp';
     await fsp.writeFile(path.join(directory,filename),result,{flag:'wx'});
     try{
-      db.prepare('UPDATE contest_entries SET crop_filename=? WHERE id=?').run(filename,entry.id);
+      const revision=now();
+      db.transaction(()=>{
+        db.prepare("UPDATE contest_entries SET crop_filename=?,image_updated_at=? WHERE id=? AND "+
+          "EXISTS(SELECT 1 FROM contests WHERE id=? AND state='draft')")
+          .run(filename,revision,entry.id,entry.contest_id);
+        audit.run(entry.contest_id,entry.id,'crop',entry.crop_filename||entry.filename,filename,revision);
+      })();
       if(entry.crop_filename)await fsp.unlink(path.join(directory,entry.crop_filename)).catch(()=>{});
     }catch(err){await fsp.unlink(path.join(directory,filename)).catch(()=>{});throw err;}
     res.json({ok:true});
   }));
+  // Moderator replacement from their own PC, including Photoshop-prepared
+  // JPEG/PNG/WebP. The authenticated admin session and X-BALI-Action header
+  // are checked BEFORE receiving a file. No file is forwarded to BALI-MENU.
+  app.post('/api/admin/contest/entries/:id/replace',adminAuth,requireAction,
+    upload.single('photo'),asyncRoute(async(req,res)=>{
+      const discard=()=>req.file?.path?fsp.unlink(req.file.path).catch(()=>{}):Promise.resolve();
+      let filename=null;
+      try{
+        const entry=entryById.get(positiveId(req.params.id));
+        const contest=entry&&selectById.get(entry.contest_id);
+        if(!entry||!contest)return error(res,404,'Заявка не найдена');
+        if(contest.state!=='draft')return error(res,409,
+          'Фотографии можно заменять только до запуска голосования');
+        if(!req.file)return error(res,400,'Выберите файл фотографии');
+        if(!['image/jpeg','image/png','image/webp'].includes(req.file.mimetype))
+          return error(res,415,'Допустимы только JPG, PNG и WebP');
+        // MIME can be forged. Sharp checks the real file signature, dimensions
+        // and decoding; no executable file content is ever served back.
+        const input=sharp(req.file.path,{limitInputPixels:36_000_000,failOn:'error'});
+        const metadata=await input.metadata();
+        if(!['jpeg','png','webp'].includes(metadata.format))
+          return error(res,415,'Неподдерживаемый формат фотографии');
+        if(!metadata.width||!metadata.height||metadata.width<50||metadata.height<50)
+          return error(res,422,'Изображение слишком маленькое');
+        const image=await input.rotate().resize({
+          width:1600,height:1600,fit:'inside',withoutEnlargement:true
+        }).webp({quality:85,effort:4}).toBuffer();
+        // Unique filenames bust old thumbnail cache without changing the
+        // contestant's public number or linked 6-digit BALI Card.
+        filename=crypto.randomUUID()+'.webp';
+        await fsp.writeFile(path.join(directory,filename),image,{flag:'wx'});
+        const revision=Math.max(now(),Number(entry.image_updated_at||0)+1);
+        const updated=db.transaction(()=>{
+          const result=db.prepare("UPDATE contest_entries SET filename=?,crop_filename=NULL,"+
+            "image_updated_at=? WHERE id=? AND filename=? AND "+
+            "EXISTS(SELECT 1 FROM contests WHERE id=? AND state='draft')")
+            .run(filename,revision,entry.id,entry.filename,entry.contest_id);
+          if(!result.changes)return false;
+          audit.run(entry.contest_id,entry.id,'replace',
+            entry.crop_filename||entry.filename,filename,revision);
+          return true;
+        })();
+        if(!updated)return error(res,409,'Заявка изменилась. Обновите страницу');
+        // Only remove files AFTER the new version is durably committed.
+        const obsolete=[entry.filename,entry.crop_filename].filter(Boolean);
+        await Promise.all(obsolete.map(previous=>fsp.unlink(path.join(directory,previous)).catch(()=>{})));
+        filename=null;
+        res.json({ok:true,entryId:entry.id,number:entry.id,
+          baliCardId:entry.card_id,status:entry.status,imageRevision:revision});
+      }finally{
+        if(filename)await fsp.unlink(path.join(directory,filename)).catch(()=>{});
+        await discard();
+      }
+    }));
   app.post('/api/admin/contest/start',adminAuth,requireAction,(req,res)=>{
     finishDue();
     const contest=selectActive.get();
