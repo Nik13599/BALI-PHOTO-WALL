@@ -11,8 +11,7 @@ const validRewardTarget=url=>{
   try{
     const endpoint=new URL(url);
     if(endpoint.username||endpoint.password)return false;
-    if(endpoint.protocol==='https:')return true;
-    return endpoint.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(endpoint.hostname);
+    return endpoint.protocol==='https:'&&Boolean(endpoint.hostname);
   }catch{return false;}
 };
 const fail=(res,status,error)=>res.status(status).json({error});
