@@ -556,8 +556,36 @@ if(page==='screen'){
     cancelAnimationFrame(resizeFrame);
     resizeFrame=requestAnimationFrame(layout);
   });
+  // Club control room is authoritative for the shared LED settings.
+  // Personal per-screen positioning remains available on this display.
+  let remoteRevision=0,remoteBusy=false;
+  async function pullRemoteControls(){
+    if(remoteBusy)return;
+    remoteBusy=true;
+    try{
+      const response=await fetch('/api/screen/control-settings',{cache:'no-store',credentials:'same-origin'});
+      if(!response.ok)return;
+      const snapshot=await response.json();
+      const revision=Number(snapshot.updatedAt)||0;
+      if(revision>remoteRevision){
+        const updated=snapshot.settings||{};
+        for(const key of Object.keys(updated))if(key in defaults)settings[key]=updated[key];
+        remoteRevision=revision;
+        try{localStorage.setItem(STORE_KEY,JSON.stringify(settings));}catch{}
+        applySettings();
+      }
+      // Real screen heartbeat, not merely 'server running' status.
+      await fetch('/api/screen/control-heartbeat',{
+        method:'POST',cache:'no-store',credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({layout:settings.layout})
+      });
+    }catch(error){console.warn('LED control room sync:',error.message);}
+    finally{remoteBusy=false;}
+  }
   restoreScreenLogo();
   applySettings();
   refresh();
+  pullRemoteControls().catch(console.error);
   setInterval(refresh,5000);
+  setInterval(()=>pullRemoteControls().catch(console.error),5000);
 }
