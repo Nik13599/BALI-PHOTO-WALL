@@ -65,7 +65,7 @@
 .contest-winner[data-count="1"]{width:min(70vw,780px);height:min(87vh,950px)}
 .contest-winner-image{height:80%;max-width:100%;position:relative;filter:drop-shadow(0 15px 35px #000d)}
 .contest-winner-image img{width:100%;height:100%;object-fit:contain;border-radius:18px;border:3px solid var(--crown-color,#f4c84e);background:#08080891}
-.contest-crown{position:absolute;z-index:3;top:-12%;left:50%;transform:translateX(-50%);color:var(--crown-color,#f4c84e);font-size:clamp(65px,9vw,150px);line-height:1;text-shadow:0 5px 2px #000,0 0 35px var(--crown-color,#e9bc43);animation:crown-pulse 2.8s ease-in-out infinite}
+.contest-crown{display:block;width:clamp(65px,9vw,150px);height:clamp(55px,8vw,130px);position:absolute;z-index:3;top:-12%;left:50%;transform:translateX(-50%);color:var(--crown-color,#f4c84e);font-size:clamp(65px,9vw,150px);line-height:1;text-shadow:0 5px 2px #000,0 0 35px var(--crown-color,#e9bc43);animation:crown-pulse 2.8s ease-in-out infinite}
 .contest-winner-name{text-align:center;font-size:clamp(17px,2.3vw,42px);font-weight:950;text-shadow:0 3px 12px #000}
 .contest-winner-place{font-size:clamp(12px,1.4vw,28px);font-weight:850;color:var(--crown-color,#f4c84e)}
 .contest-winner.place-2{--crown-color:#c9d0df}.contest-winner.place-3{--crown-color:#c88955}
