@@ -7,6 +7,7 @@ const escapeHtml=s=>String(s??'').replace(/[&<>"']/g,c=>({
  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let active='screen',photoPage=1,screenLoaded=false,refreshing=false;
 let latestStatus=null,photoData=null,contestData=null,replacingEntryId=null;
+const canEdit=c=>Boolean(c?.state==='draft'&&(!c.startsAt||Date.now()<c.startsAt));
 const notice=(message,bad=false)=>{
  const target=$('controlMessage');target.textContent=message;target.classList.toggle('bad',bad);
 };
@@ -163,7 +164,7 @@ function contestPhase(c){
 function renderContestControls(c,rewards){
  const formHost=$('contestConfig');
  if(document.activeElement?.closest('#controlContestForm'))return;
- const locked=Boolean(c&&c.state!=='draft');
+ const locked=Boolean(c&&!canEdit(c));
  const places=c?.prizePlaces||3;
  const bonusNames={free_entry:'Бесплатный вход',shot:'Шоты',cocktail:'Коктейли',hookah:'Кальян'};
  const prizeForm=[1,2,3].map(n=>{
@@ -245,9 +246,9 @@ async function loadContest(){
   '<small>BALI Card: '+escapeHtml(e.card_id||'не установлена')+'</small>'+
   '<small>'+({pending:'Ожидает модерации',approved:'Допущен',rejected:'Отклонён'}[e.status]||e.status)+'</small>'+
   '<div class="control-photo-actions">'+
-  (c?.state==='draft'?'<button type="button" data-replace-entry="'+e.id+'">↥ Заменить фото</button>':'')+
-  (c?.state==='draft'&&e.status!=='approved'?'<button class="approve" data-entry-id="'+e.id+'" data-entry-status="approved">Одобрить</button>':'')+
-  (c?.state==='draft'&&e.status!=='rejected'?'<button class="reject" data-entry-id="'+e.id+'" data-entry-status="rejected">Отклонить</button>':'')+
+  (canEdit(c)?'<button type="button" data-replace-entry="'+e.id+'">↥ Заменить фото</button>':'')+
+  (canEdit(c)&&e.status!=='approved'?'<button class="approve" data-entry-id="'+e.id+'" data-entry-status="approved">Одобрить</button>':'')+
+  (canEdit(c)&&e.status!=='rejected'?'<button class="reject" data-entry-id="'+e.id+'" data-entry-status="rejected">Отклонить</button>':'')+
   '<a href="/admin/contest" class="button secondary">Кадр / настройки ↗</a></div></article>').join('');
  const names={1:'🥇 Золото',2:'🥈 Серебро',3:'🥉 Бронза'};
  const deliveries=new Map((rewards.deliveries||[]).map(r=>[r.place,r]));
@@ -262,7 +263,7 @@ async function loadContest(){
 }
 $('contestPhotoGrid').addEventListener('click',async event=>{
  const button=event.target.closest('button');if(!button)return;
- if(!contestData?.contest||contestData.contest.state!=='draft')return;
+ if(!canEdit(contestData?.contest))return;
  if(button.dataset.replaceEntry){
    replacingEntryId=Number(button.dataset.replaceEntry);
    const input=$('controlReplaceFile');input.value='';input.click();return;
@@ -276,7 +277,7 @@ $('contestPhotoGrid').addEventListener('click',async event=>{
 $('controlReplaceFile').addEventListener('change',async()=>{
  const input=$('controlReplaceFile'),file=input.files?.[0],id=replacingEntryId;
  if(!id||!file)return;
- if(contestData?.contest?.state!=='draft'){notice('Голосование уже началось. Замена закрыта.',true);return;}
+ if(!canEdit(contestData?.contest)){notice('Голосование уже началось. Замена закрыта.',true);return;}
  if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>8*1024*1024||file.size<=0){
    notice('Нужна фотография JPG, PNG или WebP до 8 МБ.',true);return;
  }
