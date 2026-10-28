@@ -27,6 +27,7 @@ export function registerCentralContest({app,db,DATA}){
  const dir=path.join(DATA,'contest');
  const thumbs=path.join(dir,'voting-thumbs');
  fs.mkdirSync(thumbs,{recursive:true});
+ const thumbJobs=new Map();
  const cols=db.pragma('table_info(contests)').map(r=>r.name);
  if(!cols.includes('starts_at'))db.exec('ALTER TABLE contests ADD COLUMN starts_at INTEGER');
  const current=()=>db.prepare("SELECT c.* FROM contests c JOIN events e ON e.id=c.event_id WHERE e.active=1 ORDER BY c.id DESC LIMIT 1").get();
@@ -87,12 +88,19 @@ export function registerCentralContest({app,db,DATA}){
    // The source filename makes cache entries immutable when moderators recrop.
    const output=path.join(thumbs,e.id+'-'+source+'.webp');
    if(!fs.existsSync(output)){
-    const image=await sharp(path.join(dir,source)).resize({
-     width:450,height:450,fit:'inside',withoutEnlargement:true
-    }).webp({quality:72,effort:3}).toBuffer();
-    await fsp.writeFile(output,image,{flag:'wx'}).catch(error=>{
-     if(error.code!=='EEXIST')throw error;
-    });
+    let job=thumbJobs.get(output);
+    if(!job){
+     job=(async()=>{
+      const image=await sharp(path.join(dir,source)).resize({
+       width:450,height:450,fit:'inside',withoutEnlargement:true
+      }).webp({quality:72,effort:3}).toBuffer();
+      await fsp.writeFile(output,image,{flag:'wx'}).catch(error=>{
+       if(error.code!=='EEXIST')throw error;
+      });
+     })();
+     thumbJobs.set(output,job);
+    }
+    try{await job;}finally{if(thumbJobs.get(output)===job)thumbJobs.delete(output);}
    }
    res.set('Cross-Origin-Resource-Policy','cross-origin')
     .set('Cache-Control','public,max-age=300').type('image/webp').sendFile(output);
