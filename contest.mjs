@@ -74,7 +74,7 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
     if(!crypto.timingSafeEqual(actual,expected))return error(res,401,'Недействительный ключ интеграции');
     next();
   };
-  const integrationLimiter=rateLimit({windowMs:60000,limit:90,standardHeaders:'draft-8',legacyHeaders:false});
+  const integrationLimiter=rateLimit({windowMs:60000,limit:5000,standardHeaders:'draft-8',legacyHeaders:false});
   const upload=multer({
     storage:multer.diskStorage({destination:(_r,_f,cb)=>cb(null,UPLOADS),filename:(_r,_f,cb)=>cb(null,crypto.randomUUID()+'.tmp')}),
     limits:{fileSize:8*1024*1024,files:1,fields:6}
