@@ -10,6 +10,7 @@ const DATA=path.resolve(process.env.DATA_DIR || path.join(ROOT,'data'));
 const BACKUPS=path.resolve(process.env.BACKUP_DIR || path.join(DATA,'backups'));
 const photosDir=path.join(DATA,'photos');
 const thumbnailsDir=path.join(DATA,'thumbnails');
+const contestDir=path.join(DATA,'contest');
 const stamp=new Date().toISOString().replace(/[:.]/g,'-');
 const name='bali-backup-'+stamp+'-'+crypto.randomBytes(3).toString('hex');
 const pending=path.join(BACKUPS,name+'.partial');
@@ -24,10 +25,15 @@ async function backup(){
     await database.backup(path.join(pending,'bali-photo-wall.sqlite'));
     await fs.mkdir(path.join(pending,'photos'));
     await fs.mkdir(path.join(pending,'thumbnails'));
+    await fs.mkdir(path.join(pending,'contest'));
+
     const snapshot=new Database(path.join(pending,'bali-photo-wall.sqlite'),{readonly:true});
-    let fileRows;
-    try {fileRows=snapshot.prepare('SELECT filename FROM photos').all();}
-    finally {snapshot.close();}
+    let fileRows,contestRows=[];
+    try {
+      fileRows=snapshot.prepare('SELECT filename FROM photos').all();
+      const hasContest=snapshot.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='contest_entries'").get();
+      if(hasContest)contestRows=snapshot.prepare('SELECT filename,crop_filename FROM contest_entries').all();
+    }finally {snapshot.close();}
     const validName=/^[a-f0-9-]{36}\.webp$/;
     let count=0;
     for (const row of fileRows) {
@@ -40,11 +46,23 @@ async function backup(){
       }catch(error){if(error.code!=='ENOENT')throw error;}
       count++;
     }
+    const contestFiles=new Set();
+    for(const row of contestRows){
+      contestFiles.add(row.filename);
+      if(row.crop_filename)contestFiles.add(row.crop_filename);
+    }
+    const safeContest=/^(?:[a-f0-9-]{36}|[0-9]+-[a-f0-9-]{36})\.webp$/;
+    let contestCount=0;
+    for(const filename of contestFiles){
+      if(!safeContest.test(filename))throw Error('Unsafe contest file name in database snapshot');
+      await fs.copyFile(path.join(contestDir,filename),path.join(pending,'contest',filename));
+      contestCount++;
+    }
     await fs.writeFile(path.join(pending,'manifest.json'),JSON.stringify({
-      format:'bali-photo-wall-v1',createdAt:new Date().toISOString(),photos:count
+      format:'bali-photo-wall-v2',createdAt:new Date().toISOString(),photos:count,contestPhotos:contestCount
     },null,2)+'\n');
     await fs.rename(pending,completed);
-    console.log('BALI PHOTO WALL backup complete:',completed,'photos:',count);
+    console.log('BALI PHOTO WALL backup complete:',completed,'photos:',count,'contest photos:',contestCount);
   }catch(error){
     await fs.rm(pending,{recursive:true,force:true});
     throw error;

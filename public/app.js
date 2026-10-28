@@ -101,7 +101,7 @@ if(page==='admin') {
       if(signature===previousDashboard) return;
       previousDashboard=signature;
       if(!$('#dashboard')) {
-        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="panel admin-bulk-panel"><h2>МАССОВАЯ ЗАГРУЗКА ФОТОГРАФИЙ</h2><p class="muted">Выдели сразу много файлов. Приложение подготовит фотографии и отправит партиями по 8. Поддерживаются JPEG, PNG, WebP.</p><form id="bulkPhotoForm"><input type="file" class="field" id="bulkPhotoFiles" accept="image/jpeg,image/png,image/webp" multiple required><div class="bulk-form-row"><label>Поток <select class="field" id="bulkPhotoLane"><option value="auto">Автоматически</option><option value="top">↑ Верхний</option><option value="bottom">↓ Нижний</option></select></label><label>Публикация <select class="field" id="bulkPhotoStatus"><option value="approved">Сразу на экран</option><option value="pending">Оставить на модерации</option></select></label><button type="submit" class="button primary" id="bulkPhotoSubmit">ЗАГРУЗИТЬ ФОТОГРАФИИ</button></div><div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div></form></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
+        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button primary" href="/admin/control">ОБЩАЯ ПАНЕЛЬ</a><a class="button secondary" href="/admin/contest">👑 КОНКУРС</a><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="panel admin-bulk-panel"><h2>МАССОВАЯ ЗАГРУЗКА ФОТОГРАФИЙ</h2><p class="muted">Выдели сразу много файлов. Приложение подготовит фотографии и отправит партиями по 8. Поддерживаются JPEG, PNG, WebP.</p><form id="bulkPhotoForm"><input type="file" class="field" id="bulkPhotoFiles" accept="image/jpeg,image/png,image/webp" multiple required><div class="bulk-form-row"><label>Поток <select class="field" id="bulkPhotoLane"><option value="auto">Автоматически</option><option value="top">↑ Верхний</option><option value="bottom">↓ Нижний</option></select></label><label>Публикация <select class="field" id="bulkPhotoStatus"><option value="approved">Сразу на экран</option><option value="pending">Оставить на модерации</option></select></label><button type="submit" class="button primary" id="bulkPhotoSubmit">ЗАГРУЗИТЬ ФОТОГРАФИИ</button></div><div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div></form></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
       }
       $('#activeEvent').textContent=data.active?.name || 'Не выбрано';
       $('#photoCount').textContent=data.total+' всего · '+data.page+' / '+data.pages+' стр.';
@@ -556,8 +556,36 @@ if(page==='screen'){
     cancelAnimationFrame(resizeFrame);
     resizeFrame=requestAnimationFrame(layout);
   });
+  // Club control room is authoritative for the shared LED settings.
+  // Personal per-screen positioning remains available on this display.
+  let remoteRevision=0,remoteBusy=false;
+  async function pullRemoteControls(){
+    if(remoteBusy)return;
+    remoteBusy=true;
+    try{
+      const response=await fetch('/api/screen/control-settings',{cache:'no-store',credentials:'same-origin'});
+      if(!response.ok)return;
+      const snapshot=await response.json();
+      const revision=Number(snapshot.updatedAt)||0;
+      if(revision>remoteRevision){
+        const updated=snapshot.settings||{};
+        for(const key of Object.keys(updated))if(key in defaults)settings[key]=updated[key];
+        remoteRevision=revision;
+        try{localStorage.setItem(STORE_KEY,JSON.stringify(settings));}catch{}
+        applySettings();
+      }
+      // Real screen heartbeat, not merely 'server running' status.
+      await fetch('/api/screen/control-heartbeat',{
+        method:'POST',cache:'no-store',credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify({layout:settings.layout})
+      });
+    }catch(error){console.warn('LED control room sync:',error.message);}
+    finally{remoteBusy=false;}
+  }
   restoreScreenLogo();
   applySettings();
   refresh();
+  pullRemoteControls().catch(console.error);
   setInterval(refresh,5000);
+  setInterval(()=>pullRemoteControls().catch(console.error),5000);
 }

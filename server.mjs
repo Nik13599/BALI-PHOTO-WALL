@@ -1,4 +1,8 @@
 import express from 'express';
+import { registerContestRoutes } from './contest.mjs';
+import { registerControlRoom } from './control-room.mjs';
+import { registerCentralContest } from './contest-central.mjs';
+import { registerContestRewards } from './contest-rewards.mjs';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
@@ -165,8 +169,14 @@ app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next()
 app.use(express.static(path.join(ROOT, 'public'), { index: false, dotfiles: 'deny', maxAge: '15m' }));
 app.get('/', (req, res) => { guestIdentity(req,res); res.sendFile(path.join(ROOT,'public','guest.html')); });
 app.get('/admin', (_req,res) => res.sendFile(path.join(ROOT,'public','admin.html')));
+app.get('/admin/control', (_req,res) => res.sendFile(path.join(ROOT,'public','control-room.html')));
 app.get('/screen', (_req,res) => res.sendFile(path.join(ROOT,'public','screen.html')));
 app.get('/healthz', (_req,res) => res.json({ok:true}));
+app.get('/admin/contest', (_req,res) => res.sendFile(path.join(ROOT,'public','contest-admin.html')));
+registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,requireAction,asyncRoute});
+registerCentralContest({app,db,DATA});
+registerContestRewards({app,db,adminAuth,requireAction});
+registerControlRoom({app,db,adminAuth,screenAuth,requireAction});
 
 app.get('/api/public', (req,res) => {
   guestIdentity(req,res);
