@@ -76,7 +76,7 @@ export function registerCentralContest({app,db,DATA}){
    const awarded=db.prepare("SELECT 1 FROM contest_winners WHERE contest_id=? AND entry_id=?").get(c.id,e.id);
    if(!awarded)return res.status(404).end();
   }
-  res.set('Cache-Control','public,max-age=30').type('image/webp')
+  res.set('Cross-Origin-Resource-Policy','cross-origin').set('Cache-Control','public,max-age=30').type('image/webp')
    .sendFile(path.join(dir,e.crop_filename||e.filename));
  });
  const finalize=db.transaction((c,ranked)=>{
