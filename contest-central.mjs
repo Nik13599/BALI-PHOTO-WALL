@@ -2,6 +2,9 @@
 // belong to the existing BALI-MENU Cloudflare D1 backend.
 import crypto from 'node:crypto';
 import path from 'node:path';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import sharp from 'sharp';
 const isPositive=x=>Number.isSafeInteger(Number(x))&&Number(x)>0;
 const secret=()=>process.env.CONTEST_BRIDGE_KEY||'';
 function nextMidnightMinsk(){
@@ -22,6 +25,8 @@ const secured=(req,res,next)=>{
 };
 export function registerCentralContest({app,db,DATA}){
  const dir=path.join(DATA,'contest');
+ const thumbs=path.join(dir,'voting-thumbs');
+ fs.mkdirSync(thumbs,{recursive:true});
  const cols=db.pragma('table_info(contests)').map(r=>r.name);
  if(!cols.includes('starts_at'))db.exec('ALTER TABLE contests ADD COLUMN starts_at INTEGER');
  const current=()=>db.prepare("SELECT c.* FROM contests c JOIN events e ON e.id=c.event_id WHERE e.active=1 ORDER BY c.id DESC LIMIT 1").get();
@@ -67,17 +72,32 @@ export function registerCentralContest({app,db,DATA}){
  });
  // The public image route contains no name, Card ID, voter ID or registration metadata.
  app.get('/api/public/contest-photo/:number',(req,res)=>{
-  const c=assigned();const id=Number(req.params.number);
-  if(!c||!isPositive(id)||!['live','complete'].includes(c.state))return res.status(404).end();
-  const e=db.prepare("SELECT id,filename,crop_filename FROM contest_entries WHERE id=? AND contest_id=? AND status='approved'")
-    .get(id,c.id);
-  if(!e)return res.status(404).end();
-  if(c.state==='complete'){
-   const awarded=db.prepare("SELECT 1 FROM contest_winners WHERE contest_id=? AND entry_id=?").get(c.id,e.id);
-   if(!awarded)return res.status(404).end();
-  }
-  res.set('Cross-Origin-Resource-Policy','cross-origin').set('Cache-Control','public,max-age=30').type('image/webp')
-   .sendFile(path.join(dir,e.crop_filename||e.filename));
+  (async()=>{
+   const c=assigned();const id=Number(req.params.number);
+   if(!c||!isPositive(id)||!['live','complete'].includes(c.state))return res.status(404).end();
+   const e=db.prepare("SELECT id,filename,crop_filename FROM contest_entries WHERE id=? AND contest_id=? AND status='approved'")
+     .get(id,c.id);
+   if(!e)return res.status(404).end();
+   if(c.state==='complete'){
+    const awarded=db.prepare("SELECT 1 FROM contest_winners WHERE contest_id=? AND entry_id=?").get(c.id,e.id);
+    if(!awarded)return res.status(404).end();
+   }
+   const source=e.crop_filename||e.filename;
+   // The browser receives a compact gallery thumbnail; originals stay on Windows.
+   // The source filename makes cache entries immutable when moderators recrop.
+   const output=path.join(thumbs,e.id+'-'+source+'.webp');
+   if(!fs.existsSync(output)){
+    const image=await sharp(path.join(dir,source)).resize({
+     width:450,height:450,fit:'inside',withoutEnlargement:true
+    }).webp({quality:72,effort:3}).toBuffer();
+    await fsp.writeFile(output,image,{flag:'wx'}).catch(error=>{
+     if(error.code!=='EEXIST')throw error;
+    });
+   }
+   res.set('Cross-Origin-Resource-Policy','cross-origin')
+    .set('Cache-Control','public,max-age=300').type('image/webp').sendFile(output);
+  })().catch(e=>{console.error('Contest thumbnail:',String(e?.message||e).slice(0,150));
+   if(!res.headersSent)res.status(503).end();});
  });
  const finalize=db.transaction((c,ranked)=>{
   const current=db.prepare('SELECT state FROM contests WHERE id=?').get(c.id);
