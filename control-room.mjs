@@ -1,7 +1,6 @@
 // Single club-PC control room: LED configuration, ordinary-photo counts,
 // and a read-only authenticated health bridge to existing BALI-MENU D1.
 // Only operational settings are written here; no guest image bytes reach BALI-MENU.
-import os from 'node:os';
 const MODES=['puzzle','grid','live-mosaic','carousel-quad','carousel-double','carousel-triple','carousel-festival'];
 const defaults={layout:'live-mosaic',maxPhotos:500,gap:2,fit:'contain',
  liveInterval:8,liveFocus:40,carouselSpeed:85,carouselOuterSpeed:120,
