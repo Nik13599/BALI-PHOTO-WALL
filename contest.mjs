@@ -49,6 +49,9 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
   const entryById=db.prepare('SELECT * FROM contest_entries WHERE id=?');
   const ranked=db.prepare("SELECT e.id,COUNT(v.voter_hash) AS votes FROM contest_entries e LEFT JOIN contest_votes v ON v.entry_id=e.id WHERE e.contest_id=? AND e.status='approved' GROUP BY e.id ORDER BY votes DESC,e.created_at ASC,e.id ASC");
   const closeDue=db.transaction(()=>{
+    // Production winners must come from the central BALI-MENU vote ledger.
+    // Local ranking is retained only for isolated development tests.
+    if(process.env.CONTEST_ALLOW_LOCAL_RESULTS!=='1')return;
     const contests=db.prepare("SELECT id,prize_places FROM contests WHERE state='live' AND ends_at<=?").all(now());
     for(const contest of contests){
       const rows=ranked.all(contest.id), total=rows.reduce((sum,row)=>sum+row.votes,0);
@@ -87,7 +90,9 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
       ?db.prepare("SELECT id,display_name FROM contest_entries WHERE contest_id=? AND status='approved' ORDER BY id LIMIT 500").all(contest.id)
       :[];
     return {contest:{id:contest.id,title:contest.title,prizePlaces:contest.prize_places,shape:contest.shape,
-      tileHeight:contest.tile_height,tileSpeed:contest.tile_speed,durationSeconds:contest.duration_seconds,state:contest.state,
+      tileHeight:contest.tile_height,tileSpeed:contest.tile_speed,durationSeconds:contest.duration_seconds,
+      state:contest.state==='live'&&now()>=contest.ends_at?'awaiting_results':contest.state,
+      startsAt:contest.starts_at||null,
       startedAt:contest.started_at,endsAt:contest.ends_at,finishedAt:contest.finished_at},
       entries,winners,serverNow:now()};
   }
@@ -186,8 +191,8 @@ export function registerContestRoutes({app,db,DATA,UPLOADS,adminAuth,screenAuth,
         if(!contest||contest.state!=='draft')return error(res,409,'Приём заявок закрыт');
         if(!/^[a-zA-Z0-9:_-]{3,100}$/.test(externalId)||!/^[0-9]{6}$/.test(cardId)||name.length<2||name.length>70||
           req.body?.consent!=='yes'||!req.file)return error(res,400,'Недостаточно данных или согласия участника');
-        if(db.prepare('SELECT 1 FROM contest_entries WHERE contest_id=? AND external_id=?').get(contest.id,externalId))
-          return error(res,409,'Такая заявка уже получена');
+        const existing=db.prepare('SELECT id,status FROM contest_entries WHERE contest_id=? AND external_id=?').get(contest.id,externalId);
+        if(existing){res.json({ok:true,entryId:existing.id,status:existing.status,alreadyProcessed:true});return;}
         const image=sharp(req.file.path,{limitInputPixels:36_000_000,failOn:'error'});
         const meta=await image.metadata();
         if(!['jpeg','png','webp'].includes(meta.format))return error(res,415,'Только JPEG, PNG или WebP');
