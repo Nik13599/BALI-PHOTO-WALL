@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node --env-file=.env server.mjs",
-    "check": "node --check contest.mjs && node --check contest-rewards.mjs && node --check public/contest-screen.js && node --check public/contest-admin.js && node --check server.mjs && node --check public/app.js && node --check public/carousel.js && node --check public/carousel-wall.js && node --check public/live-mosaic.js && node --check public/live-wall.js",
+    "check": "node --check control-room.mjs && node --check contest-central.mjs && node --check public/control-room.js && node --check contest.mjs && node --check contest-rewards.mjs && node --check public/contest-screen.js && node --check public/contest-admin.js && node --check server.mjs && node --check public/app.js && node --check public/carousel.js && node --check public/carousel-wall.js && node --check public/live-mosaic.js && node --check public/live-wall.js",
     "test": "npm run check && node --test tests/*.test.mjs && node test/smoke.mjs"
   },
   "dependencies": {
