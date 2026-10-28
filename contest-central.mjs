@@ -59,7 +59,10 @@ export function registerCentralContest({app,db,DATA}){
   if(!c)return res.json({...base,entries:[]});
   const entries=c.state==='live'?db.prepare(
    "SELECT id AS number,external_id AS externalId,display_name AS name FROM contest_entries "+
-   "WHERE contest_id=? AND status='approved' ORDER BY id").all(c.id):[];
+   "WHERE contest_id=? AND status='approved' ORDER BY id").all(c.id):
+   c.state==='complete'?db.prepare(
+   "SELECT e.id AS number,e.external_id AS externalId,e.display_name AS name FROM contest_winners w "+
+   "JOIN contest_entries e ON e.id=w.entry_id WHERE w.contest_id=? ORDER BY w.place").all(c.id):[];
   res.json({...base,entries});
  });
  // The public image route contains no name, Card ID, voter ID or registration metadata.
