@@ -36,7 +36,7 @@ export function registerCentralContest({app,db,DATA}){
    c.state==='live'?'voting':
    starts&&n>=starts?'awaiting_start':
    starts&&n>=starts-3600000?'registration':'scheduled';
-  return {online:true,contest:c?{id:c.id,title:c.title,prizePlaces:c.prize_places,
+  return {online:true,contest:c?{id:c.id,title:c.title,prizePlaces:c.prize_places,durationSeconds:c.duration_seconds,
    phase,registrationOpensAt:starts-3600000,startsAt:starts,
    endsAt:c.ends_at||null}:null,serverNow:n};
  };
