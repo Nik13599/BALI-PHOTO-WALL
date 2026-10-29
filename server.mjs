@@ -502,7 +502,7 @@ app.get('/api/admin/contest/export',adminAuth,(req,res)=>{
  const rows=db.prepare("SELECT p.id AS photoId,p.status,p.created_at AS uploadedAt,c.name,c.category "+
   "FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id AND c.event_id=p.event_id "+
   "WHERE p.event_id=? ORDER BY p.created_at,p.id LIMIT 100000").all(id);
- const cell=v=>'"'+String(v??'').replace(/"/g,'""').replace(/^[=+@-]/,'\u0027app.get('/api/admin/dashboard', adminAuth, (req,res) => {')+'"';
+ const cell=v=>'"'+String(v??'').replace(/"/g,'""').replace(/^[=+@-]/,m=>String.fromCharCode(39)+m)+'"';
  const lines=['photo_id;status;uploaded_at;candidate_name;category',
   ...rows.map(r=>[r.photoId,r.status,r.uploadedAt,r.name,r.category].map(cell).join(';'))];
  res.type('text/csv; charset=utf-8')
