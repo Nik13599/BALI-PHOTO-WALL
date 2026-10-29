@@ -101,7 +101,7 @@ if(page==='admin') {
       if(signature===previousDashboard) return;
       previousDashboard=signature;
       if(!$('#dashboard')) {
-        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="panel admin-bulk-panel"><h2>МАССОВАЯ ЗАГРУЗКА ФОТОГРАФИЙ</h2><p class="muted">Выдели сразу много файлов. Приложение подготовит фотографии и отправит партиями по 8. Поддерживаются JPEG, PNG, WebP.</p><form id="bulkPhotoForm"><input type="file" class="field" id="bulkPhotoFiles" accept="image/jpeg,image/png,image/webp" multiple required><div class="bulk-form-row"><label>Поток <select class="field" id="bulkPhotoLane"><option value="auto">Автоматически</option><option value="top">↑ Верхний</option><option value="bottom">↓ Нижний</option></select></label><label>Публикация <select class="field" id="bulkPhotoStatus"><option value="approved">Сразу на экран</option><option value="pending">Оставить на модерации</option></select></label><button type="submit" class="button primary" id="bulkPhotoSubmit">ЗАГРУЗИТЬ ФОТОГРАФИИ</button></div><div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div></form></div><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
+        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="panel admin-bulk-panel"><h2>МАССОВАЯ ЗАГРУЗКА ФОТОГРАФИЙ</h2><p class="muted">Выдели сразу много файлов. Приложение подготовит фотографии и отправит партиями по 8. Поддерживаются JPEG, PNG, WebP.</p><form id="bulkPhotoForm"><input type="file" class="field" id="bulkPhotoFiles" accept="image/jpeg,image/png,image/webp" multiple required><div class="bulk-form-row"><label>Поток <select class="field" id="bulkPhotoLane"><option value="auto">Автоматически</option><option value="top">↑ Верхний</option><option value="bottom">↓ Нижний</option></select></label><label>Публикация <select class="field" id="bulkPhotoStatus"><option value="approved">Сразу на экран</option><option value="pending">Оставить на модерации</option></select></label><button type="submit" class="button primary" id="bulkPhotoSubmit">ЗАГРУЗИТЬ ФОТОГРАФИИ</button></div><div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div></form></div><details class="panel" id="contestPanel"><summary style="cursor:pointer;font-weight:850">👑 КОНКУРС · КОРОЛЬ И КОРОЛЕВА НОЧИ</summary><p class="muted">Конкурс и фотографии хранятся отдельно на PHOTO WALL. Telegram получает только опубликованных участников и состояние голосования.</p><form id="contestSettings" class="event-form"><label><input type="checkbox" id="contestEnabled"> Конкурс активен</label><label><input type="checkbox" id="contestVotingOpen"> Голосование открыто</label><button class="button primary" type="submit">СОХРАНИТЬ КОНКУРС</button></form><h3>Участники · одобренные фотографии</h3><form id="contestCandidateForm" class="event-form"><label>Фото №<input class="field" id="contestPhotoId" inputmode="numeric" type="number" min="1" required placeholder="ID фото"></label><label>Имя участника<input class="field" id="contestName" minlength="2" maxlength="70" required placeholder="Имя"></label><label>Категория<select class="field" id="contestCategory"><option value="king">Король ночи</option><option value="queen">Королева ночи</option></select></label><button class="button primary" type="submit">ДОБАВИТЬ В КОНКУРС</button></form><div id="contestCandidates" class="event-list"></div><p id="contestMessage" class="muted" role="status"></p><a id="contestExport" class="button secondary" href="#" download>ВЫГРУЗИТЬ РЕЕСТР ФОТО (CSV)</a></details><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
       }
       $('#activeEvent').textContent=data.active?.name || 'Не выбрано';
       $('#photoCount').textContent=data.total+' всего · '+data.page+' / '+data.pages+' стр.';
@@ -113,7 +113,7 @@ if(page==='admin') {
         '<div class="event-choice"><button type="button" class="chip '+(e.id===data.selected?.id?'selected':'')+'" data-view="'+e.id+'">'+esc(e.name)+(e.active?' · ИДЁТ':'')+'</button>'+(e.active?'':'<button type="button" class="chip activate" data-activate="'+e.id+'" title="Вывести фото этого мероприятия на экраны">СДЕЛАТЬ АКТИВНЫМ</button>')+'</div>'
       ).join('');
       $('#photoGrid').innerHTML=data.photos.length ? data.photos.map(p=>
-        '<article class="photo-card"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото гостя" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+'</span><span class="status '+p.status+'">'+({pending:'НА ПРОВЕРКЕ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div><label class="photo-lane-label">Карусель <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Автоматически</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верхняя</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Нижняя</option></select></label><div class="photo-actions"><button class="button small approve" data-photo="'+p.id+'" data-status="approved">✓ Одобрить</button><button class="button small reject" data-photo="'+p.id+'" data-status="rejected">× Отклонить</button><button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
+        '<article class="photo-card"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото гостя" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+'</span><span class="status '+p.status+'">'+({pending:'НА ПРОВЕРКЕ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div><label class="photo-lane-label">Карусель <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Автоматически</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верхняя</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Нижняя</option></select></label><div class="photo-actions"><button class="button small approve" data-photo="'+p.id+'" data-status="approved">✓ Одобрить</button><button class="button small reject" data-photo="'+p.id+'" data-status="rejected">× Отклонить</button><button class="button small" data-contest-photo="'+p.id+'" '+(p.status==='approved'?'':'disabled')+'>👑 В конкурс</button><button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
       ).join('') : '<div class="empty">В выбранном мероприятии фотографий нет.</div>';
       $('#pageControls').innerHTML = data.pages>1
         ? '<button class="button secondary" type="button" data-page="prev" '+(data.page<=1?'disabled':'')+'>← НАЗАД</button><span>Страница '+data.page+' из '+data.pages+'</span><button class="button secondary" type="button" data-page="next" '+(data.page>=data.pages?'disabled':'')+'>ВПЕРЁД →</button>'
@@ -123,6 +123,30 @@ if(page==='admin') {
       notice('#adminMessage',error.message,true);
     } finally {busy=false;}
   }
+  async function loadContest(){
+    if(!displayedEventId||!$('#contestPanel')?.open)return;
+    const label=$('#contestMessage');
+    try{
+      const data=await api('/api/admin/contest?eventId='+displayedEventId);
+      $('#contestEnabled').checked=data.settings.enabled;
+      $('#contestVotingOpen').checked=data.settings.votingOpen;
+      $('#contestExport').href='/api/admin/contest/export?eventId='+displayedEventId;
+      $('#contestCandidates').replaceChildren(...data.candidates.map(c=>{
+        const row=document.createElement('div');row.className='event-choice';
+        const title=document.createElement('span');
+        title.textContent='#'+c.photoId+' · '+c.name+' · '+(c.category==='king'?'Король':'Королева')+
+          (c.status==='approved'?'':' · Фото не одобрено');
+        const remove=document.createElement('button');remove.type='button';remove.className='button small delete';
+        remove.dataset.contestRemove=String(c.photoId);remove.textContent='Убрать из конкурса';
+        row.append(title,remove);return row;
+      }));
+      label.textContent='Участников: '+data.candidates.length+' · конкурс '+
+       (data.settings.enabled?'включён':'выключен')+' · голосование '+(data.settings.votingOpen?'открыто':'закрыто');
+    }catch(error){label.textContent='Ошибка настроек конкурса: '+error.message}
+  }
+  root.addEventListener('click',event=>{
+    if(event.target.closest('#contestPanel>summary'))setTimeout(()=>void loadContest(),0);
+  });
   api('/api/admin/me').then(loadDashboard).catch(()=>{});
   root.addEventListener('submit',async event=>{
     if(event.target.id==='loginForm'){
@@ -131,6 +155,24 @@ if(page==='admin') {
         await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#password').value})});
         root.innerHTML='<div class="panel"><p class="muted">Загружаем панель модерации…</p><div id="adminMessage" class="alert" role="status"></div></div>';await loadDashboard();
       } catch(error){notice('#adminMessage',error.message,true);}
+    }
+    if(event.target.id==='contestSettings'){
+      event.preventDefault();if(!displayedEventId)return;
+      try{
+        await action('/api/admin/contest/settings',{eventId:displayedEventId,
+         enabled:$('#contestEnabled').checked,votingOpen:$('#contestVotingOpen').checked});
+        await loadContest();notice('#adminMessage','Настройки конкурса сохранены.');
+      }catch(error){notice('#adminMessage',error.message,true)}
+    }
+    if(event.target.id==='contestCandidateForm'){
+      event.preventDefault();if(!displayedEventId)return;
+      try{
+        await action('/api/admin/contest/candidates',{action:'add',eventId:displayedEventId,
+         photoId:Number($('#contestPhotoId').value),name:$('#contestName').value.trim(),
+         category:$('#contestCategory').value});
+        $('#contestPhotoId').value='';$('#contestName').value='';
+        await loadContest();notice('#adminMessage','Участник конкурса сохранён.');
+      }catch(error){notice('#adminMessage',error.message,true)}
     }
     if(event.target.id==='bulkPhotoForm'){
       event.preventDefault();
@@ -194,7 +236,16 @@ if(page==='admin') {
   root.addEventListener('click',async event=>{
     const el=event.target.closest('button');if(!el)return;
     try{
-      if(el.id==='logoutBtn'){await action('/api/admin/logout',{});location.reload();}
+      if(el.dataset.contestPhoto){
+        $('#contestPanel').open=true;$('#contestPhotoId').value=el.dataset.contestPhoto;
+        $('#contestPanel').scrollIntoView({behavior:'smooth',block:'start'});
+        await loadContest();$('#contestName').focus();
+      }else if(el.dataset.contestRemove){
+        if(!displayedEventId||!confirm('Убрать фотографию из конкурса? Само фото останется.'))return;
+        await action('/api/admin/contest/candidates',{action:'remove',
+         eventId:displayedEventId,photoId:Number(el.dataset.contestRemove)});
+        await loadContest();
+      }else if(el.id==='logoutBtn'){await action('/api/admin/logout',{});location.reload();}
       else if(el.id==='saveUploadShape'){
         if(!displayedEventId)return;
         await action('/api/admin/events/'+displayedEventId+'/upload-shape',{uploadShape:$('#eventUploadShape').value});
