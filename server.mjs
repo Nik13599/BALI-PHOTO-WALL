@@ -80,6 +80,23 @@ const photoFields=db.pragma('table_info(photos)').map(x=>x.name);
 if(!photoFields.includes('width'))db.exec('ALTER TABLE photos ADD COLUMN width INTEGER');
 if(!photoFields.includes('height'))db.exec('ALTER TABLE photos ADD COLUMN height');
 if(!photoFields.includes('screen_lane'))db.exec("ALTER TABLE photos ADD COLUMN screen_lane TEXT NOT NULL DEFAULT 'auto' CHECK(screen_lane IN ('auto','top','bottom'))");
+// Photo-contest state stays on THIS Windows/PHOTO WALL SQLite server.
+db.exec(`
+ CREATE TABLE IF NOT EXISTS contest_settings(
+  event_id INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+  enabled INTEGER NOT NULL DEFAULT 0 CHECK(enabled IN (0,1)),
+  voting_open INTEGER NOT NULL DEFAULT 0 CHECK(voting_open IN (0,1)),
+  updated_at INTEGER NOT NULL DEFAULT 0
+ );
+ CREATE TABLE IF NOT EXISTS contest_candidates(
+  photo_id INTEGER PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE,
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  name TEXT NOT NULL CHECK(length(name) BETWEEN 2 AND 70),
+  category TEXT NOT NULL CHECK(category IN ('king','queen')),
+  registered_at INTEGER NOT NULL
+ );
+ CREATE INDEX IF NOT EXISTS idx_contest_candidates_event ON contest_candidates(event_id);
+`);
 const currentEvent = db.prepare('SELECT id,name,upload_shape FROM events WHERE active=1 ORDER BY id DESC LIMIT 1');
 const selectPhoto = db.prepare('SELECT * FROM photos WHERE id=?');
 const secureEqual = (a, b) => {
@@ -172,6 +189,22 @@ app.get('/api/public', (req,res) => {
   guestIdentity(req,res);
   const event = currentEvent.get();
   res.json({ event, uploadShape:event?.upload_shape||'any', limit:null });
+});
+// Public contest feed for Telegram Mini App. Approved nominations only.
+// Never return upload tokens, guest identifiers, source filenames or staff data.
+app.get('/api/contest/status', (_req,res)=>{
+ const event=currentEvent.get();
+ const settings=event?db.prepare('SELECT enabled,voting_open FROM contest_settings WHERE event_id=?').get(event.id):null;
+ const enabled=settings?.enabled===1;
+ const rows=enabled?db.prepare("SELECT c.photo_id AS photoId,c.name,c.category FROM contest_candidates c "+
+  "JOIN photos p ON p.id=c.photo_id AND p.event_id=c.event_id WHERE c.event_id=? AND p.status='approved' ORDER BY c.registered_at,c.photo_id LIMIT 300").all(event.id):[];
+ const voting=enabled&&settings.voting_open===1&&rows.length>0;
+ const base=PUBLIC_URL.startsWith('https://baliminsk.online')?PUBLIC_URL:'https://baliminsk.online';
+ res.json({contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
+  voting_open:voting,candidates:voting?rows.map(x=>({
+   id:'p_'+x.photoId,name:x.name,category:x.category,
+   photoUrl:base+'/api/contest/photo/p_'+x.photoId
+  })):[]});
 });
 app.get('/qr.svg', asyncRoute(async (_req, res) => {
   const svg = await QRCode.toString(PUBLIC_URL + '/', { type: 'svg', margin: 1, width: 320, color: {dark:'#111111',light:'#ffffff'} });
@@ -287,6 +320,19 @@ const servePhoto = (row,res,privateView=false,fullView=false) => {
     ? path.join(THUMBS,row.filename) : path.join(PHOTOS,row.filename);
   return res.type('image/webp').sendFile(filename);
 };
+// Only currently nominated and approved competition photographs are public.
+app.get('/api/contest/photo/:id', (req,res)=>{
+ const match=/^p_([1-9][0-9]{0,9})$/.exec(req.params.id);
+ if(!match)return res.status(404).end();
+ const event=currentEvent.get();
+ if(!event)return res.status(404).end();
+ const row=db.prepare("SELECT p.* FROM photos p "+
+  "JOIN contest_candidates c ON c.photo_id=p.id AND c.event_id=p.event_id "+
+  "JOIN contest_settings s ON s.event_id=p.event_id "+
+  "WHERE p.id=? AND p.event_id=? AND p.status='approved' AND s.enabled=1 AND s.voting_open=1")
+  .get(Number(match[1]),event.id);
+ return servePhoto(row,res);
+});
 app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res));
 // Keep LED transfers bounded. The newest 500 approved photos are enough
 // for a full mosaic, and database size is not an app-level upload quota.
@@ -396,6 +442,73 @@ app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
     res.json({ok:imported===files.length,imported,failed:files.length-imported,results});
   }finally{await clean();}
 }));
+// Independent moderator-only competition control. These routes can never
+// credit BALI COIN or mutate the Firebase/TG user directory.
+app.get('/api/admin/contest',adminAuth,(req,res)=>{
+ const raw=String(req.query.eventId||'');
+ if(!/^[1-9][0-9]{0,9}$/.test(raw))return res.status(400).json({error:'Выберите мероприятие'});
+ const id=Number(raw);
+ const event=db.prepare('SELECT id,name FROM events WHERE id=?').get(id);
+ if(!event)return res.status(404).json({error:'Мероприятие не найдено'});
+ const settings=db.prepare('SELECT enabled,voting_open FROM contest_settings WHERE event_id=?').get(id)||{enabled:0,voting_open:0};
+ const photos=db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,p.status FROM contest_candidates c "+
+  "JOIN photos p ON p.id=c.photo_id WHERE c.event_id=? ORDER BY c.registered_at DESC LIMIT 300").all(id);
+ res.json({ok:true,event,settings:{enabled:!!settings.enabled,votingOpen:!!settings.voting_open},candidates:photos});
+});
+app.post('/api/admin/contest/settings',adminAuth,requireAction,(req,res)=>{
+ const input=req.body||{},id=Number(input.eventId);
+ if(!Number.isSafeInteger(id)||id<1||typeof input.enabled!=='boolean'||typeof input.votingOpen!=='boolean'||
+  Object.keys(input).sort().join(',')!=='enabled,eventId,votingOpen')
+  return res.status(400).json({error:'Некорректные настройки конкурса'});
+ if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return res.status(404).json({error:'Мероприятие не найдено'});
+ // Cannot open voting until at least one approved candidate exists.
+ const candidate=db.prepare("SELECT COUNT(*) AS n FROM contest_candidates c JOIN photos p ON p.id=c.photo_id "+
+  "WHERE c.event_id=? AND p.status='approved'").get(id);
+ if(input.votingOpen&&(!input.enabled||!candidate.n))
+  return res.status(409).json({error:'Для голосования включите конкурс и добавьте одобренные фотографии участников'});
+ db.prepare('INSERT INTO contest_settings(event_id,enabled,voting_open,updated_at) VALUES(?,?,?,?) '+
+  'ON CONFLICT(event_id) DO UPDATE SET enabled=excluded.enabled,voting_open=excluded.voting_open,updated_at=excluded.updated_at')
+  .run(id,Number(input.enabled),Number(input.votingOpen),Date.now());
+ res.json({ok:true});
+});
+app.post('/api/admin/contest/candidates',adminAuth,requireAction,(req,res)=>{
+ const input=req.body||{},eventId=Number(input.eventId),photoId=Number(input.photoId);
+ if(!Number.isSafeInteger(eventId)||eventId<1||!Number.isSafeInteger(photoId)||photoId<1||
+   !['add','remove'].includes(input.action)||
+   Object.keys(input).some(k=>!['eventId','photoId','name','category','action'].includes(k)))
+  return res.status(400).json({error:'Некорректные данные участника'});
+ const photo=db.prepare('SELECT id,status FROM photos WHERE id=? AND event_id=?').get(photoId,eventId);
+ if(!photo)return res.status(404).json({error:'Фотография не найдена в мероприятии'});
+ if(input.action==='add'){
+  const name=typeof input.name==='string'?input.name.trim():'';
+  if(name.length<2||name.length>70||/[<>\u0000-\u001f\u007f]/.test(name)||
+     !['king','queen'].includes(input.category)||photo.status!=='approved')
+   return res.status(400).json({error:'Участнику требуется одобренное фото, имя и категория'});
+  db.prepare('INSERT INTO contest_candidates(photo_id,event_id,name,category,registered_at) VALUES(?,?,?,?,?) '+
+   'ON CONFLICT(photo_id) DO UPDATE SET name=excluded.name,category=excluded.category')
+   .run(photoId,eventId,name,input.category,Date.now());
+ }else{
+  db.prepare('DELETE FROM contest_candidates WHERE photo_id=? AND event_id=?').run(photoId,eventId);
+  const remaining=db.prepare("SELECT COUNT(*) AS n FROM contest_candidates c JOIN photos p ON p.id=c.photo_id "+
+   "WHERE c.event_id=? AND p.status='approved'").get(eventId);
+  if(!remaining.n)db.prepare('UPDATE contest_settings SET voting_open=0 WHERE event_id=?').run(eventId);
+ }
+ res.json({ok:true});
+});
+app.get('/api/admin/contest/export',adminAuth,(req,res)=>{
+ const id=Number(req.query.eventId);
+ if(!Number.isSafeInteger(id)||id<1||!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))
+  return res.status(400).json({error:'Выберите мероприятие'});
+ const rows=db.prepare("SELECT p.id AS photoId,p.status,p.created_at AS uploadedAt,c.name,c.category "+
+  "FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id AND c.event_id=p.event_id "+
+  "WHERE p.event_id=? ORDER BY p.created_at,p.id LIMIT 100000").all(id);
+ const cell=v=>'"'+String(v??'').replace(/"/g,'""').replace(/^[=+@-]/,'\u0027app.get('/api/admin/dashboard', adminAuth, (req,res) => {')+'"';
+ const lines=['photo_id;status;uploaded_at;candidate_name;category',
+  ...rows.map(r=>[r.photoId,r.status,r.uploadedAt,r.name,r.category].map(cell).join(';'))];
+ res.type('text/csv; charset=utf-8')
+  .set('Content-Disposition','attachment; filename="bali-photo-contest-'+id+'.csv"')
+  .send('\uFEFF'+lines.join('\n'));
+});
 app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   const events = db.prepare('SELECT id,name,active,created_at,upload_shape FROM events ORDER BY id DESC').all();
   const active = currentEvent.get();
