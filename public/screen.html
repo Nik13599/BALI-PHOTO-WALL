@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#080b09"><meta name="robots" content="noindex,nofollow">
 <title>BALI PHOTO WALL · LIVE SCREEN</title>
-<link rel="stylesheet" href="/style.css?v=20261030-contest-crown-v1"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/carousel-wall.js"></script><script defer src="/live-mosaic.js"></script><script defer src="/live-wall.js"></script><script defer src="/app.js?v=20261030-contest-crown-v1"></script>
+<link rel="stylesheet" href="/style.css?v=20261030-contest-crown-v1"><link rel="stylesheet" href="/screen-broadcast.css?v=20261030-synced-v1"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/carousel-wall.js"></script><script defer src="/live-mosaic.js"></script><script defer src="/live-wall.js"></script><script defer src="/app.js?v=20261030-synced-v1"></script>
 </head>
 <body data-page="screen">
 <main class="screen" id="wallScreen">
@@ -27,14 +27,14 @@
     </form>
   </div>
   <div class="screen-toolbar">
-    <a class="screen-gear" href="/screen?feed=regular" style="text-decoration:none" aria-label="Обычные фотографии">📸 Обычная лента</a>
-    <a class="screen-gear" href="/screen?feed=contest" style="text-decoration:none" aria-label="Конкурсные фотографии">👑 КОРОЛЬ/КОРОЛЕВА</a>
+    <a class="screen-gear" href="/live/general" style="text-decoration:none" aria-label="Общая трансляция">◩ Общая трансляция</a>
+    <a class="screen-gear" href="/live/contest" style="text-decoration:none" aria-label="Конкурсная трансляция">♛ Конкурсная трансляция</a>
     <button class="screen-gear" id="wallSettingsToggle" type="button" aria-label="Настройки фотостены" aria-expanded="false"><span aria-hidden="true">⚙</span> Настройки</button>
     <button class="screen-gear" id="fullscreenBtn" type="button">⛶ Весь экран</button>
   </div>
   <aside class="wall-settings" id="wallSettings" hidden aria-label="Настройки фотостены">
-    <div class="wall-settings-head"><div><strong>Настройки фотостены</strong><small>Сохраняются на этом экране</small></div><button type="button" class="screen-close" id="wallSettingsClose" aria-label="Закрыть">×</button></div>
-    <div class="wall-settings-scroll">
+    <div class="wall-settings-head"><div><strong>Пульт BALI · оформление трансляции</strong><small>Сохраняется на сервере и синхронизируется со всеми экранами</small></div><button type="button" class="screen-close" id="wallSettingsClose" aria-label="Закрыть">×</button></div>
+    <div class="wall-settings-scroll"><p id="screenProfileMessage" class="profile-sync-message" role="status" aria-live="polite"></p><div class="screen-control-links"><a class="button secondary" href="/admin/general">Общие фото</a><a class="button secondary" href="/admin/contest">Конкурс</a><a class="button primary" id="controlLiveLink" href="/live/general" target="_blank" rel="noopener">↗ Открыть трансляцию</a></div>
       <label class="wall-toggle"><input id="setCenterGrowth" data-wall-setting="centerGrowth" type="checkbox" checked> Центрировать и расширять композицию от центра</label>
       <label class="wall-setting" for="setLayout"><span>Расположение фотографий</span><select id="setLayout" data-wall-setting="layout"><option value="puzzle">Пазл: квадратные, вертикальные, горизонтальные</option><option value="grid">Обычная сетка с одинаковыми ячейками</option><option value="live-mosaic">Живая мозаика: случайные перестройки и увеличение</option>
 <option value="carousel-quad">Карусель 4 полосы: две большие и две маленькие</option>
@@ -51,7 +51,7 @@
         <label class="wall-setting"><span>Высота нижней маленькой ленты <output id="outCarouselBottomHeight">12</output>%</span><input id="setCarouselBottomHeight" data-wall-setting="carouselBottomHeight" type="range" min="6" max="25" value="12"></label>
         <label class="wall-setting"><span>Размер верхней крупной строки <output id="outCarouselCenterSplit">50</output>% от центральной области</span><input id="setCarouselCenterSplit" data-wall-setting="carouselCenterSplit" type="range" min="25" max="75" value="50"></label>
         <label class="wall-toggle"><input id="setCarouselPause" data-wall-setting="carouselPause" type="checkbox"> Приостановить движение (без отключения карусели)</label>
-        <p class="wall-setting-note">Для каждой фотографии поток «верх / низ / авто» выбирается в панели /admin. Скорость и высота лент сохраняются на этом устройстве LED.</p>
+        <p class="wall-setting-note">Настройки скорости и высоты сохраняются на сервере и одинаково доступны всем подключённым экранам.</p>
       </div>
       <div class="live-mosaic-settings" id="liveMosaicSettings" hidden>
         <div class="wall-setting-separator">Случайная живая мозаика</div>
@@ -84,7 +84,7 @@
       <label class="wall-setting"><span>Смещение по вертикали <output id="wallShiftYValue">0</output> px</span><input type="range" id="wallShiftY" min="-250" max="250" value="0" step="5"></label>
       <div class="wall-setting-separator">Элементы экрана</div>
       <label class="wall-setting" for="setLogoSize"><span>Размер логотипа <output id="outLogoSize">28</output> px</span><input id="setLogoSize" data-wall-setting="logoSize" type="range" min="24" max="240" value="28"></label>
-      <label class="wall-setting wall-logo-upload" for="wallLogoUpload"><span>Свой логотип (PNG, JPG, WebP)</span><input id="wallLogoUpload" type="file" accept="image/png,image/jpeg,image/webp"><small>Изображение до 1 МБ, сохранится на этом экране</small></label>
+      <label class="wall-setting wall-logo-upload" for="wallLogoUpload"><span>Свой логотип (PNG, JPG, WebP)</span><input id="wallLogoUpload" type="file" accept="image/png,image/jpeg,image/webp"><small>До 1 МБ · будет на всех экранах этой трансляции</small></label>
       <div class="wall-logo-buttons"><button class="button secondary" id="wallLogoDefault" type="button">Вернуть логотип BALI</button><span id="wallLogoMessage" role="status" aria-live="polite"></span></div>
       <label class="wall-setting" for="setLiveSize"><span>Размер PHOTO LIVE <output id="outLiveSize">20</output> px</span><input id="setLiveSize" data-wall-setting="liveSize" type="range" min="10" max="55" value="20"></label>
       <label class="wall-setting" for="setEventSize"><span>Размер названия вечеринки <output id="outEventSize">32</output> px</span><input id="setEventSize" data-wall-setting="eventSize" type="range" min="12" max="85" value="32"></label>
