@@ -249,10 +249,22 @@ if(page==='admin') {
     const state=await api('/api/admin/contest/cloud-queue');
     if(!node.isConnected)return;
     const at=state.checkedAtMs?new Date(state.checkedAtMs).toLocaleTimeString('ru-RU',{timeZone:'Europe/Minsk'}):null;
-    node.textContent=state.running?'Передача выполняется…':
+    const cloud=state.cloud,parts=[];
+    if(cloud){
+     parts.push('В облаке ожидают: '+cloud.waiting+' фото');
+     if(cloud.events?.length)
+      parts.push('Мероприятия: '+cloud.events.map(e=>e.eventId+' ('+e.count+')').join(', '));
+     const selected=$('#contestBaliEvent')?.value?.trim();
+     if(selected&&cloud.events?.some(e=>e.eventId!==selected)&&
+       !cloud.events?.some(e=>e.eventId===selected))
+      parts.push('Внимание: BALI Event ID выбранного конкурса ('+selected+
+       ') не совпадает с мероприятием фото в облаке.');
+    }else parts.push('Не удалось получить количество ожидающих фото из Cloudflare.');
+    parts.push(state.running?'Передача выполняется…':
      at?'Последняя проверка '+at+' · принято '+state.delivered+' · ошибок '+state.failed+
       (state.reason?' · '+state.reason:''):
-     'Пока не проверено. Нажмите кнопку, чтобы запросить доставку.';
+     'Пока не проверено. Нажмите кнопку, чтобы запросить доставку.');
+    node.textContent=parts.join(' | ');
    }catch(error){node.textContent='Состояние очереди: '+error.message}
   }
   async function loadContest(){

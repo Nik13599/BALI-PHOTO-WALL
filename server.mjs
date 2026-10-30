@@ -1157,9 +1157,24 @@ async function drainQueuedPhotos(){
  }finally{draining=false}
  return lastQueueSync;
 }
-app.get('/api/admin/contest/cloud-queue',adminAuth,(_req,res)=>{
- res.json({ok:true,...lastQueueSync});
-});
+// Show the real Cloudflare queue for each BALI Event ID even when the
+// outbound server cannot currently complete a PHOTO WALL upload.
+let queueSummaryCache={until:0,value:null};
+async function cloudQueueSummary(){
+ if(Date.now()<queueSummaryCache.until)return queueSummaryCache.value;
+ let value=null;
+ try{
+  const response=await fetch('https://app.baliminsk.by/api/tg-bali/photo-contest-queue-summary',{
+   redirect:'error',headers:{Accept:'application/json'},signal:AbortSignal.timeout(3500)});
+  const body=await response.json().catch(()=>null);
+  if(response.ok&&body?.ok===true)value={waiting:body.waiting,events:body.events,hasMore:body.hasMore};
+ }catch{}
+ queueSummaryCache={until:Date.now()+10000,value};
+ return value;
+}
+app.get('/api/admin/contest/cloud-queue',adminAuth,asyncRoute(async(_req,res)=>{
+ res.json({ok:true,...lastQueueSync,cloud:await cloudQueueSummary()});
+}));
 app.post('/api/admin/contest/cloud-queue/retry',adminAuth,requireAction,(_req,res)=>{
  if(draining)return res.json({ok:true,started:false,...lastQueueSync});
  void drainQueuedPhotos().catch(error=>console.warn('Cloud queue retry:',error.message));
