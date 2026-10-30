@@ -413,8 +413,11 @@ if(page==='admin') {
 }
 if(page==='screen'){
   const MAX_WALL_PHOTOS=500;
-  const STORE_KEY='bali-photo-wall-screen-settings-v1';
-  const LOGO_KEY='bali-photo-wall-screen-logo-v1';
+  const screenPath=location.pathname;
+  const broadcastArea=screenPath.endsWith('/contest')||new URLSearchParams(location.search).get('feed')==='contest'?'contest':'general';
+  const controller=screenPath.startsWith('/control/');
+  document.body.dataset.screenArea=broadcastArea;
+  document.body.dataset.screenMode=controller?'control':'broadcast';
   const defaults={
     maxPhotos:500,columns:0,gap:2,fit:'contain',layout:'puzzle',centerGrowth:true,
     liveInterval:8,liveFocus:40,liveTransition:1400,liveFit:'cover',livePause:false,
@@ -435,20 +438,58 @@ if(page==='screen'){
     qrSize:[40,250],inset:[0,80]
   };
   let settings={...defaults};
-  try {
-    const saved=JSON.parse(localStorage.getItem(STORE_KEY)||'null');
-    if(saved && typeof saved==='object'){
-      for(const key of Object.keys(defaults)){
-        if(key in limits && Number.isFinite(Number(saved[key])))
-          settings[key]=Math.round(Math.min(limits[key][1],Math.max(limits[key][0],Number(saved[key]))));
-        else if((key==='fit'||key==='liveFit') && ['cover','contain'].includes(saved[key]))settings[key]=saved[key];
-        else if(key==='layout' && ['puzzle','grid','live-mosaic',...(globalThis.BaliCarousel?.variants||[])].includes(saved[key]))settings.layout=saved.layout;
-        else if(key.endsWith('Pos') && ['tl','tc','tr','ml','mc','mr','bl','bc','br'].includes(saved[key]))settings[key]=saved[key];
-        else if(typeof defaults[key]==='boolean' && typeof saved[key]==='boolean')
-          settings[key]=saved[key];
+  let profileRevision=-1,logoRevision=-1,dirtyProfile=false,profileSaveTimer=0,profileLoading=false;
+  const profileUrl='/api/screen/profile?feed='+broadcastArea;
+  const profileSaveUrl='/api/admin/screen/profile?feed='+broadcastArea;
+  const profileLogoUrl='/api/screen/profile-logo?feed='+broadcastArea;
+  function profileNotice(message,bad=false){
+    const label=$('#screenProfileMessage');
+    if(!label)return;
+    label.textContent=message;
+    label.style.color=bad?'#ff9a8c':'#d7ff4d';
+  }
+  function useRemoteLogo(revision){
+    if(revision===logoRevision)return;
+    logoRevision=revision;
+    $('#wallLogo').src=revision>0?profileLogoUrl+'&v='+revision:'/bali-logo.svg';
+  }
+  async function syncProfile(force=false){
+    if(profileLoading||controller&&dirtyProfile&&!force)return;
+    profileLoading=true;
+    try{
+      const saved=await api(profileUrl);
+      if(!controller||(!dirtyProfile&&(!controller||force||profileRevision<0))){
+        if(force||profileRevision!==saved.revision){
+          settings={...defaults,...saved.settings};
+          profileRevision=saved.revision;
+          applySettings();
+        }
       }
-    }
-  } catch { /* Damaged or disabled browser storage: use defaults */ }
+      useRemoteLogo(saved.logoRevision||0);
+      if(controller&&profileRevision<0)profileRevision=saved.revision;
+      if(controller&&force)profileNotice('Настройки загружены с сервера');
+    }catch(error){
+      console.warn('Screen settings sync:',error.message);
+      if(controller)profileNotice('Настройки не получены: '+error.message,true);
+    }finally{profileLoading=false;}
+  }
+  function saveProfileSoon(){
+    if(!controller)return;
+    dirtyProfile=true;
+    profileNotice('Сохраняем настройки на сервере…');
+    clearTimeout(profileSaveTimer);
+    profileSaveTimer=setTimeout(async()=>{
+      const snapshot={...settings};
+      try{
+        const response=await action(profileSaveUrl,{settings:snapshot});
+        profileRevision=response.revision;
+        if(JSON.stringify(snapshot)===JSON.stringify(settings))dirtyProfile=false;
+        profileNotice('✓ Настройки сохранены · трансляция обновится автоматически');
+      }catch(error){
+        profileNotice('Не удалось сохранить: '+error.message,true);
+      }
+    },450);
+  }
   const screen=$('#wallScreen'),grid=$('#wallGrid'),empty=$('#wallEmpty'),login=$('#screenLogin'),panel=$('#wallSettings');
   const controls=[...document.querySelectorAll('[data-wall-setting]')];
   let photos=[],eventId=null,signature='',failedPolls=0,wasAuthenticated=false;
@@ -479,18 +520,19 @@ if(page==='screen'){
     input.addEventListener('input',()=>{
       const key=$('#wallShiftTarget').value+axis;
       settings[key]=Number(input.value);
-      try{localStorage.setItem(STORE_KEY,JSON.stringify(settings));}catch{}
-      syncShiftControls();positionFloating();
+      syncShiftControls();positionFloating();saveProfileSoon();
     });
   }
   function applySettings(){
+    const fitScale=Math.max(.65,Math.min(1,Math.min(screen.clientWidth/960,screen.clientHeight/540)));
     screen.style.setProperty('--wall-gap',settings.gap+'px');
+    screen.style.setProperty('--bali-display-scale',String(fitScale));
     screen.style.setProperty('--wall-fit',settings.fit);
-    screen.style.setProperty('--wall-logo-size',settings.logoSize+'px');
-    screen.style.setProperty('--wall-live-size',settings.liveSize+'px');
-    screen.style.setProperty('--wall-event-size',settings.eventSize+'px');
-    screen.style.setProperty('--wall-qr-size',settings.qrSize+'px');
-    screen.style.setProperty('--wall-inset',settings.inset+'px');
+    screen.style.setProperty('--wall-logo-size',Math.max(17,Math.round(settings.logoSize*fitScale))+'px');
+    screen.style.setProperty('--wall-live-size',Math.max(10,Math.round(settings.liveSize*fitScale))+'px');
+    screen.style.setProperty('--wall-event-size',Math.max(10,Math.round(settings.eventSize*fitScale))+'px');
+    screen.style.setProperty('--wall-qr-size',Math.max(36,Math.round(settings.qrSize*fitScale))+'px');
+    screen.style.setProperty('--wall-inset',Math.round(settings.inset*fitScale)+'px');
     setShown($('#wallLogo'),settings.showLogo);
     setShown($('#wallLive'),settings.showLive);
     setShown($('#screenEvent'),settings.showEvent);
@@ -512,7 +554,7 @@ if(page==='screen'){
   function getPhotoUrl(id,n){
     // A full-size photo is used for one or a few images, while lightweight
     // thumbnails keep a 500-tile wall responsive on standard LED hardware.
-    return n<=6 ? '/api/photos/'+id : '/api/screen/thumbnail/'+id;
+    return (n<=6 ? '/api/photos/'+id : '/api/screen/thumbnail/'+id)+'?feed='+broadcastArea;
   }
   function buildTile(photo,n,existing){
     const tile=existing.get(photo.id) || document.createElement('div');
@@ -635,7 +677,8 @@ if(page==='screen'){
   let lastRoyalWinner=null;
   async function refresh(){
     try{
-      const data=await api(new URLSearchParams(location.search).get('feed')==='contest'?'/api/screen/contest':'/api/screen');
+      const data=await api(broadcastArea==='contest'?'/api/screen/contest':'/api/screen');
+      await syncProfile();
       failedPolls=0;
       wasAuthenticated=true;
       login.hidden=true;
@@ -711,57 +754,41 @@ if(page==='screen'){
   $('#wallSettingsClose').addEventListener('click',()=>togglePanel(false));
   $('#wallDone').addEventListener('click',()=>togglePanel(false));
   $('#liveMosaicNext').addEventListener('click',()=>globalThis.BaliLiveWall?.next());
-  function restoreScreenLogo(){
-    const logo=$('#wallLogo');
-    let stored='';
-    try{stored=localStorage.getItem(LOGO_KEY)||''}catch{}
-    logo.src=/^data:image\/(png|jpeg|webp);base64,/.test(stored)?stored:'/bali-logo.svg';
-  }
-  function resetScreenLogo(){
-    try{localStorage.removeItem(LOGO_KEY)}catch{}
-    $('#wallLogoUpload').value='';
-    $('#wallLogoMessage').textContent='';
-    restoreScreenLogo();
-  }
-  $('#wallLogoDefault').addEventListener('click',resetScreenLogo);
-  $('#wallLogoUpload').addEventListener('change',event=>{
-    const file=event.target.files?.[0];
-    if(!file)return;
-    if(!['image/png','image/jpeg','image/webp'].includes(file.type) || file.size>1024*1024){
-      $('#wallLogoMessage').textContent='PNG/JPG/WebP, максимум 1 МБ';
-      event.target.value='';
-      return;
+  $('#wallLogoDefault').addEventListener('click',async()=>{
+    if(!controller)return;
+    try{
+      const response=await api('/api/admin/screen/logo?feed='+broadcastArea,{
+        method:'DELETE',headers:{'X-BALI-Action':'1'}});
+      logoRevision=-1;useRemoteLogo(response.logoRevision||0);
+      $('#wallLogoUpload').value='';
+      profileNotice('Вернули фирменный логотип BALI');
+    }catch(error){profileNotice(error.message,true)}
+  });
+  $('#wallLogoUpload').addEventListener('change',async event=>{
+    if(!controller)return;
+    const file=event.target.files?.[0];if(!file)return;
+    if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>1048576){
+      profileNotice('Логотип: PNG/JPG/WebP до 1 МБ',true);event.target.value='';return;
     }
-    const reader=new FileReader();
-    reader.onload=()=>{
-      const data=typeof reader.result==='string'?reader.result:'';
-      if(!/^data:image\/(png|jpeg|webp);base64,/.test(data)){
-        $('#wallLogoMessage').textContent='Не удалось прочитать логотип';return;
-      }
-      try{
-        localStorage.setItem(LOGO_KEY,data);
-        restoreScreenLogo();
-        $('#wallLogoMessage').textContent='Логотип сохранён';
-      }catch{
-        $('#wallLogoMessage').textContent='Не удалось сохранить: недостаточно памяти браузера';
-      }
-    };
-    reader.onerror=()=>{$('#wallLogoMessage').textContent='Ошибка чтения изображения'};
-    reader.readAsDataURL(file);
+    try{
+      const data=new FormData();data.append('logo',file);
+      const response=await api('/api/admin/screen/logo?feed='+broadcastArea,{
+        method:'POST',headers:{'X-BALI-Action':'1'},body:data});
+      logoRevision=-1;useRemoteLogo(response.logoRevision||0);
+      profileNotice('Логотип сохранён для всех экранов трансляции');
+    }catch(error){profileNotice(error.message,true)}
   });
   $('#wallReset').addEventListener('click',()=>{
-    settings={...defaults};
-    try{localStorage.removeItem(STORE_KEY)}catch{}
-    resetScreenLogo();
-    applySettings();
+    if(!controller)return;
+    settings={...defaults};applySettings();saveProfileSoon();
   });
   for(const input of controls){
     const change=()=>{
+      if(!controller)return;
       const key=input.dataset.wallSetting;
       settings[key]=input.type==='checkbox'?input.checked:
-        key==='fit'||key==='layout'||key==='liveFit'?input.value:Number(input.value);
-      try{localStorage.setItem(STORE_KEY,JSON.stringify(settings))}catch{}
-      applySettings();
+        key==='fit'||key==='layout'||key==='liveFit'||key.endsWith('Pos')?input.value:Number(input.value);
+      applySettings();saveProfileSoon();
     };
     input.addEventListener(input.type==='range'?'input':'change',change);
   }
@@ -775,8 +802,15 @@ if(page==='screen'){
     cancelAnimationFrame(resizeFrame);
     resizeFrame=requestAnimationFrame(layout);
   });
-  restoreScreenLogo();
   applySettings();
-  refresh();
-  setInterval(refresh,5000);
+  syncProfile(true).then(refresh);
+  setInterval(refresh,4000);
+  if(controller){
+    panel.hidden=false;
+    $('#wallSettingsToggle').setAttribute('aria-expanded','true');
+    profileNotice('Пульт экрана · настройки сохраняются для трансляции');
+  }else{
+    panel.hidden=true;
+    $('#wallSettingsToggle').hidden=true;
+  }
 }
