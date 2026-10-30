@@ -208,20 +208,44 @@ if(page==='admin') {
     const label=$('#contestMessage');
     try{
       const data=await api('/api/admin/contest?eventId='+displayedEventId);
-      $('#contestEnabled').checked=data.settings.enabled;
-      $('#contestDate').value=data.settings.contestDate||'';
-      $('#contestVotingStart').value=data.settings.votingStart||'01:00';
-      $('#contestVotingEnd').value=data.settings.votingEnd||'03:00';
-      $('#contestBaliEvent').value=data.settings.baliEventId||'';
-      const phase={disabled:'выключен',registration:'открыта регистрация',voting:'идёт голосование',closed:'голосование завершено'}[data.settings.phase]||data.settings.phase;
-      $('#contestPhase').textContent='Состояние: '+phase+
-       (data.settings.finalizedAt?' · итог зафиксирован · победитель: фото #'+(data.settings.winnerPhotoId||'нет')+
-       ' · голосов за победителя: '+data.settings.winnerVotes+' · всего: '+data.settings.totalVotes:
-        data.settings.phase==='closed'?' · ожидание итогов BALI ID':'')+
-       (data.settings.tallyError?' · ошибка получения голосов: '+data.settings.tallyError:'');
-      for(const input of ['contestDate','contestVotingStart','contestVotingEnd','contestBaliEvent']){
-        input&&($('#'+input).disabled=data.settings.enabled&&data.settings.phase!=='registration');
+      const settings=data.settings;
+      const date=settings.contestDate||'';
+      const previousDate=date?new Date(Date.parse(date+'T12:00:00+03:00')-86400000).toISOString().slice(0,10):'';
+      const startLocal=settings.votingStartsLocal||(date?date+'T'+(settings.votingStart||'01:00'):'');
+      const endLocal=settings.votingEndsLocal||(date?date+'T'+(settings.votingEnd||'03:00'):'');
+      const values={
+        contestEnabled:!!settings.enabled,
+        contestDate:date,
+        registrationOpensAt:settings.registrationOpensAt||(previousDate?previousDate+'T00:00':''),
+        registrationClosesAt:settings.registrationClosesAt||startLocal,
+        votingStartsLocal:startLocal,
+        votingEndsLocal:endLocal,
+        resultsLocal:settings.resultsLocal||endLocal,
+        contestBaliEvent:settings.baliEventId||''
+      };
+      if(!contestFormDirty){
+        for(const [id,value] of Object.entries(values)){
+          const control=$('#'+id);if(!control)continue;
+          if(control.type==='checkbox')control.checked=value;
+          else control.value=value;
+        }
       }
+      const phase={disabled:'выключен',waiting:'ожидание начала',registration:'идёт регистрация',
+        voting:'идёт голосование',awaiting_results:'ожидание результатов',
+        closed:'конкурс завершён'}[settings.phase]||settings.phase;
+      $('#contestPhase').textContent='Этап: '+phase+
+        (settings.finalizedAt?' · победитель: фото #'+(settings.winnerPhotoId||'нет')+
+         ' · голосов победителя: '+settings.winnerVotes+' · всего: '+settings.totalVotes:
+         settings.phase==='closed'?' · ожидается итог подсчёта':'')+
+        (settings.tallyError?' · ошибка подсчёта: '+settings.tallyError:'');
+      const afterVoteStart=['voting','awaiting_results','closed'].includes(settings.phase);
+      const afterVoteEnd=['awaiting_results','closed'].includes(settings.phase);
+      for(const id of ['contestEnabled','contestDate','contestBaliEvent','registrationOpensAt',
+        'registrationClosesAt','votingStartsLocal'])
+        $('#'+id).disabled=afterVoteStart;
+      $('#votingEndsLocal').disabled=afterVoteEnd;
+      $('#resultsLocal').disabled=settings.phase==='closed';
+      $('#contestSave').disabled=settings.phase==='closed';
       $('#contestExport').href='/api/admin/contest/export?eventId='+displayedEventId;
       $('#contestCandidates').replaceChildren(...data.candidates.map(c=>{
         const row=document.createElement('div');row.className='event-choice';
@@ -239,6 +263,12 @@ if(page==='admin') {
   root.addEventListener('click',event=>{
     if(event.target.closest('#contestPanel>summary'))setTimeout(()=>void loadContest(),0);
   });
+  root.addEventListener('input',event=>{
+    if(event.target.closest('#contestSettings'))contestFormDirty=true;
+  });
+  root.addEventListener('change',event=>{
+    if(event.target.closest('#contestSettings'))contestFormDirty=true;
+  });
   api('/api/admin/me').then(loadDashboard).catch(()=>{});
   setInterval(()=>{if($('#contestPanel')?.open)void loadContest()},5000);
   root.addEventListener('submit',async event=>{
@@ -253,10 +283,15 @@ if(page==='admin') {
       event.preventDefault();if(!displayedEventId)return;
       try{
         await action('/api/admin/contest/settings',{eventId:displayedEventId,
-         enabled:$('#contestEnabled').checked,contestDate:$('#contestDate').value,
-         votingStart:$('#contestVotingStart').value,votingEnd:$('#contestVotingEnd').value,
-         baliEventId:$('#contestBaliEvent').value.trim()});
-        await loadContest();notice('#adminMessage','Настройки конкурса сохранены.');
+          enabled:$('#contestEnabled').checked,contestDate:$('#contestDate').value,
+          registrationOpensAt:$('#registrationOpensAt').value,
+          registrationClosesAt:$('#registrationClosesAt').value,
+          votingStartsLocal:$('#votingStartsLocal').value,
+          votingEndsLocal:$('#votingEndsLocal').value,
+          resultsLocal:$('#resultsLocal').value,
+          baliEventId:$('#contestBaliEvent').value.trim()});
+        contestFormDirty=false;
+        await loadContest();notice('#adminMessage','Расписание конкурса сохранено.');
       }catch(error){notice('#adminMessage',error.message,true)}
     }
     if(event.target.id==='contestCandidateForm'){
@@ -331,7 +366,15 @@ if(page==='admin') {
   root.addEventListener('click',async event=>{
     const el=event.target.closest('button');if(!el)return;
     try{
-      if(el.dataset.contestPhoto){
+      if(el.dataset.openPanel){
+        const panel=$('#'+el.dataset.openPanel);
+        if(panel){panel.open=!panel.open;if(panel.open&&panel.id==='contestPanel')await loadContest();}
+      }else if(el.dataset.adminTab){
+        if(activePhotoStatus===el.dataset.adminTab)return;
+        activePhotoStatus=el.dataset.adminTab;pageNumber=1;previousDashboard=null;
+        await loadDashboard();
+        if(activePhotoStatus==='contest'){$('#contestPanel').open=true;await loadContest();}
+      }else if(el.dataset.contestPhoto){
         $('#contestPanel').open=true;$('#contestPhotoId').value=el.dataset.contestPhoto;
         $('#contestPanel').scrollIntoView({behavior:'smooth',block:'start'});
         await loadContest();$('#contestName').focus();
@@ -347,12 +390,12 @@ if(page==='admin') {
         previousDashboard=null;await loadDashboard();
         notice('#adminMessage','✓ Формат загрузки сохранён.');
       }
-      else if(el.dataset.view){selectedEventId=Number(el.dataset.view);pageNumber=1;await loadDashboard();}
+      else if(el.dataset.view){selectedEventId=Number(el.dataset.view);pageNumber=1;contestFormDirty=false;previousDashboard=null;await loadDashboard();if($('#contestPanel')?.open)await loadContest();}
       else if(el.dataset.page){pageNumber=Math.max(1,pageNumber+(el.dataset.page==='next'?1:-1));await loadDashboard();}
       else if(el.dataset.activate){
         if(!confirm('Сделать это мероприятие текущим? Показ на LED-экране переключится.'))return;
         await action('/api/admin/events/'+el.dataset.activate+'/activate',{});
-        selectedEventId=null;pageNumber=1;await loadDashboard();
+        selectedEventId=null;pageNumber=1;contestFormDirty=false;previousDashboard=null;await loadDashboard();
       }
       else if(el.dataset.status){await action('/api/admin/photos/'+el.dataset.photo+'/status',{status:el.dataset.status});await loadDashboard();}
       else if(el.dataset.delete){if(!confirm('Удалить фотографию без возможности восстановления?'))return;
