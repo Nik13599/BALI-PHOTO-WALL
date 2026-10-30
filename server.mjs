@@ -96,6 +96,16 @@ db.exec(`
   registered_at INTEGER NOT NULL
  );
  CREATE INDEX IF NOT EXISTS idx_contest_candidates_event ON contest_candidates(event_id);
+ CREATE TABLE IF NOT EXISTS contest_telegram_entries(
+  event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  bali_uid TEXT NOT NULL,
+  bali_event_id TEXT NOT NULL,
+  photo_id INTEGER NOT NULL UNIQUE REFERENCES photos(id) ON DELETE CASCADE,
+  telegram_username TEXT NOT NULL,
+  registered_at INTEGER NOT NULL,
+  PRIMARY KEY (event_id,bali_uid)
+ );
+ CREATE INDEX IF NOT EXISTS idx_contest_telegram_entries_photo ON contest_telegram_entries(photo_id);
 `);
 const currentEvent = db.prepare('SELECT id,name,upload_shape FROM events WHERE active=1 ORDER BY id DESC LIMIT 1');
 const selectPhoto = db.prepare('SELECT * FROM photos WHERE id=?');
@@ -313,6 +323,103 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
     throw error;
   }
 }));
+/* Competition images go ONLY to this dedicated PHOTO WALL disk and SQLite.
+   A 180-second BALI ID ticket is verified over HTTPS with the BALI Worker.
+   No raw Telegram/Firebase tokens, Gmail, BALI COIN or voter data enter here. */
+const contestOrigin='https://app.baliminsk.by';
+app.options('/api/contest/entry',(req,res)=>{
+ if(req.headers.origin!==contestOrigin)return res.status(403).end();
+ res.set('Access-Control-Allow-Origin',contestOrigin);
+ res.set('Access-Control-Allow-Methods','POST, OPTIONS');
+ res.set('Access-Control-Allow-Headers','Content-Type');
+ res.set('Vary','Origin');
+ res.status(204).end();
+});
+app.use('/api/contest/entry',(req,res,next)=>{
+ if(req.headers.origin===contestOrigin){
+  res.set('Access-Control-Allow-Origin',contestOrigin);
+  res.set('Vary','Origin');
+ }
+ next();
+});
+const contestUpload=multer({storage:multer.diskStorage({
+ destination:(_req,_file,cb)=>cb(null,UPLOADS),
+ filename:(_req,_file,cb)=>cb(null,crypto.randomUUID()+'.tmp')
+}),limits:{fileSize:8*1024*1024,files:1,fields:1,parts:2}});
+app.use('/api/contest/entry',(req,res,next)=>{
+ const discard=()=>{if(req.file?.path)fsp.unlink(req.file.path).catch(()=>{})};
+ res.on('finish',discard);res.on('close',discard);next();
+});
+app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.single('photo'),asyncRoute(async(req,res)=>{
+ if(req.headers.origin!==contestOrigin)return res.status(403).json({error:'Отправляй фото из приложения BALI'});
+ if(!req.file?.path)return res.status(400).json({error:'Выбери фото'});
+ const ticket=String(req.body?.ticket||'');
+ if(ticket.length<60||ticket.length>2800)return res.status(400).json({error:'Подтверждение конкурса отсутствует'});
+ let proof=null;
+ try{
+  const verify=await fetch('https://app.baliminsk.by/api/tg-bali/photo-contest-upload-proof',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ticket}),signal:AbortSignal.timeout(6000),redirect:'error'
+  });
+  if(verify.ok){const data=await verify.json();if(data?.ok)proof=data.contestant;}
+ }catch{}
+ if(!proof||!/^[-A-Za-z0-9_]{1,100}$/.test(proof.uid||'')||
+    !/^\\d{4}-\\d{2}-\\d{2}(?:__\\d+)?$/.test(proof.eventId||'')||
+    typeof proof.name!=='string'||proof.name.length<2||proof.name.length>70||
+    !/^@[A-Za-z0-9_]{5,32}$/.test(proof.username||''))
+   return res.status(401).json({error:'Подтверждение истекло. Попробуй отправить фото снова.'});
+ const minskToday=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Minsk',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ if(proof.eventId.slice(0,10)!==minskToday)
+   return res.status(409).json({error:'Фото конкурса загружается в день выбранной вечеринки. Предварительная запись сохранена.'});
+ const event=currentEvent.get();
+ if(!event)return res.status(409).json({error:'Сейчас нет активной вечеринки на PHOTO WALL'});
+ if(db.prepare('SELECT 1 FROM contest_telegram_entries WHERE event_id=? AND bali_uid=?').get(event.id,proof.uid))
+   return res.status(409).json({error:'Ты уже отправил(а) фото на этот конкурс. Второе фото не требуется.'});
+ let processed;
+ try{
+  const image=sharp(req.file.path,{limitInputPixels:36_000_000,failOn:'error'});
+  const meta=await image.metadata();
+  if(!['jpeg','png','webp'].includes(meta.format))throw Error('image-format');
+  processed=await image.rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
+    .webp({quality:77,effort:4}).toBuffer();
+ }catch{return res.status(415).json({error:'Только корректные JPEG, PNG или WebP до 8 МБ'})}
+ const dimension=await sharp(processed).metadata();
+ if(event.upload_shape==='square'&&dimension.width!==dimension.height)
+  return res.status(422).json({error:'Для этой вечеринки фото должно быть квадратным, 1:1'});
+ try{
+  const stat=await fsp.statfs(DATA);
+  if(Number(stat.bavail)*Number(stat.bsize)<MIN_FREE_DISK_MB*1048576)
+    return res.status(507).json({error:'На фотосервере недостаточно места'});
+ }catch(error){if(!['ENOSYS','ENOTSUP','EOPNOTSUPP'].includes(error.code))throw error}
+ const filename=crypto.randomUUID()+'.webp';
+ const thumbnail=await sharp(processed).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
+  .webp({quality:65}).toBuffer();
+ const cleanup=()=>Promise.all([fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{}),fsp.unlink(path.join(THUMBS,filename)).catch(()=>{})]);
+ try{
+  await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
+  await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
+  const insert=db.transaction(()=>{
+   const now=Date.now();
+   if(currentEvent.get()?.id!==event.id)throw Error('event-changed');
+   if(db.prepare('SELECT 1 FROM contest_telegram_entries WHERE event_id=? AND bali_uid=?').get(event.id,proof.uid))
+     throw Error('already-registered');
+   const id=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height) VALUES(?,?,?,'pending',?,?,?)")
+     .run(event.id,filename,'contest:'+crypto.randomUUID(),now,dimension.width,dimension.height).lastInsertRowid;
+   db.prepare('INSERT INTO contest_telegram_entries(event_id,bali_uid,bali_event_id,photo_id,telegram_username,registered_at) VALUES(?,?,?,?,?,?)')
+     .run(event.id,proof.uid,proof.eventId,id,proof.username,now);
+   // One royal nomination, legacy DB category uses "king" internally.
+   db.prepare('INSERT INTO contest_candidates(photo_id,event_id,name,category,registered_at) VALUES(?,?,?,?,?)')
+     .run(id,event.id,proof.name,'king',now);
+   return id;
+  });
+  const id=insert();
+  return res.status(201).json({ok:true,id,status:'pending',message:'Фото отправлено на модерацию конкурса'});
+ }catch(error){
+  await cleanup();
+  return res.status(409).json({error:error?.message==='already-registered'?'Фото уже подано на конкурс.':'Мероприятие изменилось или фотография не принята. Попробуй снова.'});
+ }
+}));
+
 const servePhoto = (row,res,privateView=false,fullView=false) => {
   if (!row || (!privateView && row.status !== 'approved')) return res.status(404).end();
   res.set('Cache-Control', 'private,no-store');
@@ -338,7 +445,7 @@ app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(N
 // for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
   const event = currentEvent.get();
-  const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos WHERE event_id=? AND status='approved' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
+  const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos p WHERE event_id=? AND status='approved' AND NOT EXISTS (SELECT 1 FROM contest_candidates c WHERE c.photo_id=p.id) ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
   const update=db.prepare('UPDATE photos SET width=?,height=? WHERE id=? AND (width IS NULL OR height IS NULL)');
   // Upgrade photos created before width/height metadata existed, once per photo.
   for(const photo of photos){
@@ -350,6 +457,12 @@ app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
     } catch {photo.width=1;photo.height=1;update.run(1,1,photo.id);}
   }
   res.json({event,photos:photos.map(({id,created_at,width,height,screen_lane})=>({id,created_at,width,height,screen_lane}))});
+}));
+/* Contest media is a separate LED feed, not mixed into the guests' wall. */
+app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
+ const event=currentEvent.get();
+ const photos=event?db.prepare("SELECT p.id,p.created_at,p.width,p.height,p.filename,p.screen_lane FROM photos p JOIN contest_candidates c ON c.photo_id=p.id AND c.event_id=p.event_id WHERE p.event_id=? AND p.status='approved' ORDER BY c.registered_at DESC LIMIT 500").all(event.id):[];
+ res.json({event,photos:photos.map(({id,created_at,width,height,screen_lane})=>({id,created_at,width,height,screen_lane}))});
 }));
 // Only approved photos may appear in the LED mosaic, even as thumbnails.
 // Unapproved originals remain accessible to the moderator only.
