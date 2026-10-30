@@ -37,7 +37,7 @@ try {
   const home=await r.clone().text();
   assert.match(home,/id="uploadForm"/,'Guest upload form must exist');
   assert.match(home,/id="photo"/,'Guest image input must exist');
-  assert.match(home,/guest.js/,'Guest route must load the lightweight independent client');
+  assert.match(home,/PHOTO WALL: lightweight, independent guest upload client/,'Guest page must contain the functional upload script');
   assert.match(home,/<style nonce="[^"]+">/,'Guest page must contain embedded working styles');
   assert.match(home,/<script nonce="[^"]+">/,'Guest page must contain embedded working JS');
   assert.match(home,/src="data:image\/svg\+xml;base64,/,'BALI logo must be embedded, not externally fetched');
