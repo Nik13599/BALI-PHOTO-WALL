@@ -142,23 +142,38 @@ try {
   assert(queue.photos.some(p=>p.id===photo.id),'Approved photo must be shown only in published photos tab');
   r=await call('/api/admin/dashboard?status=unknown',{headers:{Cookie:auth}});
   assert.equal(r.status,400,'Unrecognized moderation queues must be rejected');
+  // All five clock times are chosen manually, not frozen at 22:00 / 03:00.
+  const selectedSchedule={
+    eventId:ev.id,enabled:false,contestDate:'2030-10-31',baliEventId:'',
+    registrationOpensAt:'2030-10-30T19:25',
+    registrationClosesAt:'2030-10-31T00:40',
+    votingStartsLocal:'2030-10-31T01:15',
+    votingEndsLocal:'2030-10-31T02:55',
+    resultsLocal:'2030-10-31T04:20'
+  };
   r=await call('/api/admin/contest/settings',{
-    method:'POST',headers:authHeaders,
-    body:JSON.stringify({
-      eventId:ev.id,enabled:false,contestDate:'2030-10-31',baliEventId:'',
-      registrationOpensAt:'2030-10-30T22:00',
-      registrationClosesAt:'2030-10-31T03:00',
-      votingStartsLocal:'2030-10-31T03:00',
-      votingEndsLocal:'2030-10-31T05:00',
-      resultsLocal:'2030-10-31T05:15'
-    })
+    method:'POST',headers:authHeaders,body:JSON.stringify(selectedSchedule)
   });
-  assert.equal(r.status,200,'Configurable contest schedule should be accepted');
+  assert.equal(r.status,200,'Staff must be allowed to save all FIVE custom timestamps');
   r=await call('/api/admin/contest?eventId='+ev.id,{headers:{Cookie:auth}});
   assert.equal(r.status,200);
   const savedContest=await data(r);
-  assert.equal(savedContest.settings.registrationClosesAt,'2030-10-31T03:00');
-  assert.equal(savedContest.settings.resultsLocal,'2030-10-31T05:15');
+  for(const field of ['registrationOpensAt','registrationClosesAt','votingStartsLocal',
+    'votingEndsLocal','resultsLocal']){
+    assert.equal(savedContest.settings[field],selectedSchedule[field],
+      'Saved manual date and time should be returned without reverting: '+field);
+  }
+  r=await call('/api/admin/contest/settings',{
+    method:'POST',headers:authHeaders,
+    body:JSON.stringify({...selectedSchedule,registrationClosesAt:'2030-10-31T01:16'})
+  });
+  assert.equal(r.status,400,'Overlapping registration and voting must be rejected');
+  r=await call('/api/admin/contest/settings',{
+    method:'POST',headers:authHeaders,
+    body:JSON.stringify({...selectedSchedule,contestDate:'2030-11-01'})
+  });
+  assert.equal(r.status,400,'Voting date must match the contest date in Minsk');
+
   // A moderator can also load contest photos without sending them to the guest wall.
   const contestForm=new FormData();
   contestForm.append('eventId',String(ev.id));
@@ -198,7 +213,7 @@ try {
   const active=await data(r);
   assert.equal(active.event.name,'Тестовая вечеринка');
   assert.equal(active.photos.length,0,'New event must have its own slideshow');
-  console.log('PASS: guest / and /upload page, guest/contest uploads, isolated queues and feeds, server-saved profiles, permissions, events');
+  console.log('PASS: independently editable contest schedule,  guest / and /upload page, guest/contest uploads, isolated queues and feeds, server-saved profiles, permissions, events');
 }finally{
   if (server.exitCode===null) {
     const exited=new Promise(resolve=>server.once('exit',resolve));
