@@ -680,7 +680,7 @@ const adminBatchUpload=multer({
     destination:(_req,_file,callback)=>callback(null,UPLOADS),
     filename:(_req,_file,callback)=>callback(null,crypto.randomUUID()+'.tmp')
   }),
-  limits:{fileSize:8*1024*1024,files:8,fields:3,parts:11}
+  limits:{fileSize:8*1024*1024,files:8,fields:4,parts:12}
 });
 app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
   adminBatchUpload.array('photos',8),asyncRoute(async(req,res)=>{
