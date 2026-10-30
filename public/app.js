@@ -507,8 +507,10 @@ if(page==='screen'){
   function positionFloating(){
     for(const [key,element] of Object.entries(floatingElements)){
       const pos=anchors[settings[key+'Pos']]||anchors.tl;
-      const dx=settings[key+'X']||0,dy=settings[key+'Y']||0;
-      const inset=settings.inset;
+      const responsiveScale=Math.max(.65,Math.min(1,Math.min(screen.clientWidth/960,screen.clientHeight/540)));
+      const dx=Math.round((settings[key+'X']||0)*responsiveScale);
+      const dy=Math.round((settings[key+'Y']||0)*responsiveScale);
+      const inset=Math.round(settings.inset*responsiveScale);
       element.style.left=pos[0]===0?inset+'px':pos[0]===.5?'50%':'auto';
       element.style.right=pos[0]===1?inset+'px':'auto';
       element.style.top=pos[1]===0?inset+'px':pos[1]===.5?'50%':'auto';
