@@ -170,13 +170,41 @@ const contestSettings=id=>contestRow(id)||{
  winner_photo_id:null,winner_votes:0,total_votes:0,finalized_at:null
 };
 const eligibleCandidates=id=>db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,c.registered_at AS registeredAt,p.status FROM contest_candidates c JOIN photos p ON p.id=c.photo_id AND p.event_id=c.event_id WHERE c.event_id=? AND p.photo_area='contest' AND p.status='approved' ORDER BY c.registered_at,c.photo_id LIMIT 300").all(id);
+
+/* Read-only Telegram Admin schedule. This supersedes Windows button clocks
+   but never changes Windows event/candidate/photo data. */
+let telegramSchedule={expires:0,value:null,pending:null};
+async function telegramPhotoSchedule(){
+ if(Date.now()<telegramSchedule.expires)return telegramSchedule.value;
+ if(telegramSchedule.pending)return telegramSchedule.pending;
+ telegramSchedule.pending=(async()=>{
+  try{
+   const response=await fetch('https://app.baliminsk.by/api/tg-bali/photo-controls',{
+    headers:{Accept:'application/json'},redirect:'manual',
+    signal:AbortSignal.timeout(4500)});
+   const value=await response.json().catch(()=>null);
+   if(!response.ok||value?.ok!==true||!value?.buttons?.vote||!value?.buttons?.registration)
+    throw Error('Telegram Admin schedule unavailable');
+   telegramSchedule.value=value;
+   telegramSchedule.expires=Date.now()+5000;
+  }catch(error){
+   telegramSchedule.value=null;telegramSchedule.expires=Date.now()+5000;
+   console.warn('Telegram Admin button settings:',error.message);
+  }finally{telegramSchedule.pending=null}
+  return telegramSchedule.value;
+ })();
+ return telegramSchedule.pending;
+}
 let finalizing=null,lastTallyError='',lastTallyAttempt=0;
 async function finalizeContest(){
  if(finalizing)return finalizing;
  const event=currentContestEvent.get();
  if(!event)return;
  const settings=contestRow(event.id);
- if(!settings||contestClock(settings).phase!=='closed'||settings.finalized_at)return;
+ if(!settings||settings.enabled!==1||settings.finalized_at)return;
+ const telegram=await telegramPhotoSchedule();
+ if(!telegram||telegram.resultContestId!=='event_'+event.id||
+    !Number.isSafeInteger(telegram.resultAtMs)||Date.now()<telegram.resultAtMs)return;
  if(Date.now()-lastTallyAttempt<3000)return;
  lastTallyAttempt=Date.now();
  finalizing=(async()=>{
@@ -425,26 +453,30 @@ app.get('/api/public', (req,res) => {
 app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
  await finalizeContest();
  const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;
- const voteSettings=miniappSnapshot().settings.vote;
- const gate=contestVotingGate(settings,voteSettings);
- const clock=gate.clock,enabled=!!event&&settings.enabled===1&&clock.phase!=='disabled';
+ const control=await telegramPhotoSchedule();
+ const voteRule=control?.buttons.vote;
+ const registrationRule=control?.buttons.registration;
+ const clock=contestClock(settings),enabled=!!event&&settings.enabled===1;
  const rows=enabled?eligibleCandidates(event.id):[];
- // The manually saved contest timeline overrides the separate 03:00 weekly
- // button default. Manual-off and hidden still disable the ballot.
- const voting=enabled&&gate.buttonOpen&&rows.length>0;
+ const resultDue=!!settings?.finalized_at||(control?.resultContestId==='event_'+event.id&&
+  Number.isSafeInteger(control?.resultAtMs)&&Date.now()>=control.resultAtMs);
+ const voting=enabled&&!resultDue&&voteRule?.open===true&&rows.length>0;
+ const actualPhase=resultDue?'closed':voteRule?.open?'voting':
+  registrationRule?.open?'registration':'waiting';
  const base=PUBLIC_URL.startsWith('https://baliminsk.online')?PUBLIC_URL:'https://baliminsk.online';
  const winner=settings?.finalized_at&&settings.winner_photo_id?rows.find(x=>x.photoId===settings.winner_photo_id):null;
  res.json({contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
-  phase:clock.phase,contest_date:settings?.contest_date||null,bali_event_id:settings?.bali_event_id||null,
-  server_now:Date.now(),registration_open:clock.phase==='registration',
-  registration_ends_at:clock.registrationEndsAt,voting_starts_at:clock.votingStartsAt,
-  voting_ends_at:clock.votingEndsAt,voting_open:voting,
-  vote_button_open:enabled&&gate.buttonOpen,vote_button_visible:gate.visible,
-  vote_button_mode:gate.mode,
-  approved_count:rows.length,ballot_blocked_reason:!gate.visible?'hidden':
-   voteSettings.mode==='manual-off'?'manual-off':!gate.buttonOpen?'schedule':
+  phase:actualPhase,contest_date:settings?.contest_date||null,bali_event_id:settings?.bali_event_id||null,
+  server_now:Date.now(),registration_open:enabled&&registrationRule?.open===true,
+  registration_ends_at:registrationRule?.closesAtMs??null,
+  voting_starts_at:voteRule?.open?control.serverNowMs:voteRule?.nextOpensAtMs??null,
+  voting_ends_at:voteRule?.closesAtMs??null,voting_open:voting,
+  vote_button_open:voteRule?.open===true,vote_button_visible:voteRule?.visible!==false,
+  vote_button_mode:voteRule?.mode||'auto',
+  approved_count:rows.length,ballot_blocked_reason:!control?'telegram-settings-unavailable':
+   !voteRule?.visible?'hidden':!voteRule?.open?'schedule':
    rows.length===0?'no-approved-candidates':null,
-  result_pending:clock.phase==='closed'&&!settings.finalized_at,
+  result_pending:resultDue&&!settings.finalized_at,
   winner:winner?{id:'p_'+winner.photoId,name:winner.name,
    photoUrl:base+'/api/contest/photo/p_'+winner.photoId,votes:settings.winner_votes}:null,
   candidates:voting?rows.map(x=>({id:'p_'+x.photoId,name:x.name,category:'king',
@@ -625,18 +657,18 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  }
  if(!event)return res.status(409).json({error:'Не найдено мероприятие конкурса для этой заявки'});
  const setting=contestSettings(event.id);
- const submissionClock=contestClock(setting),rules=miniappSnapshot().settings.registration;
  const validQueued=queuedContestTicketAllowed(proof,setting);
  // The signed Cloudflare queue photo was originally submitted and accepted
  // under the THEN-current registration policy. Only live/direct submissions
  // must obey the CURRENT Windows registration window and voting time.
  const insideRegistration=!proof.queued&&setting.enabled===1&&
-  submissionClock.votingStartsAt!==null&&Date.now()<submissionClock.votingStartsAt&&
-  buttonWindow(rules).open;
+  Number.isSafeInteger(proof.queuedAtMs)&&Date.now()-proof.queuedAtMs<=180000;
+ // The 180-second proof was issued only after Telegram Admin's registration
+ // check. Windows must not reapply its old, conflicting button schedule.
  if(!insideRegistration&&!validQueued)
   return res.status(409).json({error:proof.queued?
    'Не удалось подтвердить исходную конкурсную заявку из очереди':
-   'Приём конкурсных фото закрыт настройками Windows или голосование уже началось'});
+   'Заявка не подтверждена расписанием Telegram Admin или срок пропуска истёк'});
  if(!eligiblePartyDay(proof.eventId,setting.contest_date)||
    (setting.bali_event_id&&proof.eventId!==setting.bali_event_id))
   return res.status(409).json({error:'Дата/мероприятие заявки не совпадает с конкурсом PHOTO WALL'});
@@ -711,10 +743,9 @@ app.get('/api/contest/photo/:id', (req,res)=>{
   "JOIN contest_settings s ON s.event_id=p.event_id "+
   "WHERE p.id=? AND p.event_id=? AND p.photo_area='contest' AND p.status='approved' AND s.enabled=1")
   .get(Number(match[1]),event.id);
- const settings=contestSettings(event.id),clock=contestClock(settings);
- if(!contestVotingGate(settings,miniappSnapshot().settings.vote).buttonOpen&&
-    !(settings.finalized_at&&settings.winner_photo_id===Number(match[1])))
-  return res.status(404).end();
+ // Photo bytes must remain readable after approval, even before voting or
+ // after voting has closed. Telegram D1 controls the ballot, not image URLs.
+ // The SQL above already requires an approved nominated contest photograph.
  return servePhoto(row,res);
 });
 app.get('/api/photos/:id', screenAuth, (req,res) => {
