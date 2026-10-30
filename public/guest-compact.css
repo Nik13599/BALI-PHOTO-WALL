@@ -100,3 +100,39 @@ body[data-page="guest"] .guest-photo-preview:has(+ .guest-edit-photo + .crop-edi
  body[data-page="guest"] .crop-canvas{max-height:28dvh}
  body[data-page="guest"] .small-print{display:none}
 }
+
+/* Rendering safeguard for compact phones: keep the form and its send button
+   visible instead of clipping the entire page at the viewport boundary.
+   Normal-height screens still retain a one-screen layout. */
+@media (max-width:700px) and (max-height:790px){
+  body[data-page="guest"]{
+    height:auto!important;
+    min-height:100dvh;
+    overflow-y:auto!important;
+    overflow-x:hidden;
+  }
+  body[data-page="guest"] .guest-shell{
+    height:auto!important;
+    min-height:100dvh;
+    overflow:visible!important;
+  }
+  body[data-page="guest"] .guest-main{
+    flex:0 0 auto;
+    margin:auto;
+    max-height:none;
+    justify-content:flex-start;
+  }
+  body[data-page="guest"] .upload-card{
+    flex:0 0 auto;
+    overflow:visible!important;
+  }
+  body[data-page="guest"] .guest-photo-preview{max-height:145px}
+  body[data-page="guest"] .crop-editor{overflow:visible}
+  body[data-page="guest"] .crop-canvas{max-height:170px}
+}
+@media (max-width:380px){
+  body[data-page="guest"] .guest-header{gap:4px}
+  body[data-page="guest"] .header-note{letter-spacing:.06em}
+  body[data-page="guest"] .guest-brand img{max-width:132px}
+  body[data-page="guest"] .dropzone{padding-inline:8px;font-size:12px}
+}
