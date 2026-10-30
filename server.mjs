@@ -732,12 +732,33 @@ app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   if (typeof rawPage !== 'string' || !/^[1-9][0-9]{0,5}$/.test(rawPage)) {
     return res.status(400).json({error:'Неверный номер страницы'});
   }
-  const total = selected ? db.prepare('SELECT COUNT(*) AS n FROM photos WHERE event_id=?').get(selected.id).n : 0;
+  const status = req.query.status ?? 'pending';
+  if (typeof status !== 'string' || !['pending','approved','rejected','contest'].includes(status))
+    return res.status(400).json({error:'Неизвестный раздел фотографий'});
+  // Separate the moderation queue from both independent LED feeds.
+  const counts = selected ? db.prepare(`SELECT
+    COALESCE(SUM(CASE WHEN p.status='pending' THEN 1 ELSE 0 END),0) AS pending,
+    COALESCE(SUM(CASE WHEN p.status='approved' AND c.photo_id IS NULL THEN 1 ELSE 0 END),0) AS approved,
+    COALESCE(SUM(CASE WHEN p.status='rejected' THEN 1 ELSE 0 END),0) AS rejected,
+    COALESCE(SUM(CASE WHEN p.status='approved' AND c.photo_id IS NOT NULL THEN 1 ELSE 0 END),0) AS contest
+    FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id
+    WHERE p.event_id=?`).get(selected.id) : {pending:0,approved:0,rejected:0,contest:0};
+  const total = counts[status];
   const pages = Math.max(1,Math.ceil(total/PAGE_SIZE));
   const page = Math.min(Number(rawPage),pages);
-  const photos = selected ? db.prepare('SELECT p.id,p.status,p.created_at,p.screen_lane,CASE WHEN c.photo_id IS NULL THEN 0 ELSE 1 END AS contest FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id WHERE p.event_id=? ORDER BY CASE p.status WHEN ? THEN 0 ELSE 1 END,p.created_at DESC,p.id DESC LIMIT ? OFFSET ?')
-    .all(selected.id,'pending',PAGE_SIZE,(page-1)*PAGE_SIZE) : [];
-  res.json({events,active,selected,photos,page,pages,total,pageSize:PAGE_SIZE});
+  const where = {
+    pending: "p.status='pending'",
+    approved: "p.status='approved' AND c.photo_id IS NULL",
+    rejected: "p.status='rejected'",
+    contest: "p.status='approved' AND c.photo_id IS NOT NULL"
+  }[status];
+  const photos = selected ? db.prepare(`SELECT p.id,p.status,p.created_at,p.screen_lane,
+      CASE WHEN c.photo_id IS NULL THEN 0 ELSE 1 END AS contest
+      FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id
+      WHERE p.event_id=? AND ${where}
+      ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`)
+    .all(selected.id,PAGE_SIZE,(page-1)*PAGE_SIZE) : [];
+  res.json({events,active,selected,photos,status,counts,page,pages,total,pageSize:PAGE_SIZE});
 });
 const makeEvent = db.transaction(name => {
   db.prepare('UPDATE events SET active=0').run();
