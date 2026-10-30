@@ -18,3 +18,9 @@ body[data-page="admin"] .admin-links .button{white-space:normal}
  body[data-page="admin"] .admin-links .button{font-size:9px}
  body[data-admin-area="contest"] .contest-settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 }
+
+/* Contest moderator may inspect/select historical events, never activate another
+   event or change the ordinary wall's upload shape from the contest workspace. */
+body[data-admin-area="contest"] #eventPanel #eventForm,
+body[data-admin-area="contest"] #eventPanel .activate,
+body[data-admin-area="contest"] #eventPanel .event-upload-policy{display:none!important}
