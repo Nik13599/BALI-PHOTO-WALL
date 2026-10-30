@@ -7,6 +7,7 @@ import QRCode from 'qrcode';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
 import {contestClock,minskDay,isContestDate,eligiblePartyDay,validContestTimeline,contestMandatoryTimes} from './contest-clock.mjs';
+import {screenArea,screenProfile,SCREEN_DEFAULTS} from './screen-profile.mjs';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -113,6 +114,23 @@ db.exec(`
 // Keep all historic contest photos separate, including pending and rejected.
 db.exec("UPDATE photos SET photo_area='contest' WHERE photo_area='general' AND id IN (SELECT photo_id FROM contest_candidates)");
 db.exec("CREATE INDEX IF NOT EXISTS idx_photos_area_status ON photos(event_id,photo_area,status,created_at)");
+db.exec(`CREATE TABLE IF NOT EXISTS screen_profiles(
+ area TEXT PRIMARY KEY CHECK(area IN ('general','contest')),
+ settings_json TEXT NOT NULL,
+ revision INTEGER NOT NULL DEFAULT 1,
+ updated_at INTEGER NOT NULL
+)`);
+const profileRow=db.prepare('SELECT settings_json,revision,updated_at FROM screen_profiles WHERE area=?');
+const screenLogoFile=area=>path.join(DATA,'screen-logo-'+area+'.webp');
+function screenProfileData(area){
+ const row=profileRow.get(area);
+ let settings=SCREEN_DEFAULTS;
+ if(row){try{settings=screenProfile(JSON.parse(row.settings_json));}catch(error){
+   console.error('Invalid saved screen profile:',area,error.message);}}
+ let logoRevision=0;
+ try{logoRevision=Math.floor(fs.statSync(screenLogoFile(area)).mtimeMs);}catch{}
+ return {ok:true,area,settings,revision:row?.revision||0,logoRevision};
+}
 const clockFields=db.pragma('table_info(contest_settings)').map(x=>x.name);
 for(const [name,definition] of [
  ['contest_date',"TEXT NOT NULL DEFAULT ''"],
@@ -260,8 +278,17 @@ app.use(express.json({ limit: '32kb' }));
 app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next(); });
 app.use(express.static(path.join(ROOT, 'public'), { index: false, dotfiles: 'deny', maxAge: '15m' }));
 app.get('/', (req, res) => { guestIdentity(req,res); res.sendFile(path.join(ROOT,'public','guest.html')); });
-app.get('/admin', (_req,res) => res.sendFile(path.join(ROOT,'public','admin.html')));
+app.get('/admin', (_req,res) => res.redirect(302,'/admin/general'));
+app.get('/admin/general', (_req,res) => res.sendFile(path.join(ROOT,'public','admin.html')));
+app.get('/admin/contest', (_req,res) => res.sendFile(path.join(ROOT,'public','admin.html')));
 app.get('/screen', (_req,res) => res.sendFile(path.join(ROOT,'public','screen.html')));
+for(const area of ['general','contest']){
+ app.get('/live/'+area,(_req,res)=>res.sendFile(path.join(ROOT,'public','screen.html')));
+ app.get('/control/'+area,(req,res)=>{
+   if(!validSession(req,'bali_admin'))return res.redirect(302,'/admin/'+area);
+   res.sendFile(path.join(ROOT,'public','screen.html'));
+ });
+}
 app.get('/healthz', (_req,res) => res.json({ok:true}));
 
 app.get('/api/public', (req,res) => {
@@ -576,6 +603,57 @@ app.get('/api/screen/thumbnail/:id', screenAuth, (req,res) => {
   const original=path.join(PHOTOS,photo.filename);
   res.set('Cache-Control','private,no-store');
   res.type('image/webp').sendFile(fs.existsSync(thumbnail)?thumbnail:original);
+});
+
+// Live displays read a persistent profile. Only a signed-in PHOTO WALL
+// moderator can edit the corresponding visual controller.
+app.get('/api/screen/profile',screenAuth,(req,res)=>{
+ const area=screenArea(req.query.feed);
+ if(!area)return res.status(400).json({error:'Выбери экран фотостены или конкурса'});
+ res.json(screenProfileData(area));
+});
+app.post('/api/admin/screen/profile',adminAuth,requireAction,(req,res)=>{
+ const area=screenArea(req.query.feed);
+ if(!area)return res.status(400).json({error:'Выбери вид трансляции'});
+ let settings;
+ try{settings=screenProfile(req.body?.settings);}catch(error){
+   return res.status(400).json({error:'Неверные параметры экрана: '+error.message});
+ }
+ db.prepare(`INSERT INTO screen_profiles(area,settings_json,revision,updated_at)
+ VALUES(?,?,1,?)
+ ON CONFLICT(area) DO UPDATE SET settings_json=excluded.settings_json,
+ revision=screen_profiles.revision+1,updated_at=excluded.updated_at`)
+ .run(area,JSON.stringify(settings),Date.now());
+ res.json(screenProfileData(area));
+});
+const logoUpload=multer({storage:multer.memoryStorage(),limits:{fileSize:1024*1024,files:1,fields:0}});
+app.post('/api/admin/screen/logo',adminAuth,requireAction,logoUpload.single('logo'),asyncRoute(async(req,res)=>{
+ const area=screenArea(req.query.feed);
+ if(!area)return res.status(400).json({error:'Выбери экран'});
+ if(!req.file?.buffer)return res.status(400).json({error:'Выбери изображение логотипа'});
+ const image=sharp(req.file.buffer,{limitInputPixels:5_000_000,failOn:'error'});
+ const meta=await image.metadata();
+ if(!['png','jpeg','webp'].includes(meta.format))
+  return res.status(415).json({error:'Нужен PNG, JPG или WebP'});
+ const converted=await image.resize({width:1200,height:1200,fit:'inside',withoutEnlargement:true})
+   .webp({quality:86}).toBuffer();
+ const destination=screenLogoFile(area),temp=destination+'.'+crypto.randomUUID()+'.tmp';
+ try{await fsp.writeFile(temp,converted,{flag:'wx'});await fsp.rename(temp,destination);}
+ finally{await fsp.unlink(temp).catch(()=>{});}
+ res.json(screenProfileData(area));
+}));
+app.delete('/api/admin/screen/logo',adminAuth,requireAction,asyncRoute(async(req,res)=>{
+ const area=screenArea(req.query.feed);
+ if(!area)return res.status(400).json({error:'Выбери экран'});
+ await fsp.unlink(screenLogoFile(area)).catch(error=>{if(error.code!=='ENOENT')throw error});
+ res.json(screenProfileData(area));
+}));
+app.get('/api/screen/profile-logo',screenAuth,(req,res)=>{
+ const area=screenArea(req.query.feed);
+ if(!area)return res.status(404).end();
+ const file=screenLogoFile(area);
+ if(!fs.existsSync(file))return res.status(404).end();
+ res.set('Cache-Control','private,no-store').type('image/webp').sendFile(file);
 });
 
 const loginLimiter = rateLimit({windowMs:900000,limit:10,standardHeaders:'draft-8',legacyHeaders:false});
