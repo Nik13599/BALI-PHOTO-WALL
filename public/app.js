@@ -308,7 +308,28 @@ if(page==='admin') {
     if(event.target.closest('#contestSettings'))contestFormDirty=true;
   });
   root.addEventListener('change',event=>{
-    if(event.target.closest('#contestSettings'))contestFormDirty=true;
+    if(!event.target.closest('#contestSettings'))return;
+    contestFormDirty=true;
+    if(event.target.id==='contestDate'){
+      // Move all five local timestamps by the same number of calendar days.
+      // Keep each manually chosen clock hour and minute unchanged.
+      const selected=event.target.value;
+      const previous=$('#votingStartsLocal').value.slice(0,10);
+      const delta=Date.parse(selected+'T12:00:00Z')-Date.parse(previous+'T12:00:00Z');
+      if(Number.isFinite(delta)&&selected!==previous){
+        for(const id of ['registrationOpensAt','registrationClosesAt','votingStartsLocal',
+          'votingEndsLocal','resultsLocal']){
+          const element=$('#'+id),raw=element.value;
+          if(!raw||element.disabled)continue;
+          const shifted=new Date(Date.parse(raw+':00Z')+delta);
+          if(Number.isFinite(shifted.getTime()))element.value=shifted.toISOString().slice(0,16);
+        }
+      }
+    }else if(event.target.id==='votingStartsLocal'){
+      // Contest ID/date is the Minsk-local date of the vote start.
+      const date=event.target.value.slice(0,10);
+      if(date)$('#contestDate').value=date;
+    }
   });
   api('/api/admin/me').then(loadDashboard).catch(()=>{});
   setInterval(()=>{if(adminArea==='contest'&&$('#contestPanel')?.open)void loadContest()},5000);
