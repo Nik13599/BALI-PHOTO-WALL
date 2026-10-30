@@ -93,7 +93,7 @@ try {
     if(url.startsWith('/live/'))assert.match(html,/id="wallGrid"/,'Live mosaic must exist: '+url);
     if(url.startsWith('/admin/'))assert.match(html,/id="loginForm"/,'Moderator login must exist: '+url);
   }
-  r=await call('/control/general');
+  r=await call('/control/general',{redirect:'manual'});
   assert.equal(r.status,302,'Visual controller must require a staff session');
   r=await call('/control/general',{headers:{Cookie:auth}});
   assert.equal(r.status,200,'Signed-in administrator should access general visual controller');
