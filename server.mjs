@@ -284,7 +284,8 @@ function guestUploadPage(req,res){
  res.set('Cache-Control','no-store');
  return res.sendFile(path.join(ROOT,'public','guest.html'));
 }
-app.get(['/', '/upload'],guestUploadPage);
+app.get('/',(req,res)=>res.set('Cache-Control','no-store').redirect(302,'/upload'));
+app.get('/upload',guestUploadPage);
 app.get('/admin', (_req,res) => res.redirect(302,'/admin/general'));
 app.get('/admin/general', (_req,res) => res.sendFile(path.join(ROOT,'public','admin.html')));
 app.get('/admin/contest', (_req,res) => res.sendFile(path.join(ROOT,'public','admin.html')));
@@ -388,7 +389,7 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
     const info = await input.metadata();
     if (!['jpeg','png','webp'].includes(info.format)) throw new Error('format');
     processed = await input.rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
-      .webp({quality:77,effort:4}).toBuffer();
+      .webp({quality:76,effort:2}).toBuffer();
   } catch {
     return res.status(415).json({error:'Поддерживаются JPEG, PNG и WebP без повреждений'});
   }
