@@ -84,6 +84,8 @@ if(page==='guest') {
   });
 }
 if(page==='admin') {
+  const adminArea=location.pathname.endsWith('/contest')?'contest':'general';
+  document.body.dataset.adminArea=adminArea;
   let busy=false;
   let previousDashboard=null;
   let selectedEventId=null;
@@ -96,7 +98,7 @@ if(page==='admin') {
     if(busy) return;
     busy=true;
     try {
-      const query=new URLSearchParams({page:String(pageNumber),status:activePhotoStatus});
+      const query=new URLSearchParams({page:String(pageNumber),status:activePhotoStatus,area:adminArea});
       if(selectedEventId!==null)query.set('eventId',String(selectedEventId));
       const data=await api('/api/admin/dashboard?'+query.toString());
       pageNumber=data.page;
@@ -106,12 +108,13 @@ if(page==='admin') {
       if(!$('#dashboard')) {
         root.innerHTML=`<section id="dashboard" class="bali-admin-v2">
 <div class="admin-heading">
-  <div class="admin-identity"><div class="eyebrow">PHOTO WALL · CONTROL ROOM</div><h1>УПРАВЛЕНИЕ ФОТО</h1><span class="muted" id="activeEvent"></span></div>
-  <div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">◩ LED-ЭКРАН</a><button type="button" class="button secondary" id="logoutBtn">ВЫЙТИ</button></div>
+  <div class="admin-identity"><div class="eyebrow">PHOTO WALL · ${adminArea==='contest'?'ROYAL CONTEST':'GENERAL CONTROL'}</div><h1>${adminArea==='contest'?'♛ УПРАВЛЕНИЕ КОНКУРСОМ':'ОБЩАЯ ФОТОСТЕНА'}</h1><span class="muted" id="activeEvent"></span></div>
+  <div class="admin-links"><a class="button secondary" href="/live/${adminArea}" target="_blank" rel="noopener">◩ ТРАНСЛЯЦИЯ</a><a class="button secondary" href="/control/${adminArea}" target="_blank" rel="noopener">⚙ НАСТРОЙКА ЭКРАНА</a><button type="button" class="button secondary" id="logoutBtn">ВЫЙТИ</button></div>
 </div>
+<nav class="admin-area-links" aria-label="Рабочие зоны PHOTO WALL"><a href="/admin/general" class="admin-area-link ${adminArea==='general'?'selected':''}">◩ ОБЩИЕ ФОТО</a><a href="/admin/contest" class="admin-area-link ${adminArea==='contest'?'selected':''}">♛ КОНКУРС</a></nav>
 <div class="admin-quick-actions" aria-label="Управление PHOTO WALL">
   <button class="button secondary" type="button" data-open-panel="bulkPanel">＋ ЗАГРУЗИТЬ ФОТО</button>
-  <button class="button secondary" type="button" data-open-panel="contestPanel">♛ УПРАВЛЯТЬ КОНКУРСОМ</button>
+  ${adminArea==='contest'?'<button class="button secondary" type="button" data-open-panel="contestPanel">♛ РАСПИСАНИЕ</button>':''}
   <button class="button secondary" type="button" data-open-panel="eventPanel">⚙ МЕРОПРИЯТИЕ</button>
 </div>
 <details class="panel admin-drawer" id="eventPanel"><summary>Мероприятие и формат загрузки</summary>
@@ -151,8 +154,8 @@ if(page==='admin') {
 </details>
 <nav class="admin-tabs" role="tablist" aria-label="Разделы фотографий">
   <button class="admin-tab" type="button" role="tab" data-admin-tab="pending">⏳ НОВЫЕ <b data-count="pending">0</b></button>
-  <button class="admin-tab" type="button" role="tab" data-admin-tab="approved">✓ НА ЭКРАНЕ <b data-count="approved">0</b></button>
-  <button class="admin-tab" type="button" role="tab" data-admin-tab="contest">♛ КОНКУРС <b data-count="contest">0</b></button>
+  <button class="admin-tab" type="button" role="tab" data-admin-tab="approved">✓ ${adminArea==='contest'?'ОДОБРЕНЫ':'НА ЭКРАНЕ'} <b data-count="approved">0</b></button>
+  
   <button class="admin-tab" type="button" role="tab" data-admin-tab="rejected">× ОТКЛОНЕНЫ <b data-count="rejected">0</b></button>
 </nav>
 <section class="admin-photo-section" aria-live="off">
@@ -170,7 +173,7 @@ if(page==='admin') {
       if(document.activeElement!==$('#eventUploadShape'))
         $('#eventUploadShape').value=data.selected?.upload_shape==='square'?'square':'any';
       $('#saveUploadShape').disabled=!displayedEventId;
-      const sectionNames={pending:'Ожидают проверки',approved:'Фотографии на экране',contest:'Фотографии конкурса',rejected:'Отклонённые фотографии'};
+      const sectionNames={pending:adminArea==='contest'?'Конкурс · ждут одобрения':'Ожидают проверки',approved:adminArea==='contest'?'Конкурс · одобренные':'Фотографии на экране',rejected:'Отклонённые фотографии'};
       $('#photoSectionTitle').textContent=sectionNames[activePhotoStatus]||'Фотографии';
       root.querySelectorAll('[data-admin-tab]').forEach(button=>{
         const current=button.dataset.adminTab===activePhotoStatus;
@@ -187,13 +190,13 @@ if(page==='admin') {
       const actions=p=>{
         const photo=String(p.id);
         if(activePhotoStatus==='pending')return '<button class="button small approve" data-photo="'+photo+'" data-status="approved">✓ НА ЭКРАН</button><button class="button small reject" data-photo="'+photo+'" data-status="rejected">× ОТКЛОНИТЬ</button>';
-        if(activePhotoStatus==='approved')return '<button class="button small" data-photo="'+photo+'" data-status="pending">↩ НА ПРОВЕРКУ</button><button class="button small" data-contest-photo="'+photo+'">♛ В КОНКУРС</button>';
-        if(activePhotoStatus==='contest')return '<button class="button small" data-contest-remove="'+photo+'">УБРАТЬ ИЗ КОНКУРСА</button>';
+        if(activePhotoStatus==='approved')return '<button class="button small" data-photo="'+photo+'" data-status="pending">↩ НА ПРОВЕРКУ</button>'+(adminArea==='contest'&&!p.contest?'<button class="button small" data-contest-photo="'+photo+'">♛ ДОБАВИТЬ УЧАСТНИКА</button>':'');
+        
         return '<button class="button small approve" data-photo="'+photo+'" data-status="approved">✓ ОДОБРИТЬ</button><button class="button small" data-photo="'+photo+'" data-status="pending">↩ НА ПРОВЕРКУ</button>';
       };
       $('#photoGrid').innerHTML=data.photos.length ? data.photos.map(p=>
         '<article class="photo-card '+(p.contest?'contest-photo':'')+'"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото #'+p.id+'" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+(p.contest?' · ♛':'')+'</span><span class="status '+p.status+'">'+({pending:'ОЖИДАЕТ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div>'+
-        (p.status==='approved'&&!p.contest?'<label class="photo-lane-label">Поток <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Авто</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верх</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Низ</option></select></label>':'')+
+        (adminArea==='general'&&p.status==='approved'?'<label class="photo-lane-label">Поток <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Авто</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верх</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Низ</option></select></label>':'')+
         '<div class="photo-actions">'+actions(p)+'<button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
       ).join('') : '<div class="empty">'+({pending:'Новых фотографий пока нет. Как только гости загрузят снимки, они появятся здесь.',approved:'На обычной фотостене пока нет опубликованных фотографий.',contest:'В конкурсе пока нет одобренных фотографий.',rejected:'Отклонённых фотографий нет.'}[activePhotoStatus]||'Фотографий нет.')+'</div>';
       $('#pageControls').innerHTML = data.pages>1
@@ -205,7 +208,7 @@ if(page==='admin') {
     } finally {busy=false;}
   }
   async function loadContest(){
-    if(!displayedEventId||!$('#contestPanel')?.open)return;
+    if(adminArea!=='contest'||!displayedEventId||!$('#contestPanel')?.open)return;
     const label=$('#contestMessage');
     try{
       const data=await api('/api/admin/contest?eventId='+displayedEventId);
@@ -273,7 +276,7 @@ if(page==='admin') {
     if(event.target.closest('#contestSettings'))contestFormDirty=true;
   });
   api('/api/admin/me').then(loadDashboard).catch(()=>{});
-  setInterval(()=>{if($('#contestPanel')?.open)void loadContest()},5000);
+  setInterval(()=>{if(adminArea==='contest'&&$('#contestPanel')?.open)void loadContest()},5000);
   root.addEventListener('submit',async event=>{
     if(event.target.id==='loginForm'){
       event.preventDefault();
@@ -322,6 +325,7 @@ if(page==='admin') {
         for(let index=0;index<files.length;index+=8){
           const form=new FormData();
           form.append('eventId',String(displayedEventId));
+           form.append('area',adminArea);
           form.append('lane',$('#bulkPhotoLane').value);
           form.append('status',$('#bulkPhotoStatus').value);
           for(const file of files.slice(index,index+8)){
@@ -376,7 +380,7 @@ if(page==='admin') {
         if(activePhotoStatus===el.dataset.adminTab)return;
         activePhotoStatus=el.dataset.adminTab;pageNumber=1;previousDashboard=null;
         await loadDashboard();
-        if(activePhotoStatus==='contest'){$('#contestPanel').open=true;await loadContest();}
+        if(adminArea==='contest'&&activePhotoStatus==='approved'){$('#contestPanel').open=true;await loadContest();}
       }else if(el.dataset.contestPhoto){
         $('#contestPanel').open=true;$('#contestPhotoId').value=el.dataset.contestPhoto;
         $('#contestPanel').scrollIntoView({behavior:'smooth',block:'start'});
