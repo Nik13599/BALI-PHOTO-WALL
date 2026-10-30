@@ -1,0 +1,44 @@
+/* Visually separate the editor from the read-only broadcast. */
+body[data-page="screen"] .screen{width:100vw;height:100vh;height:100dvh;overflow:hidden}
+body[data-page="screen"] .screen-login-card .login-logo{max-width:230px;height:auto}
+body[data-screen-mode="broadcast"] .wall-settings,
+body[data-screen-mode="broadcast"] #wallSettingsToggle,
+body[data-screen-mode="broadcast"] .screen-toolbar>a{display:none!important}
+body[data-screen-mode="broadcast"] .screen-toolbar{top:7px;right:7px;left:auto;transform:none;opacity:0}
+body[data-screen-mode="broadcast"] .screen-toolbar:focus-within,
+body[data-screen-mode="broadcast"] .screen-toolbar:hover{opacity:.9}
+body[data-screen-mode="broadcast"] .screen-gear{font-size:12px;padding:7px 9px}
+body[data-screen-mode="control"] .screen-toolbar{top:8px;left:8px;right:auto;transform:none;flex-wrap:wrap;opacity:1;max-width:min(58vw,690px);z-index:55}
+body[data-screen-mode="control"] .wall-settings{z-index:60;top:10px;right:10px;max-height:calc(100dvh - 20px)}
+body[data-screen-mode="control"] .wall-settings-scroll{overscroll-behavior:contain}
+body[data-screen-mode="control"] .screen-control-links{display:flex;flex-direction:column;gap:7px;margin-bottom:6px}
+body[data-screen-mode="control"] .screen-control-links .button{padding:8px 10px;font-size:10px;line-height:1.2}
+body[data-screen-mode="control"] .profile-sync-message{margin:0;font-size:11px;line-height:1.35;min-height:15px;color:#d7ff4d}
+body[data-screen-mode="broadcast"] .screen-control-links{display:none}
+body[data-screen-mode="control"] .wall-setting{gap:5px}
+body[data-screen-mode="control"] .wall-settings-head strong{font-size:15px}
+body[data-screen-mode="control"] .wall-settings-head small{font-size:10px}
+body[data-screen-mode="control"] .wall-settings{width:min(335px,calc(100vw - 20px))}
+body[data-page="screen"] .wall-qr{max-width:min(38vw,300px)}
+body[data-page="screen"] .wall-qr img{max-width:100%;height:auto;aspect-ratio:1}
+body[data-page="screen"] .wall-logo{max-width:min(45vw,520px)}
+body[data-page="screen"] .wall-live{max-width:52vw;white-space:normal}
+body[data-page="screen"] .wall-event-name{max-width:min(75vw,1100px);line-height:1.05;overflow-wrap:anywhere}
+body[data-page="screen"] .wall-event-hint{max-width:75vw;overflow-wrap:anywhere}
+@media(max-width:750px){
+ body[data-screen-mode="control"] .wall-settings{width:min(330px,calc(100vw - 16px));right:8px;top:48px;max-height:calc(100dvh - 56px);border-radius:12px}
+ body[data-screen-mode="control"] .screen-toolbar{max-width:calc(100vw - 20px);top:5px;left:5px;gap:3px}
+ body[data-screen-mode="control"] .screen-gear{padding:6px;font-size:9px}
+ body[data-screen-mode="control"] .wall-settings-scroll{padding:10px;gap:11px}
+ body[data-screen-mode="control"] .wall-settings-head{padding:10px}
+ body[data-page="screen"] .royal-result{padding-top:13dvh}
+ body[data-page="screen"] .royal-result-crown{font-size:clamp(66px,20vw,160px)}
+ body[data-page="screen"] .royal-result-title{font-size:clamp(16px,4.8vw,30px);letter-spacing:.05em}
+ body[data-page="screen"] .royal-result-name{font-size:clamp(20px,6vw,42px)}
+ body[data-page="screen"] .wall-qr{padding:4px}
+ body[data-page="screen"] .wall-qr span{font-size:8px}
+}
+@media(max-width:390px){
+ body[data-screen-mode="control"] .screen-toolbar>a{display:none}
+ body[data-screen-mode="control"] .wall-settings{top:43px;max-height:calc(100dvh - 52px)}
+}
