@@ -267,7 +267,8 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
  const base=PUBLIC_URL.startsWith('https://baliminsk.online')?PUBLIC_URL:'https://baliminsk.online';
  const winner=settings?.finalized_at&&settings.winner_photo_id?rows.find(x=>x.photoId===settings.winner_photo_id):null;
  res.json({contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
-  phase:clock.phase,server_now:Date.now(),registration_open:clock.phase==='registration',
+  phase:clock.phase,contest_date:settings?.contest_date||null,bali_event_id:settings?.bali_event_id||null,
+  server_now:Date.now(),registration_open:clock.phase==='registration',
   registration_ends_at:clock.registrationEndsAt,voting_starts_at:clock.votingStartsAt,
   voting_ends_at:clock.votingEndsAt,voting_open:voting,
   result_pending:clock.phase==='closed'&&!settings.finalized_at,
