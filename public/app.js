@@ -88,33 +88,113 @@ if(page==='admin') {
   let selectedEventId=null;
   let displayedEventId=null;
   let pageNumber=1;
+  let activePhotoStatus='pending';
+  let contestFormDirty=false;
   const root=$('#adminRoot');
   async function loadDashboard(){
     if(busy) return;
     busy=true;
     try {
-      const query=new URLSearchParams({page:String(pageNumber)});
+      const query=new URLSearchParams({page:String(pageNumber),status:activePhotoStatus});
       if(selectedEventId!==null)query.set('eventId',String(selectedEventId));
       const data=await api('/api/admin/dashboard?'+query.toString());
       pageNumber=data.page;
-      const signature=JSON.stringify([data.active,data.selected,data.events,data.photos,data.page,data.pages,data.total]);
+      const signature=JSON.stringify([data.active,data.selected,data.events,data.photos,data.page,data.pages,data.total,data.counts,data.status]);
       if(signature===previousDashboard) return;
       previousDashboard=signature;
       if(!$('#dashboard')) {
-        root.innerHTML='<section id="dashboard"><div class="admin-heading"><div><div class="eyebrow">CONTROL ROOM</div><h1>МОДЕРАЦИЯ <span class="glow">ФОТО</span></h1></div><div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">LED-ЭКРАН ↗</a><button class="button secondary" id="logoutBtn">ВЫЙТИ</button></div></div><div class="panel event-panel"><div><h2>Мероприятие</h2><p class="muted" id="activeEvent"></p></div><form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required><button class="button primary" type="submit">СОЗДАТЬ</button></form><div id="eventList" class="event-list"></div><div class="event-upload-policy"><label for="eventUploadShape">Формат загрузки фотографий для выбранного мероприятия</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые: квадратные, вертикальные, горизонтальные</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ ФОРМАТ</button></div><p class="muted">Гость выберет область фотографии перед отправкой. Для режима 1:1 другие соотношения сторон будут недоступны.</p></div></div><div class="panel admin-bulk-panel"><h2>МАССОВАЯ ЗАГРУЗКА ФОТОГРАФИЙ</h2><p class="muted">Выдели сразу много файлов. Приложение подготовит фотографии и отправит партиями по 8. Поддерживаются JPEG, PNG, WebP.</p><form id="bulkPhotoForm"><input type="file" class="field" id="bulkPhotoFiles" accept="image/jpeg,image/png,image/webp" multiple required><div class="bulk-form-row"><label>Поток <select class="field" id="bulkPhotoLane"><option value="auto">Автоматически</option><option value="top">↑ Верхний</option><option value="bottom">↓ Нижний</option></select></label><label>Публикация <select class="field" id="bulkPhotoStatus"><option value="approved">Сразу на экран</option><option value="pending">Оставить на модерации</option></select></label><button type="submit" class="button primary" id="bulkPhotoSubmit">ЗАГРУЗИТЬ ФОТОГРАФИИ</button></div><div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div></form></div><details class="panel" id="contestPanel"><summary style="cursor:pointer;font-weight:850">👑 КОНКУРС · КОРОЛЬ/КОРОЛЕВА</summary><p class="muted">Конкурс и фотографии хранятся отдельно на PHOTO WALL. Telegram получает только опубликованных участников и состояние голосования.</p><form id="contestSettings" class="event-form"><label><input type="checkbox" id="contestEnabled"> Конкурс активен</label><label>Дата голосования (Минск)<input class="field" type="date" id="contestDate" required></label><label>Старт голосования<input class="field" type="time" id="contestVotingStart" value="01:00" required></label><label>Конец голосования<input class="field" type="time" id="contestVotingEnd" value="03:00" required></label><label>BALI Event ID (необязательно)<input class="field" id="contestBaliEvent" placeholder="2026-10-30 или 2026-10-30__2" maxlength="16"></label><button class="button primary" type="submit">СОХРАНИТЬ РАСПИСАНИЕ</button></form><p class="muted">Регистрация закрывается точно в момент начала голосования. Дата голосования означает день ПОСЛЕ полуночи. Для вечеринки 30.10 укажи 31.10. Победитель определяется после окончания голосования по подтверждённым голосам BALI ID. Равенство голосов: побеждает тот, кто подал фото раньше.</p><p class="muted" id="contestPhase">Ожидаем расписание…</p><h3>Участники · одобренные фотографии</h3><form id="contestCandidateForm" class="event-form"><label>Фото №<input class="field" id="contestPhotoId" inputmode="numeric" type="number" min="1" required placeholder="ID фото"></label><label>Имя участника<input class="field" id="contestName" minlength="2" maxlength="70" required placeholder="Имя"></label><input type="hidden" id="contestCategory" value="king"><p class="muted">Номинация одна: КОРОЛЬ/КОРОЛЕВА. Конкурсные фото выводятся отдельной лентой.</p><button class="button primary" type="submit">ДОБАВИТЬ В КОНКУРС</button></form><div id="contestCandidates" class="event-list"></div><p id="contestMessage" class="muted" role="status"></p><a id="contestExport" class="button secondary" href="#" download>ВЫГРУЗИТЬ РЕЕСТР ФОТО (CSV)</a></details><div class="admin-section-head"><div><h2>Фотографии мероприятия</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div><div id="photoGrid" class="photo-grid"></div><div class="page-controls" id="pageControls"></div><div class="alert" id="adminMessage" role="status"></div></section>';
+        root.innerHTML=`<section id="dashboard" class="bali-admin-v2">
+<div class="admin-heading">
+  <div class="admin-identity"><div class="eyebrow">PHOTO WALL · CONTROL ROOM</div><h1>УПРАВЛЕНИЕ ФОТО</h1><span class="muted" id="activeEvent"></span></div>
+  <div class="admin-links"><a class="button secondary" href="/screen" target="_blank" rel="noopener">◩ LED-ЭКРАН</a><button type="button" class="button secondary" id="logoutBtn">ВЫЙТИ</button></div>
+</div>
+<div class="admin-quick-actions" aria-label="Управление PHOTO WALL">
+  <button class="button secondary" type="button" data-open-panel="bulkPanel">＋ ЗАГРУЗИТЬ ФОТО</button>
+  <button class="button secondary" type="button" data-open-panel="contestPanel">♛ УПРАВЛЯТЬ КОНКУРСОМ</button>
+  <button class="button secondary" type="button" data-open-panel="eventPanel">⚙ МЕРОПРИЯТИЕ</button>
+</div>
+<details class="panel admin-drawer" id="eventPanel"><summary>Мероприятие и формат загрузки</summary>
+  <div class="event-panel">
+    <form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required aria-label="Название новой вечеринки"><button class="button primary" type="submit">СОЗДАТЬ</button></form>
+    <div id="eventList" class="event-list"></div>
+    <div class="event-upload-policy"><label for="eventUploadShape">Формат фотографий на мероприятии</label><div class="event-upload-policy-controls"><select id="eventUploadShape" class="field"><option value="any">Любые пропорции</option><option value="square">Только квадратные 1:1</option></select><button id="saveUploadShape" type="button" class="button secondary">СОХРАНИТЬ</button></div></div>
+  </div>
+</details>
+<details class="panel admin-bulk-panel admin-drawer" id="bulkPanel"><summary>Загрузка фотографий модератором</summary>
+  <p class="muted">Можно выбрать сразу несколько JPEG, PNG или WebP. Фото отправляются партиями.</p>
+  <form id="bulkPhotoForm">
+    <input type="file" class="field" id="bulkPhotoFiles" accept="image/jpeg,image/png,image/webp" multiple required aria-label="Выберите фотографии">
+    <div class="bulk-form-row"><label>Поток<select class="field" id="bulkPhotoLane"><option value="auto">Автоматически</option><option value="top">↑ Верхний</option><option value="bottom">↓ Нижний</option></select></label>
+    <label>Статус<select class="field" id="bulkPhotoStatus"><option value="approved">Сразу на экран</option><option value="pending">На проверку</option></select></label>
+    <button type="submit" class="button primary" id="bulkPhotoSubmit">ЗАГРУЗИТЬ</button></div>
+    <div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div>
+  </form>
+</details>
+<details class="panel admin-contest-panel admin-drawer" id="contestPanel"><summary>♛ Король / Королева · расписание и участники</summary>
+  <form id="contestSettings" class="contest-settings-grid">
+    <label class="contest-switch"><input type="checkbox" id="contestEnabled"> Конкурс включён</label>
+    <label>Дата голосования (Минск)<input class="field" type="date" id="contestDate" required></label>
+    <label>Открытие регистрации<input class="field" type="datetime-local" id="registrationOpensAt" required></label>
+    <label>Закрытие регистрации<input class="field" type="datetime-local" id="registrationClosesAt" required></label>
+    <label>Начало голосования<input class="field" type="datetime-local" id="votingStartsLocal" required></label>
+    <label>Конец голосования<input class="field" type="datetime-local" id="votingEndsLocal" required></label>
+    <label>Объявление победителя<input class="field" type="datetime-local" id="resultsLocal" required></label>
+    <label>BALI Event ID (необязательно)<input class="field" id="contestBaliEvent" maxlength="16" placeholder="2026-10-30"></label>
+    <button class="button primary" type="submit" id="contestSave">СОХРАНИТЬ РАСПИСАНИЕ</button>
+  </form>
+  <p class="muted" id="contestPhase">Загружаем расписание конкурса…</p>
+  <p class="muted admin-hint">Время указывается по Минску. Для вечеринки 30.10 дата голосования обычно 31.10. Во время голосования доступны только изменения его окончания и времени объявления победителя.</p>
+  <div class="contest-candidates-head"><h3>Участники конкурса</h3><a id="contestExport" class="button secondary" href="#" download>↓ CSV</a></div>
+  <form id="contestCandidateForm" class="event-form"><label>№ фото<input class="field" id="contestPhotoId" type="number" inputmode="numeric" min="1" required placeholder="ID"></label><label>Имя участника<input class="field" id="contestName" minlength="2" maxlength="70" required placeholder="Имя"></label><input type="hidden" id="contestCategory" value="king"><button class="button secondary" type="submit">＋ ДОБАВИТЬ</button></form>
+  <div id="contestCandidates" class="event-list"></div><p class="muted" id="contestMessage" role="status"></p>
+</details>
+<nav class="admin-tabs" role="tablist" aria-label="Разделы фотографий">
+  <button class="admin-tab" type="button" role="tab" data-admin-tab="pending">⏳ НОВЫЕ <b data-count="pending">0</b></button>
+  <button class="admin-tab" type="button" role="tab" data-admin-tab="approved">✓ НА ЭКРАНЕ <b data-count="approved">0</b></button>
+  <button class="admin-tab" type="button" role="tab" data-admin-tab="contest">♛ КОНКУРС <b data-count="contest">0</b></button>
+  <button class="admin-tab" type="button" role="tab" data-admin-tab="rejected">× ОТКЛОНЕНЫ <b data-count="rejected">0</b></button>
+</nav>
+<section class="admin-photo-section" aria-live="off">
+  <div class="admin-section-head"><div><h2 id="photoSectionTitle">Ожидают проверки</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div>
+  <div id="photoGrid" class="photo-grid"></div>
+  <div class="page-controls" id="pageControls"></div>
+</section>
+<div class="alert" id="adminMessage" role="status" aria-live="polite"></div>
+</section>`;
       }
       $('#activeEvent').textContent=data.active?.name || 'Не выбрано';
-      $('#photoCount').textContent=data.total+' всего · '+data.page+' / '+data.pages+' стр.';
+      $('#photoCount').textContent=data.total+' фото · '+data.page+' / '+data.pages+' стр.';
       $('#selectedEvent').textContent=data.selected?.name||'Нет выбранного мероприятия';
       displayedEventId=data.selected?.id||null;
-      $('#eventUploadShape').value=data.selected?.upload_shape==='square'?'square':'any';
+      if(document.activeElement!==$('#eventUploadShape'))
+        $('#eventUploadShape').value=data.selected?.upload_shape==='square'?'square':'any';
       $('#saveUploadShape').disabled=!displayedEventId;
+      const sectionNames={pending:'Ожидают проверки',approved:'Фотографии на экране',contest:'Фотографии конкурса',rejected:'Отклонённые фотографии'};
+      $('#photoSectionTitle').textContent=sectionNames[activePhotoStatus]||'Фотографии';
+      root.querySelectorAll('[data-admin-tab]').forEach(button=>{
+        const current=button.dataset.adminTab===activePhotoStatus;
+        button.classList.toggle('selected',current);
+        button.setAttribute('aria-selected',String(current));
+        button.tabIndex=current?0:-1;
+      });
+      root.querySelectorAll('[data-count]').forEach(element=>{
+        element.textContent=String(data.counts?.[element.dataset.count]||0);
+      });
       $('#eventList').innerHTML=data.events.map(e=>
         '<div class="event-choice"><button type="button" class="chip '+(e.id===data.selected?.id?'selected':'')+'" data-view="'+e.id+'">'+esc(e.name)+(e.active?' · ИДЁТ':'')+'</button>'+(e.active?'':'<button type="button" class="chip activate" data-activate="'+e.id+'" title="Вывести фото этого мероприятия на экраны">СДЕЛАТЬ АКТИВНЫМ</button>')+'</div>'
       ).join('');
+      const actions=p=>{
+        const photo=String(p.id);
+        if(activePhotoStatus==='pending')return '<button class="button small approve" data-photo="'+photo+'" data-status="approved">✓ НА ЭКРАН</button><button class="button small reject" data-photo="'+photo+'" data-status="rejected">× ОТКЛОНИТЬ</button>';
+        if(activePhotoStatus==='approved')return '<button class="button small" data-photo="'+photo+'" data-status="pending">↩ НА ПРОВЕРКУ</button><button class="button small" data-contest-photo="'+photo+'">♛ В КОНКУРС</button>';
+        if(activePhotoStatus==='contest')return '<button class="button small" data-contest-remove="'+photo+'">УБРАТЬ ИЗ КОНКУРСА</button>';
+        return '<button class="button small approve" data-photo="'+photo+'" data-status="approved">✓ ОДОБРИТЬ</button><button class="button small" data-photo="'+photo+'" data-status="pending">↩ НА ПРОВЕРКУ</button>';
+      };
       $('#photoGrid').innerHTML=data.photos.length ? data.photos.map(p=>
-        '<article class="photo-card '+(p.contest?'contest-photo':'')+'"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото гостя" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+(p.contest?' · 👑 КОНКУРС':'')+'</span><span class="status '+p.status+'">'+({pending:'НА ПРОВЕРКЕ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div><label class="photo-lane-label">Карусель <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Автоматически</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верхняя</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Нижняя</option></select></label><div class="photo-actions"><button class="button small approve" data-photo="'+p.id+'" data-status="approved">✓ Одобрить</button><button class="button small reject" data-photo="'+p.id+'" data-status="rejected">× Отклонить</button><button class="button small" data-contest-photo="'+p.id+'" '+(p.status==='approved'?'':'disabled')+'>👑 В конкурс</button><button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
-      ).join('') : '<div class="empty">В выбранном мероприятии фотографий нет.</div>';
+        '<article class="photo-card '+(p.contest?'contest-photo':'')+'"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото #'+p.id+'" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+(p.contest?' · ♛':'')+'</span><span class="status '+p.status+'">'+({pending:'ОЖИДАЕТ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div>'+
+        (p.status==='approved'&&!p.contest?'<label class="photo-lane-label">Поток <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Авто</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верх</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Низ</option></select></label>':'')+
+        '<div class="photo-actions">'+actions(p)+'<button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
+      ).join('') : '<div class="empty">'+({pending:'Новых фотографий пока нет. Как только гости загрузят снимки, они появятся здесь.',approved:'На обычной фотостене пока нет опубликованных фотографий.',contest:'В конкурсе пока нет одобренных фотографий.',rejected:'Отклонённых фотографий нет.'}[activePhotoStatus]||'Фотографий нет.')+'</div>';
       $('#pageControls').innerHTML = data.pages>1
         ? '<button class="button secondary" type="button" data-page="prev" '+(data.page<=1?'disabled':'')+'>← НАЗАД</button><span>Страница '+data.page+' из '+data.pages+'</span><button class="button secondary" type="button" data-page="next" '+(data.page>=data.pages?'disabled':'')+'>ВПЕРЁД →</button>'
         : '';
