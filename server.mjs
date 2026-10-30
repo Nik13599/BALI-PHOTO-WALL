@@ -122,7 +122,7 @@ for(const [name,definition] of [
 ])if(!clockFields.includes(name))db.exec('ALTER TABLE contest_settings ADD COLUMN '+name+' '+definition);
 const contestRow=id=>db.prepare('SELECT * FROM contest_settings WHERE event_id=?').get(id);
 const contestSettings=id=>contestRow(id)||{
- event_id:id,enabled:0,voting_open:0,contest_date:minskDay(),
+ event_id:id,enabled:0,voting_open:0,contest_date:minskDay(Date.now()+86400000),
  voting_start:'01:00',voting_end:'03:00',bali_event_id:'',
  winner_photo_id:null,winner_votes:0,total_votes:0,finalized_at:null
 };
@@ -634,32 +634,45 @@ app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
 }));
 // Independent moderator-only competition control. These routes can never
 // credit BALI COIN or mutate the Firebase/TG user directory.
-app.get('/api/admin/contest',adminAuth,(req,res)=>{
+app.get('/api/admin/contest',adminAuth,asyncRoute(async(req,res)=>{
  const raw=String(req.query.eventId||'');
  if(!/^[1-9][0-9]{0,9}$/.test(raw))return res.status(400).json({error:'Выберите мероприятие'});
- const id=Number(raw);
- const event=db.prepare('SELECT id,name FROM events WHERE id=?').get(id);
+ const id=Number(raw),event=db.prepare('SELECT id,name FROM events WHERE id=?').get(id);
  if(!event)return res.status(404).json({error:'Мероприятие не найдено'});
- const settings=db.prepare('SELECT enabled,voting_open FROM contest_settings WHERE event_id=?').get(id)||{enabled:0,voting_open:0};
- const photos=db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,p.status FROM contest_candidates c "+
-  "JOIN photos p ON p.id=c.photo_id WHERE c.event_id=? ORDER BY c.registered_at DESC LIMIT 300").all(id);
- res.json({ok:true,event,settings:{enabled:!!settings.enabled,votingOpen:!!settings.voting_open},candidates:photos});
-});
+ await finalizeContest();
+ const settings=contestSettings(id),clock=contestClock(settings);
+ const candidates=db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,p.status FROM contest_candidates c JOIN photos p ON p.id=c.photo_id WHERE c.event_id=? ORDER BY c.registered_at DESC LIMIT 300").all(id);
+ res.json({ok:true,event,
+  settings:{enabled:!!settings.enabled,contestDate:settings.contest_date,
+   votingStart:settings.voting_start,votingEnd:settings.voting_end,
+   baliEventId:settings.bali_event_id,phase:clock.phase,
+   votingOpen:clock.phase==='voting',finalizedAt:settings.finalized_at,
+   winnerPhotoId:settings.winner_photo_id,winnerVotes:settings.winner_votes,
+   totalVotes:settings.total_votes,registrationEndsAt:clock.registrationEndsAt,
+   votingEndsAt:clock.votingEndsAt,tallyError:lastTallyError},candidates});
+}));
 app.post('/api/admin/contest/settings',adminAuth,requireAction,(req,res)=>{
- const input=req.body||{},id=Number(input.eventId);
- if(!Number.isSafeInteger(id)||id<1||typeof input.enabled!=='boolean'||typeof input.votingOpen!=='boolean'||
-  Object.keys(input).sort().join(',')!=='enabled,eventId,votingOpen')
-  return res.status(400).json({error:'Некорректные настройки конкурса'});
- if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))return res.status(404).json({error:'Мероприятие не найдено'});
- // Cannot open voting until at least one approved candidate exists.
- const candidate=db.prepare("SELECT COUNT(*) AS n FROM contest_candidates c JOIN photos p ON p.id=c.photo_id "+
-  "WHERE c.event_id=? AND p.status='approved'").get(id);
- if(input.votingOpen&&(!input.enabled||!candidate.n))
-  return res.status(409).json({error:'Для голосования включите конкурс и добавьте одобренные фотографии участников'});
- db.prepare('INSERT INTO contest_settings(event_id,enabled,voting_open,updated_at) VALUES(?,?,?,?) '+
-  'ON CONFLICT(event_id) DO UPDATE SET enabled=excluded.enabled,voting_open=excluded.voting_open,updated_at=excluded.updated_at')
-  .run(id,Number(input.enabled),Number(input.votingOpen),Date.now());
- res.json({ok:true});
+ const i=req.body||{},id=Number(i.eventId);
+ if(!Number.isSafeInteger(id)||id<1||typeof i.enabled!=='boolean'||
+  !isContestDate(i.contestDate)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingStart)||
+  !/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingEnd)||
+  i.votingEnd<=i.votingStart||typeof i.baliEventId!=='string'||
+  (i.baliEventId!==''&&!/^\d{4}-\d{2}-\d{2}(?:__(?:2|3))?$/.test(i.baliEventId))||
+  Object.keys(i).sort().join(',')!=='baliEventId,contestDate,enabled,eventId,votingEnd,votingStart')
+  return res.status(400).json({error:'Укажи дату, время открытия и закрытия голосования (по Минску)'});
+ if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))
+  return res.status(404).json({error:'Мероприятие не найдено'});
+ if(i.baliEventId&&!eligiblePartyDay(i.baliEventId,i.contestDate))
+  return res.status(400).json({error:'BALI Event ID должен относиться к дате конкурса или предыдущему дню'});
+ const previous=contestRow(id);
+ if(previous?.enabled===1&&contestClock(previous).phase!=='registration'&&
+   (previous.contest_date!==i.contestDate||previous.voting_start!==i.votingStart||previous.voting_end!==i.votingEnd||
+    previous.enabled!==Number(i.enabled)||previous.bali_event_id!==i.baliEventId))
+  return res.status(409).json({error:'После начала голосования расписание заблокировано. Для теста создай новое мероприятие.'});
+ db.prepare('INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,updated_at) VALUES(?,?,?,?,?,?,?,?) '+
+  'ON CONFLICT(event_id) DO UPDATE SET enabled=excluded.enabled,voting_open=0,contest_date=excluded.contest_date,voting_start=excluded.voting_start,voting_end=excluded.voting_end,bali_event_id=excluded.bali_event_id,updated_at=excluded.updated_at')
+  .run(id,Number(i.enabled),0,i.contestDate,i.votingStart,i.votingEnd,i.baliEventId,Date.now());
+ res.json({ok:true,phase:contestClock(contestSettings(id)).phase});
 });
 app.post('/api/admin/contest/candidates',adminAuth,requireAction,(req,res)=>{
  const input=req.body||{},eventId=Number(input.eventId),photoId=Number(input.photoId);
@@ -669,6 +682,8 @@ app.post('/api/admin/contest/candidates',adminAuth,requireAction,(req,res)=>{
   return res.status(400).json({error:'Некорректные данные участника'});
  const photo=db.prepare('SELECT id,status FROM photos WHERE id=? AND event_id=?').get(photoId,eventId);
  if(!photo)return res.status(404).json({error:'Фотография не найдена в мероприятии'});
+ if(contestClock(contestSettings(eventId)).phase!=='registration')
+   return res.status(409).json({error:'Список участников закрыт с началом голосования'});
  if(input.action==='add'){
   const name=typeof input.name==='string'?input.name.trim():'';
   if(name.length<2||name.length>70||/[<>\u0000-\u001f\u007f]/.test(name)||
