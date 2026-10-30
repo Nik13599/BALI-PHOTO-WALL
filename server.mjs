@@ -1122,18 +1122,37 @@ setInterval(()=>finalizeContest().catch(console.error),2000).unref();
 // Pull the cloud escrow after boot and while the computer is online. Cloudflare
 // pushes queued bytes only to this site's verified public HTTPS hostname.
 let draining=false;
+let lastQueueSync={running:false,checkedAtMs:null,ok:null,delivered:0,failed:0,reason:null};
 async function drainQueuedPhotos(){
- if(draining)return;
+ if(draining)return lastQueueSync;
  draining=true;
+ lastQueueSync={...lastQueueSync,running:true,checkedAtMs:Date.now()};
  try{
   const response=await fetch('https://app.baliminsk.by/api/tg-bali/photo-contest-queue-drain',{
    method:'POST',redirect:'error',headers:{Accept:'application/json'},
    signal:AbortSignal.timeout(65000)});
-  if(!response.ok)console.warn('Photo queue sync HTTP',response.status);
-  else{const status=await response.json();if(status.delivered)console.log('Photos from cloud queue:',status.delivered);}
- }catch(error){console.warn('Photo queue sync postponed:',error.message)}
- finally{draining=false}
+  const status=await response.json().catch(()=>({}));
+  lastQueueSync={running:false,checkedAtMs:Date.now(),ok:response.ok&&status.ok===true,
+   delivered:Number(status.delivered)||0,failed:Number(status.failed)||0,
+   reason:response.ok?(status.lastError||status.error||null):'Cloudflare HTTP '+response.status};
+  if(lastQueueSync.delivered)console.log('Photos from cloud queue:',lastQueueSync.delivered);
+  if(lastQueueSync.failed||!lastQueueSync.ok)
+   console.warn('Photo queue delivery:',lastQueueSync.reason||('Errors: '+lastQueueSync.failed));
+ }catch(error){
+  lastQueueSync={running:false,checkedAtMs:Date.now(),ok:false,delivered:0,failed:0,
+   reason:'Не удалось связаться с облачной очередью: '+(error?.message||'таймаут')};
+  console.warn('Photo queue sync postponed:',error.message);
+ }finally{draining=false}
+ return lastQueueSync;
 }
+app.get('/api/admin/contest/cloud-queue',adminAuth,(_req,res)=>{
+ res.json({ok:true,...lastQueueSync});
+});
+app.post('/api/admin/contest/cloud-queue/retry',adminAuth,requireAction,(_req,res)=>{
+ if(draining)return res.json({ok:true,started:false,...lastQueueSync});
+ void drainQueuedPhotos().catch(error=>console.warn('Cloud queue retry:',error.message));
+ res.status(202).json({ok:true,started:true});
+});
 setTimeout(()=>drainQueuedPhotos().catch(console.error),3000).unref();
 setInterval(()=>drainQueuedPhotos().catch(console.error),45000).unref();
 setInterval(()=>cleanup().catch(console.error),3600000).unref();

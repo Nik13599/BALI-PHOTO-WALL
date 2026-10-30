@@ -174,6 +174,11 @@ if(page==='admin') {
   </form>
   <p class="muted" id="contestPhase">Загружаем расписание конкурса…</p>
   <p class="muted admin-hint">Все даты и часы устанавливаются вручную с точностью до минуты, по Минску (UTC+3). Регистрация заканчивается до голосования, итоги не раньше окончания. После начала голосования прошедшие этапы нельзя изменять.</p>
+  <div class="panel" id="contestCloudQueuePanel" style="margin:12px 0;padding:12px;">
+    <b>☁ Передача фото из Telegram</b>
+    <p class="muted" id="contestCloudQueueStatus">Проверяем состояние облачной очереди…</p>
+    <button id="contestCloudQueueRetry" type="button" class="button secondary">↻ ПРОВЕРИТЬ И ПЕРЕДАТЬ ФОТО ИЗ ОБЛАКА</button>
+  </div>
   <div class="contest-candidates-head"><h3>Участники конкурса</h3><a id="contestExport" class="button secondary" href="#" download>↓ CSV</a></div>
   <form id="contestCandidateForm" class="event-form"><label>№ фото<input class="field" id="contestPhotoId" type="number" inputmode="numeric" min="1" required placeholder="ID"></label><label>Имя участника<input class="field" id="contestName" minlength="2" maxlength="70" required placeholder="Имя"></label><input type="hidden" id="contestCategory" value="king"><button class="button secondary" type="submit">＋ ДОБАВИТЬ</button></form>
   <div id="contestCandidates" class="event-list"></div><p class="muted" id="contestMessage" role="status"></p>
@@ -237,6 +242,18 @@ if(page==='admin') {
       if(error.code===401){if($('#dashboard')) {location.reload();return;}}
       notice('#adminMessage',error.message,true);
     } finally {busy=false;}
+  }
+  async function refreshCloudQueue(){
+   const node=$('#contestCloudQueueStatus');if(!node)return;
+   try{
+    const state=await api('/api/admin/contest/cloud-queue');
+    if(!node.isConnected)return;
+    const at=state.checkedAtMs?new Date(state.checkedAtMs).toLocaleTimeString('ru-RU',{timeZone:'Europe/Minsk'}):null;
+    node.textContent=state.running?'Передача выполняется…':
+     at?'Последняя проверка '+at+' · принято '+state.delivered+' · ошибок '+state.failed+
+      (state.reason?' · '+state.reason:''):
+     'Пока не проверено. Нажмите кнопку, чтобы запросить доставку.';
+   }catch(error){node.textContent='Состояние очереди: '+error.message}
   }
   async function loadContest(){
     if(adminArea!=='contest'||!displayedEventId||!$('#contestPanel')?.open)return;
@@ -332,7 +349,8 @@ if(page==='admin') {
     }
   });
   api('/api/admin/me').then(loadDashboard).catch(()=>{});
-  setInterval(()=>{if(adminArea==='contest'&&$('#contestPanel')?.open)void loadContest()},5000);
+  setInterval(()=>{if(adminArea==='contest'&&$('#contestPanel')?.open){void loadContest();void refreshCloudQueue()}},5000);
+  if(adminArea==='contest')void refreshCloudQueue();
   root.addEventListener('submit',async event=>{
     if(event.target.id==='loginForm'){
       event.preventDefault();
@@ -429,7 +447,18 @@ if(page==='admin') {
   root.addEventListener('click',async event=>{
     const el=event.target.closest('button');if(!el)return;
     try{
-      if(el.dataset.openPanel){
+      if(el.id==='contestCloudQueueRetry'){
+        el.disabled=true;
+        const label=$('#contestCloudQueueStatus');
+        if(label)label.textContent='Запускаем повторную передачу из Cloudflare…';
+        try{
+         const result=await action('/api/admin/contest/cloud-queue/retry',{});
+         if(label)label.textContent=result.started?'Запрос принят. Фото проверяются и передаются…':
+          'Предыдущая синхронизация ещё выполняется.';
+         setTimeout(()=>void refreshCloudQueue(),1500);
+        }catch(error){if(label)label.textContent='Ошибка: '+error.message}
+        finally{el.disabled=false}
+      }else if(el.dataset.openPanel){
         const panel=$('#'+el.dataset.openPanel);
         if(panel){panel.open=!panel.open;if(panel.open&&panel.id==='contestPanel')await loadContest();}
       }else if(el.dataset.adminTab){
