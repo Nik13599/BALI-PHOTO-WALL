@@ -496,11 +496,13 @@ if(page==='screen'){
     }
   }
   function clearWall(){
+    const result=$('#royalResult');if(result)result.hidden=true;lastRoyalWinner=null;
     photos=[];signature='';eventId=null;
     globalThis.BaliCarouselWall?.reset();
     globalThis.BaliLiveWall?.reset();
     layout();
   }
+  let lastRoyalWinner=null;
   async function refresh(){
     try{
       const data=await api(new URLSearchParams(location.search).get('feed')==='contest'?'/api/screen/contest':'/api/screen');
@@ -510,6 +512,27 @@ if(page==='screen'){
       const event=data.event?.id??null;
       const eventName=data.event?.name||'BALI NIGHT CLUB';
       $('#screenEvent').textContent=eventName;
+      const royal=$('#royalResult');
+      if(royal){
+        const winner=data.winner;
+        if(winner?.id){
+          $('#royalResultName').textContent=winner.name||'ПОБЕДИТЕЛЬ BALI';
+          $('#royalResultVotes').textContent=winner.votes+' '+(winner.votes===1?'голос':'голосов');
+          if(lastRoyalWinner!==winner.id){
+            royal.hidden=true;
+            void royal.offsetWidth;
+            royal.hidden=false;
+            lastRoyalWinner=winner.id;
+          }
+        }else{
+          royal.hidden=true;
+          lastRoyalWinner=null;
+          if(data.phase==='closed'){
+            $('#screenEvent').textContent=data.finalized?'КОНКУРС ЗАВЕРШЁН · НЕТ ГОЛОСОВ':'ПОДВОДИМ ИТОГИ · ОЖИДАЕМ BALI';
+          }
+        }
+      }
+
       // Update on photos or event identity changes; do not redraw every poll.
       const incoming=(data.photos||[]).slice(0,MAX_WALL_PHOTOS);
       const nextSignature=event+':'+incoming.map(photo=>[photo.id,photo.width,photo.height,photo.screen_lane].join('/')).join(',');
