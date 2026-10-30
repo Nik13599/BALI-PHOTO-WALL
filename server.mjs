@@ -853,35 +853,37 @@ app.post('/api/admin/contest/settings',adminAuth,requireAction,(req,res)=>{
      registration_ends_at:i.registrationClosesAt,voting_starts_at:i.votingStartsLocal,
      voting_ends_at:i.votingEndsLocal,results_at:i.resultsLocal};
    if(!validContestTimeline(timeline))
-     return res.status(400).json({error:'Регистрация 22:00, голосование 03:00 по Минску. Настраивать можно окончание и время итогов.'});
+     return res.status(400).json({error:'Неверный порядок времени: открытие регистрации < закрытие регистрации ≤ начало голосования < конец голосования ≤ итоги. Дата конкурса должна совпадать с днём начала голосования по Минску.'});
  }else{
+   // Legacy clients retain the original fixed times, but manual schedules
+   // saved by the updated moderator may use ANY valid hour and minute.
    if(i.votingStart!=='03:00'||
-     !/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingEnd)||i.votingEnd<='03:00')
+     !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(i.votingEnd)||i.votingEnd<='03:00')
      return res.status(400).json({error:'Проверь время голосования'});
    timeline={registration_opens_at:'',registration_ends_at:'',voting_starts_at:'',
      voting_ends_at:'',results_at:''};
  }
- const required=contestMandatoryTimes(i.contestDate);
- if(!required|| (advanced&&(i.registrationOpensAt!==required.opens||
-   i.registrationClosesAt!==required.voteStart||i.votingStartsLocal!==required.voteStart)))
-   return res.status(400).json({error:'Регистрация начинается в 22:00, голосование строго в 03:00 (Минск).'});
- const start='03:00';
+ const start=advanced?i.votingStartsLocal.slice(11):'03:00';
  const end=advanced?i.votingEndsLocal.slice(11):i.votingEnd;
  const prev=contestRow(id),prevClock=contestClock(prev),now=Date.now();
+ if(prev?.finalized_at)
+   return res.status(409).json({error:'Результат уже зафиксирован. Для следующего конкурса создай другое мероприятие.'});
  if(prev?.enabled===1&&prevClock.votingStartsAt!==null&&now>=prevClock.votingStartsAt){
-   if(prev.finalized_at||prevClock.phase==='closed')
-     return res.status(409).json({error:'Результат зафиксирован. Для нового расписания создай новое мероприятие.'});
+   if(prevClock.phase==='closed')
+     return res.status(409).json({error:'Конкурс завершён по расписанию. Для нового конкурса создай другое мероприятие.'});
    const unmodified=prev.contest_date===i.contestDate&&prev.enabled===Number(i.enabled)&&
      prev.bali_event_id===i.baliEventId&&prev.voting_start===start&&
      (prev.registration_opens_at||'')===timeline.registration_opens_at&&
      (prev.registration_ends_at||'')===timeline.registration_ends_at&&
      (prev.voting_starts_at||'')===timeline.voting_starts_at;
    if(!unmodified)
-     return res.status(409).json({error:'После начала голосования можно менять только его окончание и время объявления результатов.'});
+     return res.status(409).json({error:'После начала голосования нельзя менять прошедшие этапы и дату конкурса. Окончание голосования и результаты можно перенести.'});
    if(prevClock.phase==='awaiting_results'&&(prev.voting_ends_at||'')!==timeline.voting_ends_at)
-     return res.status(409).json({error:'Голосование завершилось. Разрешено менять только время результатов.'});
+     return res.status(409).json({error:'Голосование уже завершено: разрешено менять только время результатов.'});
    if(prevClock.phase==='voting'&&advanced&&Date.parse(i.votingEndsLocal+':00+03:00')<=now)
-     return res.status(409).json({error:'Новое окончание голосования должно быть в будущем.'});
+     return res.status(409).json({error:'Окончание действующего голосования должно быть в будущем.'});
+   if(prevClock.phase==='awaiting_results'&&advanced&&Date.parse(i.resultsLocal+':00+03:00')<=now)
+     return res.status(409).json({error:'Новое время результатов должно быть в будущем.'});
  }
  db.prepare(`INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,
    registration_opens_at,registration_ends_at,voting_starts_at,voting_ends_at,results_at,updated_at)
