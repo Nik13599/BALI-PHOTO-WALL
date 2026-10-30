@@ -40,8 +40,18 @@ async function backup(){
       }catch(error){if(error.code!=='ENOENT')throw error;}
       count++;
     }
+    // The shared display profiles live in SQLite, while custom logos are
+    // separate local files. Keep both with every complete backup.
+    const copiedLogos=[];
+    for(const area of ['general','contest']){
+      const file='screen-logo-'+area+'.webp';
+      try{
+        await fs.copyFile(path.join(DATA,file),path.join(pending,file));
+        copiedLogos.push(file);
+      }catch(error){if(error.code!=='ENOENT')throw error;}
+    }
     await fs.writeFile(path.join(pending,'manifest.json'),JSON.stringify({
-      format:'bali-photo-wall-v1',createdAt:new Date().toISOString(),photos:count
+      format:'bali-photo-wall-v1',createdAt:new Date().toISOString(),photos:count,screenLogos:copiedLogos
     },null,2)+'\n');
     await fs.rename(pending,completed);
     console.log('BALI PHOTO WALL backup complete:',completed,'photos:',count);
