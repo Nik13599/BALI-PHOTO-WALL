@@ -117,7 +117,7 @@ if(page==='admin') {
   ${adminArea==='contest'?'<button class="button secondary" type="button" data-open-panel="contestPanel">♛ РАСПИСАНИЕ</button>':''}
   <button class="button secondary" type="button" data-open-panel="eventPanel">⚙ МЕРОПРИЯТИЕ</button>
 </div>
-<details class="panel admin-drawer" id="eventPanel"><summary>Мероприятие и формат загрузки</summary>
+<details class="panel admin-drawer" id="eventPanel"><summary>${adminArea==='contest'?'Выбрать мероприятие конкурса':'Мероприятие и формат загрузки'}</summary>
   <div class="event-panel">
     <form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required aria-label="Название новой вечеринки"><button class="button primary" type="submit">СОЗДАТЬ</button></form>
     <div id="eventList" class="event-list"></div>
