@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
+import {SCREEN_DEFAULTS} from '../screen-profile.mjs';
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -57,6 +58,36 @@ try {
   assert.equal(r.status,200);
   const screenCookie=r.headers.get('set-cookie')?.split(';')[0];
   assert(screenCookie?.startsWith('bali_screen='));
+  for(const url of ['/live/general','/live/contest']){
+    r=await call(url);
+    assert.equal(r.status,200,'Live window should serve the screen: '+url);
+  }
+  r=await call('/control/general');
+  assert.equal(r.status,302,'Visual controller must require a staff session');
+  r=await call('/control/general',{headers:{Cookie:auth}});
+  assert.equal(r.status,200,'Signed-in administrator should access general visual controller');
+  r=await call('/control/contest',{headers:{Cookie:auth}});
+  assert.equal(r.status,200,'Signed-in administrator should access contest visual controller');
+  r=await call('/api/screen/profile?feed=general',{headers:{Cookie:screenCookie}});
+  assert.equal(r.status,200);
+  assert.equal((await data(r)).settings.layout,'puzzle');
+  const generalSettings={...SCREEN_DEFAULTS,layout:'carousel-double',logoPos:'tr',maxPhotos:33};
+  const contestSettings={...SCREEN_DEFAULTS,layout:'live-mosaic',maxPhotos:25};
+  for(const [feed,settings] of [['general',generalSettings],['contest',contestSettings]]){
+    r=await call('/api/admin/screen/profile?feed='+feed,{
+      method:'POST',headers:authHeaders,body:JSON.stringify({settings})});
+    assert.equal(r.status,200,'Staff must be able to save the '+feed+' screen profile');
+  }
+  for(const [feed,layout] of [['general','carousel-double'],['contest','live-mosaic']]){
+    r=await call('/api/screen/profile?feed='+feed,{headers:{Cookie:screenCookie}});
+    assert.equal(r.status,200);
+    assert.equal((await data(r)).settings.layout,layout,'Profiles cannot overwrite each other');
+  }
+  r=await call('/api/admin/screen/profile?feed=general',{
+    method:'POST',headers:{Cookie:screenCookie,'X-BALI-Action':'1','Content-Type':'application/json'},
+    body:JSON.stringify({settings:SCREEN_DEFAULTS})});
+  assert.equal(r.status,401,'An LED password must not grant visual controller write access');
+
   r=await call('/api/photos/'+photo.id,{headers:{Cookie:screenCookie}});
   assert.equal(r.status,404,'Pending photo must remain hidden from screen');
   r=await call('/api/admin/dashboard',{headers:{Cookie:auth}});
@@ -97,6 +128,36 @@ try {
   const savedContest=await data(r);
   assert.equal(savedContest.settings.registrationClosesAt,'2030-10-31T03:00');
   assert.equal(savedContest.settings.resultsLocal,'2030-10-31T05:15');
+  // A moderator can also load contest photos without sending them to the guest wall.
+  const contestForm=new FormData();
+  contestForm.append('eventId',String(ev.id));
+  contestForm.append('area','contest');
+  contestForm.append('status','pending');
+  contestForm.append('lane','auto');
+  contestForm.append('photos',new Blob([png],{type:'image/png'}),'contest-test.png');
+  r=await call('/api/admin/photos/bulk',{
+    method:'POST',headers:{Cookie:auth,'X-BALI-Action':'1'},body:contestForm});
+  assert.equal(r.status,200,'Moderator contest upload should work');
+  const imported=await data(r);
+  assert.equal(imported.imported,1);
+  const contestPhotoId=imported.results[0].id;
+  r=await call('/api/admin/dashboard?area=contest&status=pending',{headers:{Cookie:auth}});
+  assert.equal(r.status,200);
+  assert((await data(r)).photos.some(p=>p.id===contestPhotoId));
+  r=await call('/api/admin/dashboard?area=general&status=pending',{headers:{Cookie:auth}});
+  assert(!(await data(r)).photos.some(p=>p.id===contestPhotoId),
+    'Contest pending photo must not appear in ordinary moderation');
+  r=await call('/api/admin/photos/'+contestPhotoId+'/status',{
+    method:'POST',headers:authHeaders,body:JSON.stringify({status:'approved'})});
+  assert.equal(r.status,200);
+  r=await call('/api/screen',{headers:{Cookie:screenCookie}});
+  assert(!(await data(r)).photos.some(p=>p.id===contestPhotoId),
+    'Approved contest photo must never appear on the general wall');
+  r=await call('/api/photos/'+contestPhotoId,{headers:{Cookie:screenCookie}});
+  assert.equal(r.status,404,'Contest photo may not be fetched through the general photo endpoint');
+  r=await call('/api/photos/'+contestPhotoId+'?feed=contest',{headers:{Cookie:screenCookie}});
+  assert.equal(r.status,200,'Contest channel can fetch its own approved photo');
+
 
   r=await call('/api/screen',{headers:{Cookie:screenCookie}});
   assert((await data(r)).photos.some(p=>p.id===photo.id));
@@ -106,7 +167,7 @@ try {
   const active=await data(r);
   assert.equal(active.event.name,'Тестовая вечеринка');
   assert.equal(active.photos.length,0,'New event must have its own slideshow');
-  console.log('PASS: guest uploads, isolated moderation queues, approvals, customizable contest timing, protected screen, event isolation');
+  console.log('PASS: guest/contest uploads, isolated queues and feeds, server-saved independent broadcast profiles, permissions, events');
 }finally{
   if (server.exitCode===null) {
     const exited=new Promise(resolve=>server.once('exit',resolve));
