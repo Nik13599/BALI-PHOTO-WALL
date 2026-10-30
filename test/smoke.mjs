@@ -29,6 +29,14 @@ try {
   assert(ready,'Server did not start: '+output);
   let r=await call('/');
   assert.equal(r.status,200);
+  assert.match(r.headers.get('content-type')||'',/text\/html/,'Homepage must render guest upload HTML');
+  assert.match(r.headers.get('cache-control')||'',/no-store/,'Guest page should not be cached after updates');
+  const home=await r.text();
+  assert.match(home,/id="uploadForm"/,'Root path must contain working guest form');
+  assert.match(home,/id="photo"/,'Guest image input must exist');
+  r=await call('/upload');
+  assert.equal(r.status,200,'Guests must have a dedicated permanent upload link');
+  assert.match(await r.text(),/id="uploadForm"/,'Dedicated upload path must expose the same guest form');
   const guest=r.headers.get('set-cookie')?.split(';')[0];
   assert(guest?.startsWith('bali_guest='));
   r=await call('/api/public',{headers:{Cookie:guest}});
@@ -167,7 +175,7 @@ try {
   const active=await data(r);
   assert.equal(active.event.name,'Тестовая вечеринка');
   assert.equal(active.photos.length,0,'New event must have its own slideshow');
-  console.log('PASS: guest/contest uploads, isolated queues and feeds, server-saved independent broadcast profiles, permissions, events');
+  console.log('PASS: guest / and /upload page, guest/contest uploads, isolated queues and feeds, server-saved profiles, permissions, events');
 }finally{
   if (server.exitCode===null) {
     const exited=new Promise(resolve=>server.once('exit',resolve));
