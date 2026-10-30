@@ -72,7 +72,7 @@ function draw(){
     const img=node.firstElementChild;
     img.style.objectFit=options.liveFit||'cover';
     // Show original resolution of the spotlight; light thumbnails for the rest.
-    const src=prominent?'/api/photos/'+photo.id:getPhotoUrl(photo.id,photos.length);
+    const src=prominent?getPhotoUrl(photo.id,1):getPhotoUrl(photo.id,photos.length);
     if(img.getAttribute('src')!==src)img.src=src;
     node.style.left=rect.x+'px';
     node.style.top=rect.y+'px';
