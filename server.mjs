@@ -258,20 +258,25 @@ app.get('/api/public', (req,res) => {
 });
 // Public contest feed for Telegram Mini App. Approved nominations only.
 // Never return upload tokens, guest identifiers, source filenames or staff data.
-app.get('/api/contest/status', (_req,res)=>{
- const event=currentEvent.get();
- const settings=event?db.prepare('SELECT enabled,voting_open FROM contest_settings WHERE event_id=?').get(event.id):null;
- const enabled=settings?.enabled===1;
- const rows=enabled?db.prepare("SELECT c.photo_id AS photoId,c.name,c.category FROM contest_candidates c "+
-  "JOIN photos p ON p.id=c.photo_id AND p.event_id=c.event_id WHERE c.event_id=? AND p.status='approved' ORDER BY c.registered_at,c.photo_id LIMIT 300").all(event.id):[];
- const voting=enabled&&settings.voting_open===1&&rows.length>0;
+app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
+ await finalizeContest();
+ const event=currentEvent.get(),settings=event?contestSettings(event.id):null;
+ const clock=contestClock(settings),enabled=!!event&&settings.enabled===1&&clock.phase!=='disabled';
+ const rows=enabled?eligibleCandidates(event.id):[];
+ const voting=clock.phase==='voting'&&rows.length>0;
  const base=PUBLIC_URL.startsWith('https://baliminsk.online')?PUBLIC_URL:'https://baliminsk.online';
+ const winner=settings?.finalized_at&&settings.winner_photo_id?rows.find(x=>x.photoId===settings.winner_photo_id):null;
  res.json({contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
-  voting_open:voting,candidates:voting?rows.map(x=>({
-   id:'p_'+x.photoId,name:x.name,category:x.category,
-   photoUrl:base+'/api/contest/photo/p_'+x.photoId
-  })):[]});
-});
+  phase:clock.phase,server_now:Date.now(),registration_open:clock.phase==='registration',
+  registration_ends_at:clock.registrationEndsAt,voting_starts_at:clock.votingStartsAt,
+  voting_ends_at:clock.votingEndsAt,voting_open:voting,
+  result_pending:clock.phase==='closed'&&!settings.finalized_at,
+  winner:winner?{id:'p_'+winner.photoId,name:winner.name,
+   photoUrl:base+'/api/contest/photo/p_'+winner.photoId,votes:settings.winner_votes}:null,
+  candidates:voting?rows.map(x=>({id:'p_'+x.photoId,name:x.name,category:'king',
+   photoUrl:base+'/api/contest/photo/p_'+x.photoId})):[]});
+}));
+
 app.get('/qr.svg', asyncRoute(async (_req, res) => {
   const svg = await QRCode.toString(PUBLIC_URL + '/', { type: 'svg', margin: 1, width: 320, color: {dark:'#111111',light:'#ffffff'} });
   res.type('image/svg+xml').set('Cache-Control','public,max-age=600').send(svg);
