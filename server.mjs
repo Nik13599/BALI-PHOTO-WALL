@@ -449,7 +449,7 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  const submissionClock=contestClock(setting),submissionPhase=submissionClock.phase;
  // Queued photos were verified and submitted while registration was open.
  // Accept late transport after a Windows outage; never backdate the registration.
- const validQueued=proof.queued&&Number.isFinite(proof.queuedAtMs)&&
+ const validQueued=setting.enabled===1&&proof.queued&&Number.isFinite(proof.queuedAtMs)&&
    proof.queuedAtMs>=submissionClock.registrationStartsAt&&
    proof.queuedAtMs<submissionClock.registrationEndsAt;
  if(submissionPhase!=='registration'&&!validQueued)
