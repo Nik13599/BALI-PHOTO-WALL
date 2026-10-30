@@ -264,11 +264,13 @@ function asyncRoute(fn) { return (req, res, next) => Promise.resolve(fn(req, res
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 'loopback');
+// A fresh nonce authorizes only the server's own inline page assets.
+app.use((req,res,next)=>{res.locals.pageNonce=crypto.randomBytes(16).toString('base64');next();});
 app.use(helmet({
   contentSecurityPolicy: {
     useDefaults: false,
     directives: {
-      defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:'], styleSrc: ["'self'"], scriptSrc: ["'self'"],
+      defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:'], styleSrc: ["'self'",(req,res)=>"'nonce-"+res.locals.pageNonce+"'"], scriptSrc: ["'self'",(req,res)=>"'nonce-"+res.locals.pageNonce+"'"],
       connectSrc: ["'self'"], fontSrc: ["'self'"], objectSrc: ["'none'"], frameAncestors: ["'none'"],
       baseUri: ["'self'"], formAction: ["'self'"]
     }
@@ -277,27 +279,84 @@ app.use(helmet({
 app.use(express.json({ limit: '32kb' }));
 app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next(); });
 app.use(express.static(path.join(ROOT, 'public'), { index: false, dotfiles: 'deny', maxAge: '15m' }));
+
+// Browsers on the venue's network occasionally receive the HTML but not its
+// static CSS/JS/logo (plain unstyled white screens). The served HTML is now
+// self-contained. Existing static URLs remain for compatibility and debugging.
+const PAGE_ASSETS=new Map([
+ ['guest',{file:'guest.html',css:['style.css','guest-compact.css'],js:['crop.js','guest.js']}],
+ ['admin',{file:'admin.html',css:['style.css','admin-compact.css','areas.css'],js:['app.js']}],
+ ['screen',{file:'screen.html',css:['style.css','screen-broadcast.css'],
+   js:['mosaic.js','carousel.js','carousel-wall.js','live-mosaic.js','live-wall.js','app.js']}]
+]);
+const pageCache=new Map();
+const pageAssetDir=path.join(ROOT,'public');
+const escapeHtmlPayload=(value,tag)=>value.replace(new RegExp('</'+tag,'gi'),'<\\/'+tag);
+function pageTemplate(page){
+ if(pageCache.has(page))return pageCache.get(page);
+ const config=PAGE_ASSETS.get(page);
+ if(!config)throw Error('Unknown PHOTO WALL page');
+ let html=fs.readFileSync(path.join(pageAssetDir,config.file),'utf8');
+ const orderedStyles=config.css.map(file=>fs.readFileSync(path.join(pageAssetDir,file),'utf8'));
+ const orderedScripts=config.js.map(file=>fs.readFileSync(path.join(pageAssetDir,file),'utf8'));
+ const logo=fs.readFileSync(path.join(pageAssetDir,'bali-logo.svg')).toString('base64');
+ // Remove dependency on loading the logo over a second HTTP request.
+ html=html.replaceAll('src="/bali-logo.svg"','src="data:image/svg+xml;base64,'+logo+'"');
+ // Include the styles/scripts inside the document, while preserving ordering.
+ html=html.replace(/<link\s+rel="stylesheet"\s+href="\/[^"]+"\s*\/?\s*>/g,'');
+ html=html.replace(/<script\s+defer\s+src="\/[^"]+"\s*><\/script>/g,'');
+ const styles=orderedStyles.map(content=>'<style nonce="__BALI_PAGE_NONCE__">\n'+
+   escapeHtmlPayload(content,'style')+'\n</style>').join('\n');
+ const scripts=orderedScripts.map(content=>'<script nonce="__BALI_PAGE_NONCE__">\n'+
+   escapeHtmlPayload(content,'script')+'\n</script>').join('\n');
+ html=html.replace('</head>',styles+'\n'+scripts+'\n</head>');
+ const template=page==='screen'?{html,qr:true}:{html,qr:false};
+ pageCache.set(page,template);
+ return template;
+}
+async function serveBaliPage(req,res,page){
+ try{
+  const template=pageTemplate(page);
+  let html=template.html;
+  if(template.qr){
+   const svg=await QRCode.toString(PUBLIC_URL.replace(/\/$/,'')+'/upload',
+    {type:'svg',margin:1,width:320,color:{dark:'#111111',light:'#ffffff'}});
+   html=html.replaceAll('src="/qr.svg"','src="data:image/svg+xml;base64,'+Buffer.from(svg).toString('base64')+'"');
+  }
+  html=html.replaceAll('__BALI_PAGE_NONCE__',res.locals.pageNonce);
+  res.set('Cache-Control','no-store').type('html').send(html);
+ }catch(error){
+  console.error('PHOTO WALL page assets unavailable:',page,error);
+  res.status(503).type('text').send('PHOTO WALL: файлы страницы не найдены. Проверьте обновление Windows.');
+ }
+}
+
 // Give guests a dedicated permanent URL independent of the root landing page.
 // Both addresses serve the SAME common-wall upload flow, never the contest form.
 function guestUploadPage(req,res){
  guestIdentity(req,res);
  res.set('Cache-Control','no-store');
- return res.sendFile(path.join(ROOT,'public','guest.html'));
+ return serveBaliPage(req,res,'guest');
 }
 app.get('/',(req,res)=>res.set('Cache-Control','no-store').redirect(302,'/upload'));
 app.get('/upload',guestUploadPage);
 app.get('/admin', (_req,res) => res.redirect(302,'/admin/general'));
-app.get('/admin/general', (_req,res) => res.sendFile(path.join(ROOT,'public','admin.html')));
-app.get('/admin/contest', (_req,res) => res.sendFile(path.join(ROOT,'public','admin.html')));
-app.get('/screen', (_req,res) => res.sendFile(path.join(ROOT,'public','screen.html')));
+app.get('/admin/general', (req,res) => serveBaliPage(req,res,'admin'));
+app.get('/admin/contest', (req,res) => serveBaliPage(req,res,'admin'));
+app.get('/screen', (req,res) => serveBaliPage(req,res,'screen'));
 for(const area of ['general','contest']){
- app.get('/live/'+area,(_req,res)=>res.sendFile(path.join(ROOT,'public','screen.html')));
+ app.get('/live/'+area,(req,res)=>serveBaliPage(req,res,'screen'));
  app.get('/control/'+area,(req,res)=>{
    if(!validSession(req,'bali_admin'))return res.redirect(302,'/admin/'+area);
-   res.sendFile(path.join(ROOT,'public','screen.html'));
+   serveBaliPage(req,res,'screen');
  });
 }
-app.get('/healthz', (_req,res) => res.json({ok:true}));
+app.get('/healthz', (_req,res) => {
+ const required=['style.css','admin-compact.css','areas.css','screen-broadcast.css',
+  'app.js','guest.js','crop.js','bali-logo.svg'];
+ const missing=required.filter(file=>!fs.existsSync(path.join(pageAssetDir,file)));
+ res.json({ok:missing.length===0,assetsOk:missing.length===0,missingAssets:missing});
+});
 
 app.get('/api/public', (req,res) => {
   guestIdentity(req,res);
