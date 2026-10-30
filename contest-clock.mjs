@@ -31,12 +31,12 @@ export function contestClock(settings,now=Date.now()){
   const date=settings?.contest_date;
   const start=settings?.voting_start||'01:00';
   const end=settings?.voting_end||'03:00';
-  if(!isContestDate(date)||!TIME.test(start)||!TIME.test(end)||end<=start)
+  const advanced=validContestTimeline(settings);
+  if(!isContestDate(date)||(!advanced&&(!TIME.test(start)||!TIME.test(end)||end<=start)))
     return {phase:'disabled',registrationStartsAt:null,registrationEndsAt:null,
       votingStartsAt:null,votingEndsAt:null,resultsAt:null};
   const begins=Date.parse(date+'T'+start+':00+03:00');
   const finishes=Date.parse(date+'T'+end+':00+03:00');
-  const advanced=validContestTimeline(settings);
   const regStart=advanced?minskLocalMillis(settings.registration_opens_at):Number.NEGATIVE_INFINITY;
   const regEnd=advanced?minskLocalMillis(settings.registration_ends_at):begins;
   const voteStart=advanced?minskLocalMillis(settings.voting_starts_at):begins;
