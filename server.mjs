@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
 import {contestClock,minskDay,isContestDate,eligiblePartyDay,validContestTimeline,contestMandatoryTimes} from './contest-clock.mjs';
-import {BUTTON_DEFAULTS,normalizeButtons,publicButtons} from './miniapp-controls.mjs';
+import {BUTTON_DEFAULTS,normalizeButtons,publicButtons,buttonWindow} from './miniapp-controls.mjs';
 import {screenArea,screenProfile,SCREEN_DEFAULTS} from './screen-profile.mjs';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -584,14 +584,19 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  const event=currentEvent.get();
  if(!event)return res.status(409).json({error:'Сейчас нет активной вечеринки на PHOTO WALL'});
  const setting=contestSettings(event.id);
- const submissionClock=contestClock(setting),submissionPhase=submissionClock.phase;
- // Queued photos were verified and submitted while registration was open.
- // Accept late transport after a Windows outage; never backdate the registration.
+ const submissionClock=contestClock(setting),rules=miniappSnapshot().settings.registration;
+ // Time windows are configured in Windows PHOTO WALL. A moderator may
+ // open early, but no new entry can be accepted after voting begins.
+ const insideRegistration=setting.enabled===1&&
+  submissionClock.votingStartsAt!==null&&Date.now()<submissionClock.votingStartsAt&&
+  buttonWindow(rules).open;
+ // An offline queue item carries a signed timestamp from the moment the guest
+ // registered. Delayed delivery is still accepted if it preceded voting.
  const validQueued=setting.enabled===1&&proof.queued&&Number.isFinite(proof.queuedAtMs)&&
-   proof.queuedAtMs>=submissionClock.registrationStartsAt&&
-   proof.queuedAtMs<submissionClock.registrationEndsAt;
- if(submissionPhase!=='registration'&&!validQueued)
-  return res.status(409).json({error:'Приём конкурсных фото закрыт по расписанию'});
+   submissionClock.votingStartsAt!==null&&proof.queuedAtMs<submissionClock.votingStartsAt&&
+   buttonWindow(rules,proof.queuedAtMs).open;
+ if(!insideRegistration&&!validQueued)
+  return res.status(409).json({error:'Приём конкурсных фото закрыт настройками Windows или голосование уже началось'});
  if(!eligiblePartyDay(proof.eventId,setting.contest_date)||
    (setting.bali_event_id&&proof.eventId!==setting.bali_event_id))
   return res.status(409).json({error:'Дата/мероприятие заявки не совпадает с конкурсом PHOTO WALL'});
@@ -623,7 +628,9 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
   const insert=db.transaction(()=>{
    const now=Date.now();
    if(currentEvent.get()?.id!==event.id||
-      (contestClock(contestSettings(event.id)).phase!=='registration'&&!validQueued))throw Error('event-changed');
+      (!validQueued&&!(contestSettings(event.id).enabled===1&&
+       Date.now()<contestClock(contestSettings(event.id)).votingStartsAt&&
+       buttonWindow(miniappSnapshot().settings.registration).open)))throw Error('event-changed');
    if(db.prepare('SELECT 1 FROM contest_telegram_entries WHERE event_id=? AND bali_uid=?').get(event.id,proof.uid))
      throw Error('already-registered');
    const id=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,photo_area) VALUES(?,?,?,'pending',?,? ,?,'contest')")
