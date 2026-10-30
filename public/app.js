@@ -30,6 +30,7 @@ async function optimizePhoto(file) {
 if(page==='guest') {
   const form=$('#uploadForm'), input=$('#photo'), btn=$('#uploadBtn');
   let uploadPolicy='any';
+  let cropReady=false;
   api('/api/public').then(data=>{
     uploadPolicy=data.uploadShape==='square'?'square':'any';
     globalThis.BaliCropEditor?.setPolicy(uploadPolicy);
@@ -46,10 +47,28 @@ if(page==='guest') {
   input.addEventListener('change',async()=>{
     document.body.classList.toggle('has-photo',!!input.files[0]);
     $('#fileLabel').textContent=input.files[0]?.name || 'ВЫБРАТЬ ФОТОГРАФИЮ';
+    cropReady=false;
+    if(!input.files[0]){notice('#guestMessage','');return;}
+    if(!['image/jpeg','image/png','image/webp'].includes(input.files[0].type)){
+      input.value='';document.body.classList.remove('has-photo');
+      notice('#guestMessage','Выбери JPEG, PNG или WebP',true);return;
+    }
     try{
+      if(!globalThis.BaliCropEditor?.load)throw new Error('Редактор обрезки не загрузился');
       await globalThis.BaliCropEditor.load(input.files[0]);
-      notice('#guestMessage','Передвинь и увеличь фотографию, чтобы выбрать область показа.');
-    }catch(error){input.value='';document.body.classList.remove('has-photo');notice('#guestMessage',error.message,true);}
+      cropReady=true;
+      notice('#guestMessage','Передвинь фотографию, чтобы выбрать область показа.');
+    }catch(error){
+      // A blocked canvas/image decoder must not make ordinary guest uploads impossible.
+      // The square-only rule still requires a working crop editor.
+      if(uploadPolicy==='square'){
+        input.value='';document.body.classList.remove('has-photo');
+        notice('#guestMessage','Для квадратного кадра нужен редактор обрезки. Перезагрузи страницу.',true);
+      }else{
+        notice('#guestMessage','Можно отправить оригинальный снимок без обрезки.');
+      }
+      console.warn('Guest image editor unavailable:',error.message);
+    }
   });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
@@ -63,10 +82,16 @@ if(page==='guest') {
       const latest=current.uploadShape==='square'?'square':'any';
       if(latest!==uploadPolicy){
         uploadPolicy=latest;
-        globalThis.BaliCropEditor.setPolicy(uploadPolicy);
+        globalThis.BaliCropEditor?.setPolicy(uploadPolicy);
         throw new Error('Администратор изменил требования к формату. Проверьте обрезку и нажмите «Отправить» ещё раз.');
       }
-      const optimized=await globalThis.BaliCropEditor.exportFile();
+      if(latest==='square'&&!cropReady)
+        throw new Error('Для формата 1:1 обнови страницу и выбери кадр в редакторе.');
+      const optimized=cropReady
+        ? await globalThis.BaliCropEditor.exportFile()
+        : await optimizePhoto(file);
+      if(optimized.size>8*1024*1024)
+        throw new Error('Снимок слишком большой. Выбери JPEG/PNG/WebP до 8 МБ.');
       const data=new FormData(); data.append('photo',optimized); data.append('consent','yes');
       let resp,result;
       for(let attempt=0;attempt<4;attempt++){
@@ -78,7 +103,8 @@ if(page==='guest') {
       }
       if(!resp.ok) throw new Error(result.error||'Ошибка загрузки');
       notice('#guestMessage','✓ Фото принято! Оно появится на экране после проверки.');
-      form.reset();globalThis.BaliCropEditor.clear();document.body.classList.remove('has-photo');$('#fileLabel').textContent='ВЫБРАТЬ ФОТОГРАФИЮ';
+      form.reset();globalThis.BaliCropEditor?.clear();cropReady=false;
+      document.body.classList.remove('has-photo');$('#fileLabel').textContent='ВЫБРАТЬ ФОТОГРАФИЮ';
     } catch(error) {notice('#guestMessage',error.message,true);}
     finally {btn.disabled=false;btn.innerHTML='ОТПРАВИТЬ ФОТО <span>↗</span>';}
   });
