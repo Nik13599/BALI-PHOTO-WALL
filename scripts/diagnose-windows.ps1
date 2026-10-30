@@ -57,6 +57,45 @@ try{
  }catch{}
  Write-Warning ('Public HTTPS /healthz: FAILED (HTTP '+$code+').')
 }
+# Distinguish a listening Windows process from the live PHOTO WALL API.
+# These checks use public metadata only: no passwords, tokens or photographs.
+foreach($address in @(
+ @{Label='Local /api/public';Url="$localUrl/api/public"},
+ @{Label='Local Telegram controls';Url="$localUrl/api/miniapp/buttons"},
+ @{Label='Local contest state';Url="$localUrl/api/contest/status"},
+ @{Label='Public Telegram controls';Url="$publicUrl/api/miniapp/buttons"}
+)){
+ try{
+  $started=[Diagnostics.Stopwatch]::StartNew()
+  $res=Invoke-WebRequest -Uri $address.Url -UseBasicParsing -TimeoutSec 7 -ErrorAction Stop
+  $started.Stop()
+  Write-Host ($address.Label+': HTTP '+$res.StatusCode+' ('+[int]$started.ElapsedMilliseconds+' ms)') -ForegroundColor Green
+  if($address.Label -eq 'Local Telegram controls'){
+   $state=$res.Content | ConvertFrom-Json
+   if($state.ok -eq $true){
+    Write-Host ('   Button configuration revision: '+$state.revision)
+    Write-Host ('   Guest upload event: '+$(if($state.eventAvailable){'ACTIVE'}else{'NOT ACTIVE'}))
+   }
+  }
+ }catch{
+  $status='NO RESPONSE'
+  try{if($null -ne $_.Exception.Response){$status='HTTP '+[int]$_.Exception.Response.StatusCode}}catch{}
+  Write-Warning ($address.Label+': '+$status)
+ }
+}
+# Check intermittent routing to an extra cloudflared replica. We only warn
+# here; never stop or delete arbitrary remote tunnel connectors.
+$okCount=0
+foreach($attempt in 1..3){
+ try{
+  $r=Invoke-WebRequest -Uri "$publicUrl/api/public" -UseBasicParsing -TimeoutSec 7 -ErrorAction Stop
+  if($r.StatusCode -eq 200){$okCount++}
+ }catch{}
+}
+Write-Host ('Public /api/public: '+$okCount+' of 3 attempts succeeded.')
+if($okCount -gt 0 -and $okCount -lt 3){
+ Write-Warning 'INTERMITTENT origin: verify that every cloudflared connector for bali-photo-wall runs on the Windows machine with Node.js port 3100.'
+}
 Write-Host ''
 if(-not $envPresent -or -not $depsPresent -or -not $localReady){
  Write-Host 'NEXT STEP: run REPAIR-SITE-WINDOWS.cmd on THIS PC.' -ForegroundColor Yellow
