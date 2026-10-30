@@ -582,8 +582,20 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
     typeof proof.name!=='string'||proof.name.length<2||proof.name.length>70||
     !/^@[A-Za-z0-9_]{5,32}$/.test(proof.username||''))
    return res.status(401).json({error:'Подтверждение истекло. Попробуй отправить фото снова.'});
- const event=currentEvent.get();
- if(!event)return res.status(409).json({error:'Сейчас нет активной вечеринки на PHOTO WALL'});
+ // A queued nomination belongs to the event that was open when it was
+ // submitted, not necessarily the event currently shown on club screens.
+ // The event ID in the ticket is signed by BALI's Telegram backend.
+ let event=currentEvent.get();
+ if(proof.queued){
+  const possible=db.prepare("SELECT e.*,s.bali_event_id,s.contest_date FROM events e "+
+   "JOIN contest_settings s ON s.event_id=e.id "+
+   "WHERE s.enabled=1 AND (s.bali_event_id=? OR s.bali_event_id='')").all(proof.eventId);
+  const exact=possible.filter(x=>x.bali_event_id===proof.eventId);
+  const byDate=possible.filter(x=>!x.bali_event_id&&eligiblePartyDay(proof.eventId,x.contest_date));
+  const chosen=exact.length===1?exact[0]:exact.length===0&&byDate.length===1?byDate[0]:null;
+  if(chosen)event=chosen;
+ }
+ if(!event)return res.status(409).json({error:'Не найдено мероприятие конкурса для этой заявки'});
  const setting=contestSettings(event.id);
  const submissionClock=contestClock(setting),rules=miniappSnapshot().settings.registration;
  // Time windows are configured in Windows PHOTO WALL. A moderator may
@@ -628,7 +640,7 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
   await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
   const insert=db.transaction(()=>{
    const now=Date.now();
-   if(currentEvent.get()?.id!==event.id||
+   if((!proof.queued&&currentEvent.get()?.id!==event.id)||
       (!validQueued&&!(contestSettings(event.id).enabled===1&&
        Date.now()<contestClock(contestSettings(event.id)).votingStartsAt&&
        buttonWindow(miniappSnapshot().settings.registration).open)))throw Error('event-changed');
