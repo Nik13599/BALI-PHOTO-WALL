@@ -84,3 +84,16 @@ export function contestVotingGate(settings,button,now=Date.now()){
   (mode==='manual-on'||clock.phase==='voting');
  return {clock,visible,mode,buttonOpen};
 }
+
+/* Cloudflare's BALI queue has already checked registration availability
+   before issuing the signed 7-day ticket. Delayed Windows transport is not a
+   new signup: later edits to schedules, closing a contest or starting another
+   event must never invalidate the original, valid entry.
+   Tickets are HMAC-verified by Telegram before reaching this function. */
+export function queuedContestTicketAllowed(proof,settings,now=Date.now()){
+ return proof?.queued===true&&Number.isSafeInteger(proof.queuedAtMs)&&
+  proof.queuedAtMs>0&&proof.queuedAtMs<=now+10000&&
+  now-proof.queuedAtMs<=7*86400000+10000&&
+  eligiblePartyDay(proof.eventId,settings?.contest_date)&&
+  (!settings?.bali_event_id||settings.bali_event_id===proof.eventId);
+}

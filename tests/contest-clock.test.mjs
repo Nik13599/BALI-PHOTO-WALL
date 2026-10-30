@@ -106,3 +106,18 @@ test('Windows manual-on overrides the current contest clock, manual-off and hide
  assert.equal(contestVotingGate({...saved,enabled:0},{...general,mode:'manual-on'},at).buttonOpen,false);
  assert.equal(contestVotingGate({...saved,finalized_at:123},{...general,mode:'manual-on'},at).buttonOpen,false);
 });
+
+test('Cloudflare queue ticket survives changes to Windows schedule, voting and enable flag',async()=>{
+ const {queuedContestTicketAllowed}=await import('../contest-clock.mjs');
+ const acceptedAt=Date.parse('2026-10-30T23:59:00+03:00');
+ const deliveredAt=Date.parse('2026-10-31T04:15:00+03:00');
+ const proof={queued:true,queuedAtMs:acceptedAt,eventId:'2026-10-30__2'};
+ const settings={enabled:0,contest_date:'2026-10-31',
+  bali_event_id:'2026-10-30__2',voting_starts_at:'2026-10-31T02:16'};
+ assert.equal(queuedContestTicketAllowed(proof,settings,deliveredAt),true);
+ assert.equal(queuedContestTicketAllowed({...proof,queued:false},settings,deliveredAt),false);
+ assert.equal(queuedContestTicketAllowed({...proof,eventId:'2026-10-31'},settings,deliveredAt),false);
+ assert.equal(queuedContestTicketAllowed(proof,{...settings,bali_event_id:'2026-10-30'},deliveredAt),false);
+ assert.equal(queuedContestTicketAllowed({...proof,queuedAtMs:deliveredAt+100000},settings,deliveredAt),false);
+ assert.equal(queuedContestTicketAllowed(proof,settings,acceptedAt+8*86400000),false);
+});

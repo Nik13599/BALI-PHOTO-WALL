@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import QRCode from 'qrcode';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
-import {contestClock,minskDay,isContestDate,eligiblePartyDay,validContestTimeline,contestMandatoryTimes,contestVotingGate} from './contest-clock.mjs';
+import {contestClock,minskDay,isContestDate,eligiblePartyDay,validContestTimeline,contestMandatoryTimes,contestVotingGate,queuedContestTicketAllowed} from './contest-clock.mjs';
 import {BUTTON_DEFAULTS,normalizeButtons,publicButtons,buttonWindow} from './miniapp-controls.mjs';
 import {screenArea,screenProfile,SCREEN_DEFAULTS} from './screen-profile.mjs';
 import fs from 'node:fs';
@@ -608,29 +608,35 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  // The event ID in the ticket is signed by BALI's Telegram backend.
  let event=currentContestEvent.get();
  if(proof.queued){
-  const possible=db.prepare("SELECT e.*,s.bali_event_id,s.contest_date FROM events e "+
+  // Never silently attach yesterday's queued photo to today's current
+  // contest. Look up the originally signed BALI Event ID, including a
+  // historic contest whose enabled flag was later turned off.
+  const possible=db.prepare("SELECT e.id,e.name,e.upload_shape,s.bali_event_id,s.contest_date FROM events e "+
    "JOIN contest_settings s ON s.event_id=e.id "+
-   "WHERE s.enabled=1 AND (s.bali_event_id=? OR s.bali_event_id='')").all(proof.eventId);
+   "WHERE s.bali_event_id=? OR s.bali_event_id=''").all(proof.eventId)
+   .filter(x=>eligiblePartyDay(proof.eventId,x.contest_date));
   const exact=possible.filter(x=>x.bali_event_id===proof.eventId);
-  const byDate=possible.filter(x=>!x.bali_event_id&&eligiblePartyDay(proof.eventId,x.contest_date));
-  const chosen=exact.length===1?exact[0]:exact.length===0&&byDate.length===1?byDate[0]:null;
-  if(chosen)event=chosen;
+  const unbound=possible.filter(x=>!x.bali_event_id);
+  if(exact.length===1)event=exact[0];
+  else if(exact.length===0&&unbound.length===1)event=unbound[0];
+  else return res.status(409).json({error:
+   possible.length===0?'Для отложенного фото не найден исторический конкурс. Укажи его BALI Event ID в Windows.':
+   'Несколько конкурсов подходят для отложенного фото. Укажи BALI Event ID у нужного конкурса в Windows.'});
  }
  if(!event)return res.status(409).json({error:'Не найдено мероприятие конкурса для этой заявки'});
  const setting=contestSettings(event.id);
  const submissionClock=contestClock(setting),rules=miniappSnapshot().settings.registration;
- // Time windows are configured in Windows PHOTO WALL. A moderator may
- // open early, but no new entry can be accepted after voting begins.
- const insideRegistration=setting.enabled===1&&
+ const validQueued=queuedContestTicketAllowed(proof,setting);
+ // The signed Cloudflare queue photo was originally submitted and accepted
+ // under the THEN-current registration policy. Only live/direct submissions
+ // must obey the CURRENT Windows registration window and voting time.
+ const insideRegistration=!proof.queued&&setting.enabled===1&&
   submissionClock.votingStartsAt!==null&&Date.now()<submissionClock.votingStartsAt&&
   buttonWindow(rules).open;
- // An offline queue item carries a signed timestamp from the moment the guest
- // registered. Delayed delivery is still accepted if it preceded voting.
- const validQueued=setting.enabled===1&&proof.queued&&Number.isFinite(proof.queuedAtMs)&&
-   submissionClock.votingStartsAt!==null&&proof.queuedAtMs<submissionClock.votingStartsAt&&
-   buttonWindow(rules,proof.queuedAtMs).open;
  if(!insideRegistration&&!validQueued)
-  return res.status(409).json({error:'Приём конкурсных фото закрыт настройками Windows или голосование уже началось'});
+  return res.status(409).json({error:proof.queued?
+   'Не удалось подтвердить исходную конкурсную заявку из очереди':
+   'Приём конкурсных фото закрыт настройками Windows или голосование уже началось'});
  if(!eligiblePartyDay(proof.eventId,setting.contest_date)||
    (setting.bali_event_id&&proof.eventId!==setting.bali_event_id))
   return res.status(409).json({error:'Дата/мероприятие заявки не совпадает с конкурсом PHOTO WALL'});
@@ -661,19 +667,22 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
   await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
   const insert=db.transaction(()=>{
    const now=Date.now();
+   if(proof.queued&&!queuedContestTicketAllowed(proof,contestSettings(event.id),now))
+     throw Error('event-changed');
    if((!proof.queued&&currentContestEvent.get()?.id!==event.id)||
       (!validQueued&&!(contestSettings(event.id).enabled===1&&
        Date.now()<contestClock(contestSettings(event.id)).votingStartsAt&&
        buttonWindow(miniappSnapshot().settings.registration).open)))throw Error('event-changed');
    if(db.prepare('SELECT 1 FROM contest_telegram_entries WHERE event_id=? AND bali_uid=?').get(event.id,proof.uid))
      throw Error('already-registered');
+   const submissionAt=validQueued?proof.queuedAtMs:now;
    const id=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,photo_area) VALUES(?,?,?,'pending',?,? ,?,'contest')")
-     .run(event.id,filename,'contest:'+crypto.randomUUID(),now,dimension.width,dimension.height).lastInsertRowid;
+     .run(event.id,filename,'contest:'+crypto.randomUUID(),submissionAt,dimension.width,dimension.height).lastInsertRowid;
    db.prepare('INSERT INTO contest_telegram_entries(event_id,bali_uid,bali_event_id,photo_id,telegram_username,registered_at) VALUES(?,?,?,?,?,?)')
-     .run(event.id,proof.uid,proof.eventId,id,proof.username,now);
+     .run(event.id,proof.uid,proof.eventId,id,proof.username,submissionAt);
    // One royal nomination, legacy DB category uses "king" internally.
    db.prepare('INSERT INTO contest_candidates(photo_id,event_id,name,category,registered_at) VALUES(?,?,?,?,?)')
-     .run(id,event.id,proof.name,'king',now);
+     .run(id,event.id,proof.name,'king',submissionAt);
    return id;
   });
   const id=insert();

@@ -40,3 +40,11 @@ test('Telegram royal contest uses the latest operator-enabled event, not general
  assert.match(server,/liveContestEventId:liveEvent/);
  assert.match(admin,/ЭТОТ КОНКУРС ТРАНСЛИРУЕТСЯ В TELEGRAM/);
 });
+
+test('signed photos queued before a Windows schedule change enter historical contest moderation',()=>{
+ assert.match(server,/const validQueued=queuedContestTicketAllowed\(proof,setting\)/);
+ assert.match(server,/s.bali_event_id=\? OR s.bali_event_id=''\x22/);
+ assert.match(server,/const submissionAt=validQueued\?proof.queuedAtMs:now/);
+ assert.match(server,/if\(proof.queued&&!queuedContestTicketAllowed\(proof,contestSettings\(event.id\),now\)\)/);
+ assert.doesNotMatch(server,/proof.queuedAtMs<submissionClock.votingStartsAt/);
+});
