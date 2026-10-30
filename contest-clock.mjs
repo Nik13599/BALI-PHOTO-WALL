@@ -1,5 +1,5 @@
-// Fixed recurring competition opening times, based on the Minsk server clock.
-// Operators may configure only the end of voting and results time.
+// Competition timetable with fully editable Minsk-local registration/voting/results times.
+// Existing fixed-hour installations keep their legacy default until first manual save.
 const DATE=/^\d{4}-\d{2}-\d{2}$/;
 const TIME=/^([01]\d|2[0-3]):[0-5]\d$/;
 const LOCAL=/^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):([0-5]\d)$/;
@@ -23,34 +23,46 @@ export function contestMandatoryTimes(date){
   .toLocaleDateString('sv-SE',{timeZone:'Europe/Minsk'});
  return {opens:previous+'T22:00',voteStart};
 }
+// Every boundary can be configured independently in the moderator's control room.
+// Dates are always Minsk local time (UTC+03:00, no daylight saving time).
 export function validContestTimeline(input){
- const mandatory=contestMandatoryTimes(input?.contest_date);
- if(!mandatory||input.registration_opens_at!==mandatory.opens||
-    input.registration_ends_at!==mandatory.voteStart||
-    input.voting_starts_at!==mandatory.voteStart)return false;
- const voteEnds=minskLocalMillis(input.voting_ends_at),results=minskLocalMillis(input.results_at),
-  starts=minskLocalMillis(mandatory.voteStart);
- return voteEnds!==null&&results!==null&&starts<voteEnds&&voteEnds<=results&&
-   voteEnds-starts<=24*3600000&&results-voteEnds<=24*3600000;
+ if(!isContestDate(input?.contest_date))return false;
+ const opens=minskLocalMillis(input.registration_opens_at);
+ const closes=minskLocalMillis(input.registration_ends_at);
+ const begins=minskLocalMillis(input.voting_starts_at);
+ const finishes=minskLocalMillis(input.voting_ends_at);
+ const results=minskLocalMillis(input.results_at);
+ if([opens,closes,begins,finishes,results].some(v=>v===null))return false;
+ // Contest date tracks the actual vote-start date; party ID compatibility
+ // relies on the same Minsk-local date, not on a fixed 03:00 start.
+ if(input.voting_starts_at.slice(0,10)!==input.contest_date)return false;
+ // Registration and voting may have a gap between them, but never overlap.
+ return opens<closes&&closes<=begins&&begins<finishes&&finishes<=results;
 }
 export function contestClock(settings,now=Date.now()){
  const date=settings?.contest_date,required=contestMandatoryTimes(date);
  if(!required)return {phase:'disabled',registrationStartsAt:null,registrationEndsAt:null,
    votingStartsAt:null,votingEndsAt:null,resultsAt:null};
- const opens=minskLocalMillis(required.opens),begins=minskLocalMillis(required.voteStart);
  const advanced=validContestTimeline(settings);
+ const opens=minskLocalMillis(advanced?settings.registration_opens_at:required.opens);
+ const registrationEnds=minskLocalMillis(advanced?settings.registration_ends_at:required.voteStart);
+ const begins=minskLocalMillis(advanced?settings.voting_starts_at:required.voteStart);
  let finishes=advanced?minskLocalMillis(settings.voting_ends_at):null;
  if(finishes===null){
-   const configured=TIME.test(settings?.voting_end)?settings.voting_end:'06:00';
-   finishes=Date.parse(date+'T'+(configured>'03:00'?configured:'06:00')+':00+03:00');
+  const configured=TIME.test(settings?.voting_end)?settings.voting_end:'06:00';
+  finishes=Date.parse(date+'T'+(configured>'03:00'?configured:'06:00')+':00+03:00');
  }
  const results=advanced?minskLocalMillis(settings.results_at):finishes;
  let phase='disabled';
  if(settings?.enabled===1){
-  phase=now<opens?'waiting':now<begins?'registration':now<finishes?'voting':now<results?'awaiting_results':'closed';
+  phase=now<opens?'waiting':
+    now<registrationEnds?'registration':
+    now<begins?'awaiting_voting':
+    now<finishes?'voting':
+    now<results?'awaiting_results':'closed';
  }
- return {phase,registrationStartsAt:opens,registrationEndsAt:begins,votingStartsAt:begins,
-   votingEndsAt:finishes,resultsAt:results};
+ return {phase,registrationStartsAt:opens,registrationEndsAt:registrationEnds,
+   votingStartsAt:begins,votingEndsAt:finishes,resultsAt:results};
 }
 export function eligiblePartyDay(partyId,contestDate){
  if(!/^\d{4}-\d{2}-\d{2}(?:__(?:2|3))?$/.test(partyId||'')||!isContestDate(contestDate))return false;
