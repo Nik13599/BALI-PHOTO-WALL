@@ -1,0 +1,20 @@
+/* Two independent moderator windows with responsive cards and controls. */
+body[data-page="admin"] .admin-area-links{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:12px 0}
+body[data-page="admin"] .admin-area-link{padding:12px 14px;border:1px solid #46543d;background:#1b2518;border-radius:11px;text-align:center;font-weight:850;font-size:12px;letter-spacing:.03em}
+body[data-page="admin"] .admin-area-link.selected{border-color:#d7ff4d;background:#263d1b;color:#d7ff4d}
+body[data-page="admin"] .admin-tabs{grid-template-columns:repeat(3,minmax(0,1fr))}
+body[data-admin-area="general"] #contestPanel{display:none!important}
+body[data-admin-area="contest"] #eventPanel .event-upload-policy{display:none!important}
+body[data-admin-area="contest"] .admin-quick-actions{margin-bottom:10px}
+body[data-admin-area="contest"] .contest-settings-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+body[data-page="admin"] .admin-links{flex-wrap:wrap}
+body[data-page="admin"] .admin-links .button{white-space:normal}
+@media(max-width:700px){
+ body[data-page="admin"] .admin-area-links{gap:5px}
+ body[data-page="admin"] .admin-area-link{padding:9px 5px;font-size:10px}
+ body[data-page="admin"] .admin-tabs{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}
+ body[data-page="admin"] .admin-tab{min-width:0;font-size:9px;flex-wrap:wrap;gap:3px}
+ body[data-page="admin"] .admin-quick-actions{grid-template-columns:repeat(2,minmax(0,1fr))}
+ body[data-page="admin"] .admin-links .button{font-size:9px}
+ body[data-admin-area="contest"] .contest-settings-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
