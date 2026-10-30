@@ -49,8 +49,8 @@ export function contestClock(settings,now=Date.now()){
  const begins=minskLocalMillis(advanced?settings.voting_starts_at:required.voteStart);
  let finishes=advanced?minskLocalMillis(settings.voting_ends_at):null;
  if(finishes===null){
-  const configured=TIME.test(settings?.voting_end)?settings.voting_end:'06:00';
-  finishes=Date.parse(date+'T'+(configured>'03:00'?configured:'06:00')+':00+03:00');
+  const configured=TIME.test(settings?.voting_end)?settings.voting_end:'04:00';
+  finishes=Date.parse(date+'T'+(configured>'03:00'?configured:'04:00')+':00+03:00');
  }
  const results=advanced?minskLocalMillis(settings.results_at):finishes;
  let phase='disabled';

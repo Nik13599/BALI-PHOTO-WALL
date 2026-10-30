@@ -248,7 +248,7 @@ if(page==='admin') {
       const previousDate=date?new Date(Date.parse(date+'T12:00:00+03:00')-86400000).toISOString().slice(0,10):'';
       const startLocal=date?date+'T03:00':'';
       const endLocal=settings.votingEndsLocal&&settings.votingEndsLocal>startLocal?
-        settings.votingEndsLocal:(date?date+'T06:00':'');
+        settings.votingEndsLocal:(date?date+'T04:00':'');
       const values={
         contestEnabled:!!settings.enabled,
         contestDate:date,

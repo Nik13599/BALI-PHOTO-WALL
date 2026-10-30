@@ -160,6 +160,9 @@ for(const [name,definition] of [
  ['voting_ends_at',"TEXT NOT NULL DEFAULT ''"],
  ['results_at',"TEXT NOT NULL DEFAULT ''"]
 ])if(!clockFields.includes(name))db.exec('ALTER TABLE contest_settings ADD COLUMN '+name+' '+definition);
+// Legacy untouched competitions used to end at 06:00. New BALI default
+// is 03:00-04:00; preserve any manually edited event (updated_at > 0).
+db.prepare("UPDATE contest_settings SET voting_end='04:00' WHERE voting_end='06:00' AND voting_starts_at='' AND updated_at=0").run();
 const contestRow=id=>db.prepare('SELECT * FROM contest_settings WHERE event_id=?').get(id);
 const contestSettings=id=>contestRow(id)||{
  event_id:id,enabled:0,voting_open:0,contest_date:minskDay(Date.now()+86400000),
