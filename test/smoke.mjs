@@ -84,19 +84,19 @@ try {
     method:'POST',headers:authHeaders,
     body:JSON.stringify({
       eventId:ev.id,enabled:false,contestDate:'2030-10-31',baliEventId:'',
-      registrationOpensAt:'2030-10-30T20:00',
-      registrationClosesAt:'2030-10-31T00:50',
-      votingStartsLocal:'2030-10-31T01:00',
-      votingEndsLocal:'2030-10-31T03:00',
-      resultsLocal:'2030-10-31T03:15'
+      registrationOpensAt:'2030-10-30T22:00',
+      registrationClosesAt:'2030-10-31T03:00',
+      votingStartsLocal:'2030-10-31T03:00',
+      votingEndsLocal:'2030-10-31T05:00',
+      resultsLocal:'2030-10-31T05:15'
     })
   });
   assert.equal(r.status,200,'Configurable contest schedule should be accepted');
   r=await call('/api/admin/contest?eventId='+ev.id,{headers:{Cookie:auth}});
   assert.equal(r.status,200);
   const savedContest=await data(r);
-  assert.equal(savedContest.settings.registrationClosesAt,'2030-10-31T00:50');
-  assert.equal(savedContest.settings.resultsLocal,'2030-10-31T03:15');
+  assert.equal(savedContest.settings.registrationClosesAt,'2030-10-31T03:00');
+  assert.equal(savedContest.settings.resultsLocal,'2030-10-31T05:15');
 
   r=await call('/api/screen',{headers:{Cookie:screenCookie}});
   assert((await data(r)).photos.some(p=>p.id===photo.id));
