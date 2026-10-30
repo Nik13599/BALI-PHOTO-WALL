@@ -6,6 +6,7 @@ import sharp from 'sharp';
 import QRCode from 'qrcode';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
+import {contestClock,minskDay,isContestDate,eligiblePartyDay} from './contest-clock.mjs';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -107,6 +108,61 @@ db.exec(`
  );
  CREATE INDEX IF NOT EXISTS idx_contest_telegram_entries_photo ON contest_telegram_entries(photo_id);
 `);
+
+const clockFields=db.pragma('table_info(contest_settings)').map(x=>x.name);
+for(const [name,definition] of [
+ ['contest_date',"TEXT NOT NULL DEFAULT ''"],
+ ['voting_start',"TEXT NOT NULL DEFAULT '01:00'"],
+ ['voting_end',"TEXT NOT NULL DEFAULT '03:00'"],
+ ['bali_event_id',"TEXT NOT NULL DEFAULT ''"],
+ ['winner_photo_id','INTEGER'],
+ ['winner_votes','INTEGER NOT NULL DEFAULT 0'],
+ ['total_votes','INTEGER NOT NULL DEFAULT 0'],
+ ['finalized_at','INTEGER']
+])if(!clockFields.includes(name))db.exec('ALTER TABLE contest_settings ADD COLUMN '+name+' '+definition);
+const contestRow=id=>db.prepare('SELECT * FROM contest_settings WHERE event_id=?').get(id);
+const contestSettings=id=>contestRow(id)||{
+ event_id:id,enabled:0,voting_open:0,contest_date:minskDay(),
+ voting_start:'01:00',voting_end:'03:00',bali_event_id:'',
+ winner_photo_id:null,winner_votes:0,total_votes:0,finalized_at:null
+};
+const eligibleCandidates=id=>db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,c.registered_at AS registeredAt,p.status FROM contest_candidates c JOIN photos p ON p.id=c.photo_id AND p.event_id=c.event_id WHERE c.event_id=? AND p.status='approved' ORDER BY c.registered_at,c.photo_id LIMIT 300").all(id);
+let finalizing=null,lastTallyError='',lastTallyAttempt=0;
+async function finalizeContest(){
+ if(finalizing)return finalizing;
+ const event=currentEvent.get();
+ if(!event)return;
+ const settings=contestRow(event.id);
+ if(!settings||contestClock(settings).phase!=='closed'||settings.finalized_at)return;
+ if(Date.now()-lastTallyAttempt<3000)return;
+ lastTallyAttempt=Date.now();
+ finalizing=(async()=>{
+  const contestId='event_'+event.id;
+  const uri='https://app.baliminsk.by/api/tg-bali/photo-contest-tally-feed?contestId='+encodeURIComponent(contestId);
+  const response=await fetch(uri,{headers:{Accept:'application/json'},redirect:'error',signal:AbortSignal.timeout(6500)});
+  if(!response.ok)throw Error('BALI vote tally HTTP '+response.status);
+  const tally=await response.json();
+  if(tally?.ok!==true||tally.contestId!==contestId||!Array.isArray(tally.candidates))
+   throw Error('BALI vote tally mismatch');
+  const candidates=eligibleCandidates(event.id),count=new Map();
+  for(const row of tally.candidates){
+   if(!/^p_[1-9][0-9]{0,9}$/.test(row.id||'')||
+      !Number.isSafeInteger(row.votes)||row.votes<0||row.votes>10000000||count.has(row.id))
+     throw Error('Invalid BALI vote tally');
+   count.set(row.id,row.votes);
+  }
+  const ranked=candidates.map(c=>({...c,votes:count.get('p_'+c.photoId)||0}))
+   .sort((a,b)=>b.votes-a.votes||a.registeredAt-b.registeredAt||a.photoId-b.photoId);
+  const total=ranked.reduce((n,c)=>n+c.votes,0);
+  if(tally.total!==total)throw Error('Vote tally differs from contestant list');
+  const winner=ranked[0]?.votes>0?ranked[0]:null;
+  db.prepare('UPDATE contest_settings SET winner_photo_id=?,winner_votes=?,total_votes=?,finalized_at=?,voting_open=0,updated_at=? WHERE event_id=? AND finalized_at IS NULL')
+   .run(winner?.photoId||null,winner?.votes||0,total,Date.now(),Date.now(),event.id);
+  lastTallyError='';
+ })().catch(error=>{lastTallyError=String(error.message||error);console.error('Contest tally retry:',lastTallyError)})
+  .finally(()=>{finalizing=null});
+ return finalizing;
+}
 const currentEvent = db.prepare('SELECT id,name,upload_shape FROM events WHERE active=1 ORDER BY id DESC LIMIT 1');
 const selectPhoto = db.prepare('SELECT * FROM photos WHERE id=?');
 const secureEqual = (a, b) => {
@@ -740,6 +796,7 @@ async function cleanup() {
   }
 }
 cleanup().catch(console.error);
+setInterval(()=>finalizeContest().catch(console.error),2000).unref();
 setInterval(()=>cleanup().catch(console.error),3600000).unref();
 app.use((err,req,res,_next) => {
   console.error('Request error:',err.message);
