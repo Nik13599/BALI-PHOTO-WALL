@@ -364,11 +364,12 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
   if(verify.ok){const data=await verify.json();if(data?.ok)proof=data.contestant;}
  }catch{}
  if(!proof||!/^[-A-Za-z0-9_]{1,100}$/.test(proof.uid||'')||
-    !/^\\d{4}-\\d{2}-\\d{2}(?:__\\d+)?$/.test(proof.eventId||'')||
+    !/^\d{4}-\d{2}-\d{2}(?:__\d+)?$/.test(proof.eventId||'')||
     typeof proof.name!=='string'||proof.name.length<2||proof.name.length>70||
     !/^@[A-Za-z0-9_]{5,32}$/.test(proof.username||''))
    return res.status(401).json({error:'Подтверждение истекло. Попробуй отправить фото снова.'});
- const minskToday=new Intl.DateTimeFormat('en-CA',{timeZone:'Europe/Minsk',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+ const dateParts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:'Europe/Minsk',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
+ const minskToday=dateParts.year+'-'+dateParts.month+'-'+dateParts.day;
  if(proof.eventId.slice(0,10)!==minskToday)
    return res.status(409).json({error:'Фото конкурса загружается в день выбранной вечеринки. Предварительная запись сохранена.'});
  const event=currentEvent.get();
