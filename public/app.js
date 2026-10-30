@@ -424,6 +424,17 @@ if(page==='screen'){
   document.body.dataset.screenMode=controller?'control':'broadcast';
   const broadcastLink=$('#controlLiveLink');
   if(broadcastLink)broadcastLink.href='/live/'+broadcastArea;
+  if(broadcastArea==='contest'){
+    const hint=$('#eventHint');
+    if(hint)hint.textContent='КОРОЛЬ / КОРОЛЕВА · ГОЛОСОВАНИЕ В ПРИЛОЖЕНИИ BALI';
+    const qrSetting=$('#setShowQr');
+    if(qrSetting){
+      qrSetting.disabled=true;
+      qrSetting.closest('label')?.setAttribute('title','Конкурс не использует QR загрузки обычной фотостены');
+    }
+    const qrBlock=$('#wallQR');
+    if(qrBlock)qrBlock.hidden=true;
+  }
   const profileTitle=$('#wallSettings .wall-settings-head strong');
   if(profileTitle)profileTitle.textContent=broadcastArea==='contest'?'♛ Пульт конкурса':'◩ Пульт общей фотостены';
   const defaults={
@@ -547,7 +558,7 @@ if(page==='screen'){
     setShown($('#wallLive'),settings.showLive);
     setShown($('#screenEvent'),settings.showEvent);
     setShown($('#eventHint'),settings.showHint);
-    setShown($('#wallQR'),settings.showQr);
+    setShown($('#wallQR'),broadcastArea==='general'&&settings.showQr);
     positionFloating();syncShiftControls();
     $('#columnsSettings').hidden=settings.layout!=='grid';
     $('#carouselSettings').hidden=!globalThis.BaliCarousel?.isCarousel(settings.layout);
