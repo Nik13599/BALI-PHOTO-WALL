@@ -154,7 +154,11 @@ async function finalizeContest(){
   const ranked=candidates.map(c=>({...c,votes:count.get('p_'+c.photoId)||0}))
    .sort((a,b)=>b.votes-a.votes||a.registeredAt-b.registeredAt||a.photoId-b.photoId);
   const total=ranked.reduce((n,c)=>n+c.votes,0);
-  if(tally.total!==total)throw Error('Vote tally differs from contestant list');
+  if(!Number.isSafeInteger(tally.total)||tally.total<total)
+   throw Error('Vote tally response is inconsistent');
+  // A moderator may disqualify/remove an approved photo after ballots.
+  // Such votes are excluded from ranking, not silently awarded elsewhere.
+  if(tally.total>total)console.warn('Contest ballot exclusions:',tally.total-total);
   const winner=ranked[0]?.votes>0?ranked[0]:null;
   db.prepare('UPDATE contest_settings SET winner_photo_id=?,winner_votes=?,total_votes=?,finalized_at=?,voting_open=0,updated_at=? WHERE event_id=? AND finalized_at IS NULL')
    .run(winner?.photoId||null,winner?.votes||0,total,Date.now(),Date.now(),event.id);
