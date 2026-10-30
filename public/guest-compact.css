@@ -66,3 +66,37 @@ body[data-page="guest"].has-photo .guest-footer{display:none}
  body[data-page="guest"] .crop-canvas{max-height:17dvh}
  body[data-page="guest"] .crop-zoom{gap:4px}
 }
+
+
+/* Fast guest upload: preview without decoding/repainting into canvas until user
+   explicitly requests cropping. Hidden controls never occupy viewport space. */
+body[data-page="guest"] .guest-photo-preview[hidden],
+body[data-page="guest"] .guest-edit-photo[hidden],
+body[data-page="guest"] .guest-retry[hidden]{display:none!important}
+body[data-page="guest"] .guest-photo-preview{width:100%;height:clamp(88px,19dvh,200px);
+ display:flex;justify-content:center;align-items:center;min-height:0;overflow:hidden;
+ background:#080b07;border:1px solid #445339;border-radius:10px;padding:5px}
+body[data-page="guest"] .guest-photo-preview img{max-width:100%;max-height:100%;width:auto;height:auto;
+ object-fit:contain;display:block}
+body[data-page="guest"] .guest-edit-photo,
+body[data-page="guest"] .guest-retry{
+ width:100%;min-height:34px;border:1px solid #465939;border-radius:9px;
+ background:#1f2c17;color:#d7ff4d;font-size:11px;font-weight:850;padding:7px 9px}
+body[data-page="guest"] .guest-edit-photo:disabled{opacity:.55;cursor:wait}
+body[data-page="guest"] .upload-card #uploadBtn:disabled{opacity:.5;cursor:not-allowed}
+body[data-page="guest"] .upload-card .alert.good:not(:empty){color:#d7ff4d}
+body[data-page="guest"] .upload-card .alert.bad:not(:empty){color:#ffb9b1}
+body[data-page="guest"] .dropzone{cursor:pointer}
+body[data-page="guest"] .dropzone:focus-within{outline:2px solid #d7ff4d}
+body[data-page="guest"] .guest-photo-preview:has(+ .guest-edit-photo + .crop-editor:not([hidden])){display:none}
+/* Landscape phones / display zoom: keep send+consent accessible rather than
+   clipping the bottom controls with an absolute prohibition on scrolling. */
+@media(max-height:650px){
+ body[data-page="guest"]{overflow-y:auto;height:auto;min-height:100dvh}
+ body[data-page="guest"] .guest-shell{height:auto;min-height:100dvh;overflow:visible}
+ body[data-page="guest"] .guest-main{flex:none;min-height:0}
+ body[data-page="guest"] .upload-card{overflow:visible;flex:none}
+ body[data-page="guest"] .guest-photo-preview{height:clamp(66px,18dvh,130px)}
+ body[data-page="guest"] .crop-canvas{max-height:28dvh}
+ body[data-page="guest"] .small-print{display:none}
+}
