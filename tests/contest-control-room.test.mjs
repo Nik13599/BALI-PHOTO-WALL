@@ -32,3 +32,11 @@ test('Moderator can bulk import, nominate, moderate and export photo roster',()=
  assert.match(admin,/data-contest-photo/);
  assert.match(admin,/\/api\/admin\/contest\/export/);
 });
+
+test('Telegram royal contest uses the latest operator-enabled event, not general wall',()=>{
+ assert.match(server,/const currentContestEvent=/);
+ assert.match(server,/JOIN contest_settings s ON s.event_id=e.id WHERE s.enabled=1/);
+ assert.match(server,/const event=currentContestEvent.get\(\),settings=event\?contestSettings/);
+ assert.match(server,/liveContestEventId:liveEvent/);
+ assert.match(admin,/ЭТОТ КОНКУРС ТРАНСЛИРУЕТСЯ В TELEGRAM/);
+});

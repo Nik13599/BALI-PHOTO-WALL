@@ -173,7 +173,7 @@ const eligibleCandidates=id=>db.prepare("SELECT c.photo_id AS photoId,c.name,c.c
 let finalizing=null,lastTallyError='',lastTallyAttempt=0;
 async function finalizeContest(){
  if(finalizing)return finalizing;
- const event=currentEvent.get();
+ const event=currentContestEvent.get();
  if(!event)return;
  const settings=contestRow(event.id);
  if(!settings||contestClock(settings).phase!=='closed'||settings.finalized_at)return;
@@ -211,6 +211,18 @@ async function finalizeContest(){
  return finalizing;
 }
 const currentEvent = db.prepare('SELECT id,name,upload_shape FROM events WHERE active=1 ORDER BY id DESC LIMIT 1');
+// The royal contest selected by the Windows moderator need not be the
+// current GENERAL photo-wall event. Enabled/saved contest settings win.
+const recentContestEvents=db.prepare(
+ 'SELECT e.id,e.name,e.upload_shape FROM events e '+
+ 'JOIN contest_settings s ON s.event_id=e.id WHERE s.enabled=1 '+
+ 'ORDER BY s.updated_at DESC,e.id DESC LIMIT 40'
+);
+const currentContestEvent={get(){
+ const items=recentContestEvents.all();
+ return items.find(e=>contestClock(contestSettings(e.id)).phase!=='closed')||
+  items[0]||currentEvent.get();
+}};
 const selectPhoto = db.prepare('SELECT * FROM photos WHERE id=?');
 const secureEqual = (a, b) => {
   const x = Buffer.from(a); const y = Buffer.from(b);
@@ -412,7 +424,7 @@ app.get('/api/public', (req,res) => {
 // Never return upload tokens, guest identifiers, source filenames or staff data.
 app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
  await finalizeContest();
- const event=currentEvent.get(),settings=event?contestSettings(event.id):null;
+ const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;
  const voteSettings=miniappSnapshot().settings.vote;
  const gate=contestVotingGate(settings,voteSettings);
  const clock=gate.clock,enabled=!!event&&settings.enabled===1&&clock.phase!=='disabled';
@@ -594,7 +606,7 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  // A queued nomination belongs to the event that was open when it was
  // submitted, not necessarily the event currently shown on club screens.
  // The event ID in the ticket is signed by BALI's Telegram backend.
- let event=currentEvent.get();
+ let event=currentContestEvent.get();
  if(proof.queued){
   const possible=db.prepare("SELECT e.*,s.bali_event_id,s.contest_date FROM events e "+
    "JOIN contest_settings s ON s.event_id=e.id "+
@@ -649,7 +661,7 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
   await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
   const insert=db.transaction(()=>{
    const now=Date.now();
-   if((!proof.queued&&currentEvent.get()?.id!==event.id)||
+   if((!proof.queued&&currentContestEvent.get()?.id!==event.id)||
       (!validQueued&&!(contestSettings(event.id).enabled===1&&
        Date.now()<contestClock(contestSettings(event.id)).votingStartsAt&&
        buttonWindow(miniappSnapshot().settings.registration).open)))throw Error('event-changed');
@@ -683,7 +695,7 @@ const servePhoto = (row,res,privateView=false,fullView=false) => {
 app.get('/api/contest/photo/:id', (req,res)=>{
  const match=/^p_([1-9][0-9]{0,9})$/.exec(req.params.id);
  if(!match)return res.status(404).end();
- const event=currentEvent.get();
+ const event=currentContestEvent.get();
  if(!event)return res.status(404).end();
  const row=db.prepare("SELECT p.* FROM photos p "+
   "JOIN contest_candidates c ON c.photo_id=p.id AND c.event_id=p.event_id "+
@@ -722,7 +734,7 @@ app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
 /* Contest media is a separate LED feed, not mixed into the guests' wall. */
 app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
  await finalizeContest();
- const event=currentEvent.get(),settings=event?contestSettings(event.id):null;
+ const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;
  const phase=contestClock(settings).phase;
  const candidates=event?eligibleCandidates(event.id):[];
  const winner=phase==='closed'&&settings?.finalized_at?
@@ -889,7 +901,9 @@ app.get('/api/admin/contest',adminAuth,asyncRoute(async(req,res)=>{
  await finalizeContest();
  const settings=contestSettings(id),clock=contestClock(settings);
  const candidates=db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,p.status FROM contest_candidates c JOIN photos p ON p.id=c.photo_id WHERE c.event_id=? ORDER BY c.registered_at DESC LIMIT 300").all(id);
- res.json({ok:true,event,
+ const liveEvent=currentContestEvent.get();
+ res.json({ok:true,event,liveContestEventId:liveEvent?.id||null,
+  liveContestName:liveEvent?.name||null,
   settings:{enabled:!!settings.enabled,contestDate:settings.contest_date,
    votingStart:settings.voting_start,votingEnd:settings.voting_end,
    baliEventId:settings.bali_event_id,phase:clock.phase,

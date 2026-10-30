@@ -298,7 +298,7 @@ if(page==='admin') {
       const phase={disabled:'выключен',waiting:'ожидание начала',registration:'идёт регистрация',
         awaiting_voting:'ожидание голосования',voting:'идёт голосование',awaiting_results:'ожидание результатов',
         closed:'конкурс завершён'}[settings.phase]||settings.phase;
-      $('#contestPhase').textContent='Этап: '+phase+
+      $('#contestPhase').textContent=(data.liveContestEventId===displayedEventId?'● ЭТОТ КОНКУРС ТРАНСЛИРУЕТСЯ В TELEGRAM. ':'В TELEGRAM СЕЙЧАС: '+(data.liveContestName||'нет активного конкурса')+'. ')+'Этап: '+phase+
         (settings.finalizedAt?' · победитель: фото #'+(settings.winnerPhotoId||'нет')+
          ' · голосов победителя: '+settings.winnerVotes+' · всего: '+settings.totalVotes:
          settings.phase==='closed'?' · ожидается итог подсчёта':'')+
