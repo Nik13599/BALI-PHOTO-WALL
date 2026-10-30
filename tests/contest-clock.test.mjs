@@ -90,3 +90,19 @@ test('manual 02:16 Minsk opens voting despite weekly 03:00 setting',async()=>{
  assert.equal(contestVotingGate(rule,button,at('2026-10-31T03:16')).buttonOpen,false);
  assert.equal(contestVotingGate(rule,{...button,mode:'manual-off'},at('2026-10-31T02:18')).buttonOpen,false);
 });
+
+test('Windows manual-on overrides the current contest clock, manual-off and hide always win',async()=>{
+ const {contestVotingGate}=await import('../contest-clock.mjs');
+ const saved={enabled:1,contest_date:'2026-11-01',
+  registration_opens_at:'2026-10-31T22:00',registration_ends_at:'2026-11-01T02:00',
+  voting_starts_at:'2026-11-01T02:10',voting_ends_at:'2026-11-01T04:00',
+  results_at:'2026-11-01T04:00'};
+ const at=Date.parse('2026-10-31T23:15:00+03:00');
+ const general={visible:true,mode:'auto'};
+ assert.equal(contestVotingGate(saved,general,at).buttonOpen,false);
+ assert.equal(contestVotingGate(saved,{...general,mode:'manual-on'},at).buttonOpen,true);
+ assert.equal(contestVotingGate(saved,{...general,mode:'manual-off'},at).buttonOpen,false);
+ assert.equal(contestVotingGate(saved,{...general,mode:'manual-on',visible:false},at).buttonOpen,false);
+ assert.equal(contestVotingGate({...saved,enabled:0},{...general,mode:'manual-on'},at).buttonOpen,false);
+ assert.equal(contestVotingGate({...saved,finalized_at:123},{...general,mode:'manual-on'},at).buttonOpen,false);
+});

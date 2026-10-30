@@ -76,5 +76,11 @@ export function eligiblePartyDay(partyId,contestDate){
 export function contestVotingGate(settings,button,now=Date.now()){
  const clock=contestClock(settings,now);
  const visible=button?.visible!==false;
- return {clock,visible,buttonOpen:visible&&button?.mode!=='manual-off'&&clock.phase==='voting'};
+ const mode=button?.mode||'auto';
+ const active=settings?.enabled===1&&!settings?.finalized_at;
+ // These are all Windows PHOTO WALL settings. Explicit manual-on opens
+ // voting for the current unfinalized event, regardless of weekly defaults.
+ const buttonOpen=active&&visible&&mode!=='manual-off'&&
+  (mode==='manual-on'||clock.phase==='voting');
+ return {clock,visible,mode,buttonOpen};
 }

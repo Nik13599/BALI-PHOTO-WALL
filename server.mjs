@@ -428,8 +428,9 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
   registration_ends_at:clock.registrationEndsAt,voting_starts_at:clock.votingStartsAt,
   voting_ends_at:clock.votingEndsAt,voting_open:voting,
   vote_button_open:enabled&&gate.buttonOpen,vote_button_visible:gate.visible,
+  vote_button_mode:gate.mode,
   approved_count:rows.length,ballot_blocked_reason:!gate.visible?'hidden':
-   voteSettings.mode==='manual-off'?'manual-off':clock.phase!=='voting'?'schedule':
+   voteSettings.mode==='manual-off'?'manual-off':!gate.buttonOpen?'schedule':
    rows.length===0?'no-approved-candidates':null,
   result_pending:clock.phase==='closed'&&!settings.finalized_at,
   winner:winner?{id:'p_'+winner.photoId,name:winner.name,
@@ -690,7 +691,8 @@ app.get('/api/contest/photo/:id', (req,res)=>{
   "WHERE p.id=? AND p.event_id=? AND p.photo_area='contest' AND p.status='approved' AND s.enabled=1")
   .get(Number(match[1]),event.id);
  const settings=contestSettings(event.id),clock=contestClock(settings);
- if(clock.phase!=='voting'&&!(settings.finalized_at&&settings.winner_photo_id===Number(match[1])))
+ if(!contestVotingGate(settings,miniappSnapshot().settings.vote).buttonOpen&&
+    !(settings.finalized_at&&settings.winner_photo_id===Number(match[1])))
   return res.status(404).end();
  return servePhoto(row,res);
 });
