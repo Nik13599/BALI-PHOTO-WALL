@@ -380,7 +380,8 @@ app.get('/healthz', (_req,res) => {
    The public endpoint contains only harmless display rules, never credentials. */
 app.get('/api/miniapp/buttons',(_req,res)=>{
  const config=miniappSnapshot();
- res.json({ok:true,revision:config.revision,...config.current});
+ const event=currentEvent.get();
+ res.json({ok:true,revision:config.revision,eventAvailable:!!event,...config.current});
 });
 app.get('/api/admin/miniapp/buttons',adminAuth,(_req,res)=>{
  res.json({ok:true,...miniappSnapshot()});
