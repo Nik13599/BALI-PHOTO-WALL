@@ -44,11 +44,12 @@ if(page==='guest') {
   })
     .catch(()=>$('#eventName').textContent='Сервис временно недоступен');
   input.addEventListener('change',async()=>{
-    $('#fileLabel').textContent=input.files[0]?.name || 'Выбрать фотографию';
+    document.body.classList.toggle('has-photo',!!input.files[0]);
+    $('#fileLabel').textContent=input.files[0]?.name || 'ВЫБРАТЬ ФОТОГРАФИЮ';
     try{
       await globalThis.BaliCropEditor.load(input.files[0]);
       notice('#guestMessage','Передвинь и увеличь фотографию, чтобы выбрать область показа.');
-    }catch(error){input.value='';notice('#guestMessage',error.message,true);}
+    }catch(error){input.value='';document.body.classList.remove('has-photo');notice('#guestMessage',error.message,true);}
   });
   form.addEventListener('submit',async event=>{
     event.preventDefault();
@@ -77,9 +78,9 @@ if(page==='guest') {
       }
       if(!resp.ok) throw new Error(result.error||'Ошибка загрузки');
       notice('#guestMessage','✓ Фото принято! Оно появится на экране после проверки.');
-      form.reset();globalThis.BaliCropEditor.clear();$('#fileLabel').textContent='Выбрать фотографию';
+      form.reset();globalThis.BaliCropEditor.clear();document.body.classList.remove('has-photo');$('#fileLabel').textContent='ВЫБРАТЬ ФОТОГРАФИЮ';
     } catch(error) {notice('#guestMessage',error.message,true);}
-    finally {btn.disabled=false;btn.innerHTML='ОТПРАВИТЬ НА ЭКРАН <span>↗</span>';}
+    finally {btn.disabled=false;btn.innerHTML='ОТПРАВИТЬ ФОТО <span>↗</span>';}
   });
 }
 if(page==='admin') {
