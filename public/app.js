@@ -483,6 +483,7 @@ if(page==='screen'){
     qrSize:[40,250],inset:[0,80]
   };
   let settings={...defaults};
+  const embeddedLogo=$('#wallLogo')?.getAttribute('src')||'/bali-logo.svg';
   let profileRevision=-1,logoRevision=-1,dirtyProfile=false,profileSaveTimer=0,profileLoading=false;
   const profileUrl='/api/screen/profile?feed='+broadcastArea;
   const profileSaveUrl='/api/admin/screen/profile?feed='+broadcastArea;
@@ -496,7 +497,7 @@ if(page==='screen'){
   function useRemoteLogo(revision){
     if(revision===logoRevision)return;
     logoRevision=revision;
-    $('#wallLogo').src=revision>0?profileLogoUrl+'&v='+revision:'/bali-logo.svg';
+    $('#wallLogo').src=revision>0?profileLogoUrl+'&v='+revision:embeddedLogo;
   }
   async function syncProfile(force=false){
     if(profileLoading||controller&&dirtyProfile&&!force)return;
