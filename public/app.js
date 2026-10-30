@@ -166,6 +166,10 @@ if(page==='admin') {
 <div class="alert" id="adminMessage" role="status" aria-live="polite"></div>
 </section>`;
       }
+      if(adminArea==='contest' && $('#bulkPhotoStatus')){
+        $('#bulkPhotoStatus').value='pending';
+        $('#bulkPhotoStatus').querySelector('option[value="approved"]').disabled=true;
+      }
       $('#activeEvent').textContent=data.active?.name || 'Не выбрано';
       $('#photoCount').textContent=data.total+' фото · '+data.page+' / '+data.pages+' стр.';
       $('#selectedEvent').textContent=data.selected?.name||'Нет выбранного мероприятия';
@@ -418,6 +422,10 @@ if(page==='screen'){
   const controller=screenPath.startsWith('/control/');
   document.body.dataset.screenArea=broadcastArea;
   document.body.dataset.screenMode=controller?'control':'broadcast';
+  const broadcastLink=$('#controlLiveLink');
+  if(broadcastLink)broadcastLink.href='/live/'+broadcastArea;
+  const profileTitle=$('#wallSettings .wall-settings-head strong');
+  if(profileTitle)profileTitle.textContent=broadcastArea==='contest'?'♛ Пульт конкурса':'◩ Пульт общей фотостены';
   const defaults={
     maxPhotos:500,columns:0,gap:2,fit:'contain',layout:'puzzle',centerGrowth:true,
     liveInterval:8,liveFocus:40,liveTransition:1400,liveFit:'cover',livePause:false,
@@ -458,7 +466,7 @@ if(page==='screen'){
     profileLoading=true;
     try{
       const saved=await api(profileUrl);
-      if(!controller||(!dirtyProfile&&(!controller||force||profileRevision<0))){
+      if(!controller||!dirtyProfile){
         if(force||profileRevision!==saved.revision){
           settings={...defaults,...saved.settings};
           profileRevision=saved.revision;
