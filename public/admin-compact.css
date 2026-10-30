@@ -96,3 +96,9 @@ body[data-page="admin"] .alert{font-size:12px}
  body[data-page="admin"] .photo-actions .button{font-size:8px}
  body[data-page="admin"] .contest-settings-grid{grid-template-columns:1fr}
 }
+
+/* Keep control panels short and feedback visible during moderation. */
+body[data-page="admin"] .admin-drawer[open]{max-height:min(68dvh,640px);overflow-y:auto;overscroll-behavior:contain;scrollbar-color:#617353 #141b13}
+body[data-page="admin"] #adminMessage:not(:empty){position:fixed;z-index:1000;right:clamp(12px,3vw,30px);bottom:calc(12px + env(safe-area-inset-bottom));width:min(410px,calc(100vw - 24px));max-height:150px;overflow:auto;padding:11px 13px;border-radius:11px;background:#1c2819ee;border:1px solid #536b45;box-shadow:0 10px 35px #0009;backdrop-filter:blur(14px)}
+body[data-page="admin"] #adminMessage.bad:not(:empty){border-color:#bc685c;background:#341d1aee}
+body[data-page="admin"] .admin-tab:focus-visible,body[data-page="admin"] .admin-drawer summary:focus-visible{outline:2px solid #d7ff4d;outline-offset:2px}
