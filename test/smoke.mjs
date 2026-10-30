@@ -68,6 +68,36 @@ try {
   assert.equal(r.status,200);
   r=await call('/api/photos/'+photo.id,{headers:{Cookie:screenCookie}});
   assert.equal(r.status,200,'Approved photo should be visible to authenticated screen');
+  r=await call('/api/admin/dashboard?status=pending',{headers:{Cookie:auth}});
+  assert.equal(r.status,200);
+  let queue=await data(r);
+  assert.equal(queue.counts.pending,0,'Approved photo must leave pending queue');
+  assert.equal(queue.counts.approved,1,'Approved photo must appear in screen gallery counter');
+  assert.equal(queue.photos.length,0,'Pending tab must no longer show approved photo');
+  r=await call('/api/admin/dashboard?status=approved',{headers:{Cookie:auth}});
+  assert.equal(r.status,200);
+  queue=await data(r);
+  assert(queue.photos.some(p=>p.id===photo.id),'Approved photo must be shown only in published photos tab');
+  r=await call('/api/admin/dashboard?status=unknown',{headers:{Cookie:auth}});
+  assert.equal(r.status,400,'Unrecognized moderation queues must be rejected');
+  r=await call('/api/admin/contest/settings',{
+    method:'POST',headers:authHeaders,
+    body:JSON.stringify({
+      eventId:ev.id,enabled:false,contestDate:'2030-10-31',baliEventId:'',
+      registrationOpensAt:'2030-10-30T20:00',
+      registrationClosesAt:'2030-10-31T00:50',
+      votingStartsLocal:'2030-10-31T01:00',
+      votingEndsLocal:'2030-10-31T03:00',
+      resultsLocal:'2030-10-31T03:15'
+    })
+  });
+  assert.equal(r.status,200,'Configurable contest schedule should be accepted');
+  r=await call('/api/admin/contest?eventId='+ev.id,{headers:{Cookie:auth}});
+  assert.equal(r.status,200);
+  const savedContest=await data(r);
+  assert.equal(savedContest.settings.registrationClosesAt,'2030-10-31T00:50');
+  assert.equal(savedContest.settings.resultsLocal,'2030-10-31T03:15');
+
   r=await call('/api/screen',{headers:{Cookie:screenCookie}});
   assert((await data(r)).photos.some(p=>p.id===photo.id));
   r=await call('/api/admin/events',{method:'POST',headers:authHeaders,body:JSON.stringify({name:'Тестовая вечеринка'})});
@@ -76,7 +106,7 @@ try {
   const active=await data(r);
   assert.equal(active.event.name,'Тестовая вечеринка');
   assert.equal(active.photos.length,0,'New event must have its own slideshow');
-  console.log('PASS: pages, guest upload, private pending media, admin login, moderation, protected screen, event isolation');
+  console.log('PASS: guest uploads, isolated moderation queues, approvals, customizable contest timing, protected screen, event isolation');
 }finally{
   if (server.exitCode===null) {
     const exited=new Promise(resolve=>server.once('exit',resolve));
