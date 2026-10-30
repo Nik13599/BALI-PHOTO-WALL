@@ -1,0 +1,68 @@
+/* Guest upload deliberately fits a single phone or desktop viewport.
+   When cropping, condense the hero instead of hiding any required upload control. */
+body[data-page="guest"]{height:100vh;height:100dvh;min-height:0;overflow:hidden;overscroll-behavior:none}
+body[data-page="guest"] .guest-shell{width:min(100%,850px);height:100vh;height:100dvh;min-height:0;padding:12px clamp(12px,3vw,26px) max(8px,env(safe-area-inset-bottom));overflow:hidden}
+body[data-page="guest"] .guest-header{flex:none;padding:4px 0 12px;border-bottom-color:#ffffff18}
+body[data-page="guest"] .guest-brand{display:flex;align-items:center;max-width:48%}
+body[data-page="guest"] .guest-brand img{display:block;width:clamp(134px,21vw,184px);height:auto}
+body[data-page="guest"] .header-note{display:flex;align-items:center;gap:9px;white-space:nowrap}
+body[data-page="guest"] .header-note .pulse{width:7px;height:7px}
+body[data-page="guest"] .guest-main{flex:1;min-height:0;max-height:100%;width:min(100%,530px);margin:auto;display:flex;flex-direction:column;justify-content:center;gap:clamp(6px,1.1dvh,12px);padding:7px 0 3px}
+body[data-page="guest"] .guest-intro{text-align:center;flex:none}
+body[data-page="guest"] .guest-intro .eyebrow{display:block;font-size:10px;letter-spacing:.18em;color:#a9bd9d}
+body[data-page="guest"] h1{font-size:clamp(29px,4.7vw,47px);line-height:1;margin:4px 0 6px;letter-spacing:-.05em}
+body[data-page="guest"] .intro{font-size:clamp(11px,1.45vw,13px);line-height:1.3;margin:0 auto;max-width:430px}
+body[data-page="guest"] .event-pill{display:block;max-width:100%;align-self:center;text-align:center;font-size:10px;font-weight:800;margin:0;padding:6px 14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body[data-page="guest"] .upload-card{width:100%;min-height:0;flex:0 1 auto;border-radius:17px;padding:clamp(11px,1.8dvh,16px);display:flex;flex-direction:column;gap:9px;box-shadow:0 8px 28px #0006;overflow:hidden}
+body[data-page="guest"] .dropzone{min-height:0;flex:none;height:clamp(65px,12dvh,96px);padding:8px 12px;gap:2px;flex-direction:row;flex-wrap:wrap;align-content:center;align-items:center;justify-content:center;border-radius:11px;font-size:13px;line-height:1.2}
+body[data-page="guest"] .dropzone .camera{font-size:23px;font-weight:500;margin-right:7px}
+body[data-page="guest"] .dropzone small{flex:0 0 100%;font-size:10px}
+body[data-page="guest"] .consent{display:flex;flex:none;align-items:flex-start;gap:8px;margin:0;font-size:11px;line-height:1.28}
+body[data-page="guest"] .consent input{height:16px;width:16px;margin:0;flex:none}
+body[data-page="guest"] .upload-card .button{flex:none;min-height:43px;padding:10px 14px;font-size:12px;border-radius:10px}
+body[data-page="guest"] .alert{margin:0;min-height:0;max-height:52px;overflow:auto;font-size:11px;line-height:1.4}
+body[data-page="guest"] .alert:empty{display:none}
+body[data-page="guest"] .small-print{flex:none;margin:0;text-align:center;font-size:10px;line-height:1.2;max-height:25px;overflow:hidden}
+body[data-page="guest"] .guest-footer{flex:none;padding:5px 0 0;border-top-color:#ffffff16;font-size:8px;letter-spacing:.09em}
+body[data-page="guest"] .crop-editor[hidden],body[data-page="guest"] .crop-choice[hidden]{display:none!important}
+body[data-page="guest"] .crop-editor{flex:0 1 auto;min-height:0;display:flex;flex-direction:column;align-items:center;gap:5px;padding:7px;border-radius:10px;border:1px solid #475c40;background:#0d150d;margin:0;overflow:hidden}
+body[data-page="guest"] .crop-head{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;font-size:10px}
+body[data-page="guest"] .crop-head strong{font-size:10px;color:#d7ff4d}
+body[data-page="guest"] .crop-head span{font-size:10px;color:#b5c7aa}
+body[data-page="guest"] .crop-choices{display:flex;flex:none;flex-wrap:nowrap;gap:4px;width:100%}
+body[data-page="guest"] .crop-choice{flex:1 1 0;min-width:0;font-size:10px;line-height:1.2;padding:6px 3px;border-radius:7px;background:#202c1b;color:#e4eedd;border:1px solid #46563f}
+body[data-page="guest"] .crop-choice.selected{background:#d7ff4d;color:#11170a;font-weight:900}
+body[data-page="guest"] .crop-canvas{display:block;min-height:0;max-height:clamp(96px,24dvh,248px);max-width:100%;width:auto;height:auto;object-fit:contain;border-radius:6px;touch-action:none;cursor:grab;user-select:none}
+body[data-page="guest"] .crop-zoom{display:flex;align-items:center;gap:7px;width:100%;font-size:10px;color:#d9e6d2;line-height:1}
+body[data-page="guest"] .crop-zoom input{flex:1;min-width:0;height:16px;accent-color:#d7ff4d}
+body[data-page="guest"] .crop-zoom output{min-width:34px;text-align:right;color:#d7ff4d;font-weight:800}
+body[data-page="guest"] .crop-help{font-size:10px;line-height:1.25;margin:0;text-align:center;color:#a5b6a0}
+body[data-page="guest"].has-photo .guest-intro{display:none}
+body[data-page="guest"].has-photo .guest-main{justify-content:center;gap:6px}
+body[data-page="guest"].has-photo .dropzone{height:clamp(36px,6dvh,49px)}
+body[data-page="guest"].has-photo .dropzone .camera{font-size:17px}
+body[data-page="guest"].has-photo .dropzone small{display:none}
+body[data-page="guest"].has-photo .guest-footer{display:none}
+@media(max-height:690px){
+ body[data-page="guest"] .guest-main{gap:5px}
+ body[data-page="guest"] .dropzone{height:58px}
+ body[data-page="guest"] .guest-intro .eyebrow,body[data-page="guest"] .intro{display:none}
+ body[data-page="guest"] h1{font-size:27px;margin:0}
+ body[data-page="guest"] .upload-card{padding:9px;gap:6px}
+ body[data-page="guest"] .crop-canvas{max-height:20dvh}
+ body[data-page="guest"] .crop-help{display:none}
+ body[data-page="guest"] .small-print{display:none}
+}
+@media(max-width:450px){
+ body[data-page="guest"] .guest-shell{padding-left:12px;padding-right:12px}
+ body[data-page="guest"] .guest-brand img{width:145px}
+ body[data-page="guest"] .header-note{font-size:9px}
+ body[data-page="guest"] .crop-canvas{max-height:22dvh}
+}
+@media(max-height:530px){
+ body[data-page="guest"] .guest-header{padding-bottom:5px}
+ body[data-page="guest"] .guest-footer{display:none}
+ body[data-page="guest"] .guest-intro{display:none}
+ body[data-page="guest"] .crop-canvas{max-height:17dvh}
+ body[data-page="guest"] .crop-zoom{gap:4px}
+}
