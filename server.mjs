@@ -7,6 +7,7 @@ import QRCode from 'qrcode';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
 import {contestClock,minskDay,isContestDate,eligiblePartyDay,validContestTimeline,contestMandatoryTimes} from './contest-clock.mjs';
+import {BUTTON_DEFAULTS,normalizeButtons,publicButtons} from './miniapp-controls.mjs';
 import {screenArea,screenProfile,SCREEN_DEFAULTS} from './screen-profile.mjs';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -120,6 +121,18 @@ db.exec(`CREATE TABLE IF NOT EXISTS screen_profiles(
  revision INTEGER NOT NULL DEFAULT 1,
  updated_at INTEGER NOT NULL
 )`);
+db.exec(`CREATE TABLE IF NOT EXISTS miniapp_button_settings(
+ id INTEGER PRIMARY KEY CHECK(id=1), settings_json TEXT NOT NULL,
+ revision INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL
+)`);
+const miniappRow=()=>db.prepare('SELECT settings_json,revision FROM miniapp_button_settings WHERE id=1').get();
+function miniappSnapshot(){
+ const row=miniappRow();
+ let settings=BUTTON_DEFAULTS;
+ if(row)try{settings=normalizeButtons(JSON.parse(row.settings_json));}
+ catch(error){console.error('Mini App button configuration:',error.message);}
+ return {settings,revision:row?.revision||0,current:publicButtons(settings)};
+}
 const profileRow=db.prepare('SELECT settings_json,revision,updated_at FROM screen_profiles WHERE area=?');
 const screenLogoFile=area=>path.join(DATA,'screen-logo-'+area+'.webp');
 function screenProfileData(area){
@@ -135,7 +148,7 @@ const clockFields=db.pragma('table_info(contest_settings)').map(x=>x.name);
 for(const [name,definition] of [
  ['contest_date',"TEXT NOT NULL DEFAULT ''"],
  ['voting_start',"TEXT NOT NULL DEFAULT '03:00'"],
- ['voting_end',"TEXT NOT NULL DEFAULT '06:00'"],
+ ['voting_end',"TEXT NOT NULL DEFAULT '04:00'"],
  ['bali_event_id',"TEXT NOT NULL DEFAULT ''"],
  ['winner_photo_id','INTEGER'],
  ['winner_votes','INTEGER NOT NULL DEFAULT 0'],
@@ -150,7 +163,7 @@ for(const [name,definition] of [
 const contestRow=id=>db.prepare('SELECT * FROM contest_settings WHERE event_id=?').get(id);
 const contestSettings=id=>contestRow(id)||{
  event_id:id,enabled:0,voting_open:0,contest_date:minskDay(Date.now()+86400000),
- voting_start:'03:00',voting_end:'06:00',bali_event_id:'',
+ voting_start:'03:00',voting_end:'04:00',bali_event_id:'',
  winner_photo_id:null,winner_votes:0,total_votes:0,finalized_at:null
 };
 const eligibleCandidates=id=>db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,c.registered_at AS registeredAt,p.status FROM contest_candidates c JOIN photos p ON p.id=c.photo_id AND p.event_id=c.event_id WHERE c.event_id=? AND p.photo_area='contest' AND p.status='approved' ORDER BY c.registered_at,c.photo_id LIMIT 300").all(id);
@@ -287,7 +300,7 @@ const PAGE_ASSETS=new Map([
  ['guest',{file:'guest.html',css:['style.css','guest-compact.css'],js:['crop.js','guest.js']}],
  ['admin',{file:'admin.html',css:['style.css','admin-compact.css','areas.css'],js:['app.js']}],
  ['screen',{file:'screen.html',css:['style.css','screen-broadcast.css'],
-   js:['mosaic.js','carousel.js','carousel-wall.js','live-mosaic.js','live-wall.js','app.js']}]
+   js:['mosaic.js','carousel.js','carousel-wall.js','live-mosaic.js','live-wall.js','app.js','miniapp-buttons.js']}]
 ]);
 const pageCache=new Map();
 const pageAssetDir=path.join(ROOT,'public');
@@ -360,6 +373,32 @@ app.get('/healthz', (_req,res) => {
  res.json({ok:missing.length===0,assetsOk:missing.length===0,missingAssets:missing});
 });
 
+/* Single Windows authority for Telegram's button clocks and visibility.
+   The public endpoint contains only harmless display rules, never credentials. */
+app.get('/api/miniapp/buttons',(_req,res)=>{
+ const config=miniappSnapshot();
+ res.json({ok:true,revision:config.revision,...config.current});
+});
+app.get('/api/admin/miniapp/buttons',adminAuth,(_req,res)=>{
+ res.json({ok:true,...miniappSnapshot()});
+});
+app.post('/api/admin/miniapp/buttons',adminAuth,requireAction,(req,res)=>{
+ const payload=req.body||{},expected=payload.expectedRevision;
+ if(Object.keys(payload).sort().join(',')!=='expectedRevision,settings'||
+   !Number.isSafeInteger(expected)||expected<0)
+  return res.status(400).json({error:'Некорректные параметры'});
+ let next;
+ try{next=normalizeButtons(payload.settings)}
+ catch(error){return res.status(400).json({error:error.message})}
+ const current=miniappRow();
+ if((current?.revision||0)!==expected)
+  return res.status(409).json({error:'Настройки изменены в другом окне. Обновите панель.'});
+ if(current)db.prepare('UPDATE miniapp_button_settings SET settings_json=?,revision=revision+1,updated_at=? WHERE id=1')
+   .run(JSON.stringify(next),Date.now());
+ else db.prepare('INSERT INTO miniapp_button_settings(id,settings_json,revision,updated_at) VALUES(1,?,1,?)')
+   .run(JSON.stringify(next),Date.now());
+ res.json({ok:true,...miniappSnapshot()});
+});
 app.get('/api/public', (req,res) => {
   guestIdentity(req,res);
   const event = currentEvent.get();
@@ -372,7 +411,7 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
  const event=currentEvent.get(),settings=event?contestSettings(event.id):null;
  const clock=contestClock(settings),enabled=!!event&&settings.enabled===1&&clock.phase!=='disabled';
  const rows=enabled?eligibleCandidates(event.id):[];
- const voting=clock.phase==='voting'&&rows.length>0;
+ const voting=clock.phase==='voting'&&miniappSnapshot().current.buttons.vote.open&&rows.length>0;
  const base=PUBLIC_URL.startsWith('https://baliminsk.online')?PUBLIC_URL:'https://baliminsk.online';
  const winner=settings?.finalized_at&&settings.winner_photo_id?rows.find(x=>x.photoId===settings.winner_photo_id):null;
  res.json({contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
