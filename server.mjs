@@ -309,7 +309,9 @@ function pageTemplate(page){
    escapeHtmlPayload(content,'style')+'\n</style>').join('\n');
  const scripts=orderedScripts.map(content=>'<script nonce="__BALI_PAGE_NONCE__">\n'+
    escapeHtmlPayload(content,'script')+'\n</script>').join('\n');
- html=html.replace('</head>',styles+'\n'+scripts+'\n</head>');
+ html=html.replace('</head>',styles+'\n</head>');
+ // App scripts need the body DOM already parsed: the original script tags had defer.
+ html=html.replace('</body>',scripts+'\n</body>');
  const template=page==='screen'?{html,qr:true}:{html,qr:false};
  pageCache.set(page,template);
  return template;
