@@ -160,20 +160,20 @@ if(page==='admin') {
     <div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div>
   </form>
 </details>
-<details class="panel admin-contest-panel admin-drawer" id="contestPanel"><summary>♛ Король / Королева · расписание и участники</summary>
+<details class="panel admin-contest-panel admin-drawer" id="contestPanel" ${adminArea==='contest'?'open':''}><summary>♛ Король / Королева · расписание и участники</summary>
   <form id="contestSettings" class="contest-settings-grid">
     <label class="contest-switch"><input type="checkbox" id="contestEnabled"> Конкурс включён</label>
     <label>Дата голосования (Минск)<input class="field" type="date" id="contestDate" required></label>
-    <label>Открытие регистрации<input class="field" type="datetime-local" id="registrationOpensAt" required></label>
-    <label>Закрытие регистрации<input class="field" type="datetime-local" id="registrationClosesAt" required></label>
-    <label>Начало голосования<input class="field" type="datetime-local" id="votingStartsLocal" required></label>
-    <label>Конец голосования<input class="field" type="datetime-local" id="votingEndsLocal" required></label>
-    <label>Объявление победителя<input class="field" type="datetime-local" id="resultsLocal" required></label>
+    <label>Открытие регистрации<input class="field" type="datetime-local" step="60" id="registrationOpensAt" required></label>
+    <label>Закрытие регистрации<input class="field" type="datetime-local" step="60" id="registrationClosesAt" required></label>
+    <label>Начало голосования<input class="field" type="datetime-local" step="60" id="votingStartsLocal" required></label>
+    <label>Конец голосования<input class="field" type="datetime-local" step="60" id="votingEndsLocal" required></label>
+    <label>Объявление победителя<input class="field" type="datetime-local" step="60" id="resultsLocal" required></label>
     <label>BALI Event ID (необязательно)<input class="field" id="contestBaliEvent" maxlength="16" placeholder="2026-10-30"></label>
     <button class="button primary" type="submit" id="contestSave">СОХРАНИТЬ РАСПИСАНИЕ</button>
   </form>
   <p class="muted" id="contestPhase">Загружаем расписание конкурса…</p>
-  <p class="muted admin-hint">Время указывается по Минску. Для вечеринки 30.10 дата голосования обычно 31.10. Во время голосования доступны только изменения его окончания и времени объявления победителя.</p>
+  <p class="muted admin-hint">Все даты и часы устанавливаются вручную с точностью до минуты, по Минску (UTC+3). Регистрация заканчивается до голосования, итоги не раньше окончания. После начала голосования прошедшие этапы нельзя изменять.</p>
   <div class="contest-candidates-head"><h3>Участники конкурса</h3><a id="contestExport" class="button secondary" href="#" download>↓ CSV</a></div>
   <form id="contestCandidateForm" class="event-form"><label>№ фото<input class="field" id="contestPhotoId" type="number" inputmode="numeric" min="1" required placeholder="ID"></label><label>Имя участника<input class="field" id="contestName" minlength="2" maxlength="70" required placeholder="Имя"></label><input type="hidden" id="contestCategory" value="king"><button class="button secondary" type="submit">＋ ДОБАВИТЬ</button></form>
   <div id="contestCandidates" class="event-list"></div><p class="muted" id="contestMessage" role="status"></p>
@@ -232,6 +232,7 @@ if(page==='admin') {
       $('#pageControls').innerHTML = data.pages>1
         ? '<button class="button secondary" type="button" data-page="prev" '+(data.page<=1?'disabled':'')+'>← НАЗАД</button><span>Страница '+data.page+' из '+data.pages+'</span><button class="button secondary" type="button" data-page="next" '+(data.page>=data.pages?'disabled':'')+'>ВПЕРЁД →</button>'
         : '';
+      if(adminArea==='contest'&&$('#contestPanel')?.open)void loadContest();
     } catch(error){
       if(error.code===401){if($('#dashboard')) {location.reload();return;}}
       notice('#adminMessage',error.message,true);
@@ -251,10 +252,10 @@ if(page==='admin') {
       const values={
         contestEnabled:!!settings.enabled,
         contestDate:date,
-        registrationOpensAt:previousDate?previousDate+'T22:00':'',
-        registrationClosesAt:startLocal,
-        votingStartsLocal:startLocal,
-        votingEndsLocal:endLocal,
+        registrationOpensAt:settings.registrationOpensAt||(previousDate?previousDate+'T22:00':''),
+        registrationClosesAt:settings.registrationClosesAt||startLocal,
+        votingStartsLocal:settings.votingStartsLocal||startLocal,
+        votingEndsLocal:settings.votingEndsLocal||endLocal,
         resultsLocal:settings.resultsLocal||endLocal,
         contestBaliEvent:settings.baliEventId||''
       };
@@ -266,22 +267,26 @@ if(page==='admin') {
         }
       }
       const phase={disabled:'выключен',waiting:'ожидание начала',registration:'идёт регистрация',
-        voting:'идёт голосование',awaiting_results:'ожидание результатов',
+        awaiting_voting:'ожидание голосования',voting:'идёт голосование',awaiting_results:'ожидание результатов',
         closed:'конкурс завершён'}[settings.phase]||settings.phase;
       $('#contestPhase').textContent='Этап: '+phase+
         (settings.finalizedAt?' · победитель: фото #'+(settings.winnerPhotoId||'нет')+
          ' · голосов победителя: '+settings.winnerVotes+' · всего: '+settings.totalVotes:
          settings.phase==='closed'?' · ожидается итог подсчёта':'')+
         (settings.tallyError?' · ошибка подсчёта: '+settings.tallyError:'');
-      const afterVoteStart=['voting','awaiting_results','closed'].includes(settings.phase);
-      const afterVoteEnd=['awaiting_results','closed'].includes(settings.phase);
-      for(const id of ['contestEnabled','contestDate','contestBaliEvent'])
-        $('#'+id).disabled=afterVoteStart;
-      for(const id of ['registrationOpensAt','registrationClosesAt','votingStartsLocal'])
-        $('#'+id).readOnly=true;
-      $('#votingEndsLocal').disabled=afterVoteEnd;
-      $('#resultsLocal').disabled=settings.phase==='closed';
-      $('#contestSave').disabled=settings.phase==='closed';
+      const locked=!!settings.finalizedAt||settings.phase==='closed';
+      const started=!!settings.enabled&&['voting','awaiting_results','closed'].includes(settings.phase);
+      const ended=!!settings.enabled&&['awaiting_results','closed'].includes(settings.phase);
+      for(const id of ['contestEnabled','contestDate','contestBaliEvent',
+        'registrationOpensAt','registrationClosesAt','votingStartsLocal']){
+        const control=$('#'+id);
+        control.disabled=locked||started;
+        control.readOnly=false;
+      }
+      $('#votingEndsLocal').disabled=locked||ended;
+      $('#resultsLocal').disabled=locked;
+      $('#contestSave').disabled=locked;
+      $('#contestSave').textContent=locked?'РЕЗУЛЬТАТ ЗАФИКСИРОВАН':'СОХРАНИТЬ ДАТЫ И ВРЕМЯ';
       $('#contestExport').href='/api/admin/contest/export?eventId='+displayedEventId;
       $('#contestCandidates').replaceChildren(...data.candidates.map(c=>{
         const row=document.createElement('div');row.className='event-choice';
