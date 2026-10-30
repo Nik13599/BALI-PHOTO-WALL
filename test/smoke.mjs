@@ -38,6 +38,14 @@ try {
   assert.match(home,/id="uploadForm"/,'Guest upload form must exist');
   assert.match(home,/id="photo"/,'Guest image input must exist');
   assert.match(home,/guest.js/,'Guest route must load the lightweight independent client');
+  assert.match(home,/<style nonce="[^"]+">/,'Guest page must contain embedded working styles');
+  assert.match(home,/<script nonce="[^"]+">/,'Guest page must contain embedded working JS');
+  assert.match(home,/src="data:image\/svg\+xml;base64,/,'BALI logo must be embedded, not externally fetched');
+  assert.doesNotMatch(home,/<link rel="stylesheet"/,'Guest CSS must not rely on a separate static request');
+  assert.doesNotMatch(home,/<script defer src=/,'Guest JS must not rely on a separate static request');
+  const guestNonce=home.match(/<style nonce="([^"]+)">/)?.[1];
+  const guestCsp=r.headers.get('content-security-policy')||'';
+  assert(guestCsp.includes("'nonce-"+guestNonce+"'"),'CSP must allow the inline styles and scripts');
   assert.match(await r.text(),/id="uploadForm"/,'Dedicated upload path must expose the same guest form');
   const guest=r.headers.get('set-cookie')?.split(';')[0];
   assert(guest?.startsWith('bali_guest='));
@@ -68,9 +76,22 @@ try {
   assert.equal(r.status,200);
   const screenCookie=r.headers.get('set-cookie')?.split(';')[0];
   assert(screenCookie?.startsWith('bali_screen='));
-  for(const url of ['/live/general','/live/contest']){
+  for(const url of ['/admin/general','/admin/contest','/live/general','/live/contest']){
     r=await call(url);
-    assert.equal(r.status,200,'Live window should serve the screen: '+url);
+    assert.equal(r.status,200,'Moderation/broadcast page should serve successfully: '+url);
+    const html=await r.text();
+    assert.match(html,/<style nonce="[^"]+">/,'Every control and live page must embed CSS: '+url);
+    assert.match(html,/<script nonce="[^"]+">/,'Every control and live page must embed JS: '+url);
+    assert.match(html,/src="data:image\/svg\+xml;base64,/,'Logo must appear without extra static requests: '+url);
+    assert.doesNotMatch(html,/<link rel="stylesheet"/,'Static CSS must not be required: '+url);
+    assert.doesNotMatch(html,/<script defer src=/,'Static JS must not be required: '+url);
+    assert(html.indexOf('</body>')>html.lastIndexOf('<script nonce="'),
+      'Page JS must load after the body exists: '+url);
+    const nonce=html.match(/<style nonce="([^"]+)">/)?.[1];
+    assert((r.headers.get('content-security-policy')||'').includes("'nonce-"+nonce+"'"),
+      'CSP must allow inlined display assets: '+url);
+    if(url.startsWith('/live/'))assert.match(html,/id="wallGrid"/,'Live mosaic must exist: '+url);
+    if(url.startsWith('/admin/'))assert.match(html,/id="loginForm"/,'Moderator login must exist: '+url);
   }
   r=await call('/control/general');
   assert.equal(r.status,302,'Visual controller must require a staff session');
