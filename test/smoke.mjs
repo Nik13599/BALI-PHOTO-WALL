@@ -27,15 +27,17 @@ try {
     await delay(200);
   }
   assert(ready,'Server did not start: '+output);
-  let r=await call('/');
-  assert.equal(r.status,200);
-  assert.match(r.headers.get('content-type')||'',/text\/html/,'Homepage must render guest upload HTML');
-  assert.match(r.headers.get('cache-control')||'',/no-store/,'Guest page should not be cached after updates');
-  const home=await r.text();
-  assert.match(home,/id="uploadForm"/,'Root path must contain working guest form');
-  assert.match(home,/id="photo"/,'Guest image input must exist');
+  let r=await call('/',{redirect:'manual'});
+  assert.equal(r.status,302,'Root path should redirect to stable guest upload URL');
+  assert.equal(r.headers.get('location'),'/upload');
   r=await call('/upload');
   assert.equal(r.status,200,'Guests must have a dedicated permanent upload link');
+  assert.match(r.headers.get('content-type')||'',/text\/html/,'Upload must serve guest HTML');
+  assert.match(r.headers.get('cache-control')||'',/no-store/,'Guest page should not be cached after updates');
+  const home=await r.clone().text();
+  assert.match(home,/id="uploadForm"/,'Guest upload form must exist');
+  assert.match(home,/id="photo"/,'Guest image input must exist');
+  assert.match(home,/guest.js/,'Guest route must load the lightweight independent client');
   assert.match(await r.text(),/id="uploadForm"/,'Dedicated upload path must expose the same guest form');
   const guest=r.headers.get('set-cookie')?.split(';')[0];
   assert(guest?.startsWith('bali_guest='));
