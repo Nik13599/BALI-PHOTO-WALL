@@ -212,13 +212,14 @@ if(page==='admin') {
       const settings=data.settings;
       const date=settings.contestDate||'';
       const previousDate=date?new Date(Date.parse(date+'T12:00:00+03:00')-86400000).toISOString().slice(0,10):'';
-      const startLocal=settings.votingStartsLocal||(date?date+'T'+(settings.votingStart||'01:00'):'');
-      const endLocal=settings.votingEndsLocal||(date?date+'T'+(settings.votingEnd||'03:00'):'');
+      const startLocal=date?date+'T03:00':'';
+      const endLocal=settings.votingEndsLocal&&settings.votingEndsLocal>startLocal?
+        settings.votingEndsLocal:(date?date+'T06:00':'');
       const values={
         contestEnabled:!!settings.enabled,
         contestDate:date,
-        registrationOpensAt:settings.registrationOpensAt||(previousDate?previousDate+'T00:00':''),
-        registrationClosesAt:settings.registrationClosesAt||startLocal,
+        registrationOpensAt:previousDate?previousDate+'T22:00':'',
+        registrationClosesAt:startLocal,
         votingStartsLocal:startLocal,
         votingEndsLocal:endLocal,
         resultsLocal:settings.resultsLocal||endLocal,
@@ -241,9 +242,10 @@ if(page==='admin') {
         (settings.tallyError?' · ошибка подсчёта: '+settings.tallyError:'');
       const afterVoteStart=['voting','awaiting_results','closed'].includes(settings.phase);
       const afterVoteEnd=['awaiting_results','closed'].includes(settings.phase);
-      for(const id of ['contestEnabled','contestDate','contestBaliEvent','registrationOpensAt',
-        'registrationClosesAt','votingStartsLocal'])
+      for(const id of ['contestEnabled','contestDate','contestBaliEvent'])
         $('#'+id).disabled=afterVoteStart;
+      for(const id of ['registrationOpensAt','registrationClosesAt','votingStartsLocal'])
+        $('#'+id).readOnly=true;
       $('#votingEndsLocal').disabled=afterVoteEnd;
       $('#resultsLocal').disabled=settings.phase==='closed';
       $('#contestSave').disabled=settings.phase==='closed';

@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import QRCode from 'qrcode';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
-import {contestClock,minskDay,isContestDate,eligiblePartyDay,validContestTimeline} from './contest-clock.mjs';
+import {contestClock,minskDay,isContestDate,eligiblePartyDay,validContestTimeline,contestMandatoryTimes} from './contest-clock.mjs';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -112,8 +112,8 @@ db.exec(`
 const clockFields=db.pragma('table_info(contest_settings)').map(x=>x.name);
 for(const [name,definition] of [
  ['contest_date',"TEXT NOT NULL DEFAULT ''"],
- ['voting_start',"TEXT NOT NULL DEFAULT '01:00'"],
- ['voting_end',"TEXT NOT NULL DEFAULT '03:00'"],
+ ['voting_start',"TEXT NOT NULL DEFAULT '03:00'"],
+ ['voting_end',"TEXT NOT NULL DEFAULT '06:00'"],
  ['bali_event_id',"TEXT NOT NULL DEFAULT ''"],
  ['winner_photo_id','INTEGER'],
  ['winner_votes','INTEGER NOT NULL DEFAULT 0'],
@@ -128,7 +128,7 @@ for(const [name,definition] of [
 const contestRow=id=>db.prepare('SELECT * FROM contest_settings WHERE event_id=?').get(id);
 const contestSettings=id=>contestRow(id)||{
  event_id:id,enabled:0,voting_open:0,contest_date:minskDay(Date.now()+86400000),
- voting_start:'01:00',voting_end:'03:00',bali_event_id:'',
+ voting_start:'03:00',voting_end:'06:00',bali_event_id:'',
  winner_photo_id:null,winner_votes:0,total_votes:0,finalized_at:null
 };
 const eligibleCandidates=id=>db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,c.registered_at AS registeredAt,p.status FROM contest_candidates c JOIN photos p ON p.id=c.photo_id AND p.event_id=c.event_id WHERE c.event_id=? AND p.status='approved' ORDER BY c.registered_at,c.photo_id LIMIT 300").all(id);
@@ -442,7 +442,13 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  const event=currentEvent.get();
  if(!event)return res.status(409).json({error:'Сейчас нет активной вечеринки на PHOTO WALL'});
  const setting=contestSettings(event.id);
- if(contestClock(setting).phase!=='registration')
+ const submissionClock=contestClock(setting),submissionPhase=submissionClock.phase;
+ // Queued photos were verified and submitted while registration was open.
+ // Accept late transport after a Windows outage; never backdate the registration.
+ const validQueued=proof.queued&&Number.isFinite(proof.queuedAtMs)&&
+   proof.queuedAtMs>=submissionClock.registrationStartsAt&&
+   proof.queuedAtMs<submissionClock.registrationEndsAt;
+ if(submissionPhase!=='registration'&&!validQueued)
   return res.status(409).json({error:'Приём конкурсных фото закрыт по расписанию'});
  if(!eligiblePartyDay(proof.eventId,setting.contest_date)||
    (setting.bali_event_id&&proof.eventId!==setting.bali_event_id))
@@ -474,7 +480,8 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
   await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
   const insert=db.transaction(()=>{
    const now=Date.now();
-   if(currentEvent.get()?.id!==event.id||contestClock(contestSettings(event.id)).phase!=='registration')throw Error('event-changed');
+   if(currentEvent.get()?.id!==event.id||
+      (contestClock(contestSettings(event.id)).phase!=='registration'&&!validQueued))throw Error('event-changed');
    if(db.prepare('SELECT 1 FROM contest_telegram_entries WHERE event_id=? AND bali_uid=?').get(event.id,proof.uid))
      throw Error('already-registered');
    const id=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height) VALUES(?,?,?,'pending',?,?,?)")
@@ -688,15 +695,19 @@ app.post('/api/admin/contest/settings',adminAuth,requireAction,(req,res)=>{
      registration_ends_at:i.registrationClosesAt,voting_starts_at:i.votingStartsLocal,
      voting_ends_at:i.votingEndsLocal,results_at:i.resultsLocal};
    if(!validContestTimeline(timeline))
-     return res.status(400).json({error:'Проверь порядок дат и времени регистрации, голосования и объявления результатов. Старт голосования должен совпадать с датой конкурса.'});
+     return res.status(400).json({error:'Регистрация 22:00, голосование 03:00 по Минску. Настраивать можно окончание и время итогов.'});
  }else{
-   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingStart)||
-     !/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingEnd)||i.votingEnd<=i.votingStart)
+   if(i.votingStart!=='03:00'||
+     !/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingEnd)||i.votingEnd<='03:00')
      return res.status(400).json({error:'Проверь время голосования'});
    timeline={registration_opens_at:'',registration_ends_at:'',voting_starts_at:'',
      voting_ends_at:'',results_at:''};
  }
- const start=advanced?i.votingStartsLocal.slice(11):i.votingStart;
+ const required=contestMandatoryTimes(i.contestDate);
+ if(!required|| (advanced&&(i.registrationOpensAt!==required.opens||
+   i.registrationClosesAt!==required.voteStart||i.votingStartsLocal!==required.voteStart)))
+   return res.status(400).json({error:'Регистрация начинается в 22:00, голосование строго в 03:00 (Минск).'});
+ const start='03:00';
  const end=advanced?i.votingEndsLocal.slice(11):i.votingEnd;
  const prev=contestRow(id),prevClock=contestClock(prev),now=Date.now();
  if(prev?.enabled===1&&prevClock.votingStartsAt!==null&&now>=prevClock.votingStartsAt){
@@ -907,6 +918,23 @@ async function cleanup() {
 }
 cleanup().catch(console.error);
 setInterval(()=>finalizeContest().catch(console.error),2000).unref();
+// Pull the cloud escrow after boot and while the computer is online. Cloudflare
+// pushes queued bytes only to this site's verified public HTTPS hostname.
+let draining=false;
+async function drainQueuedPhotos(){
+ if(draining)return;
+ draining=true;
+ try{
+  const response=await fetch('https://app.baliminsk.by/api/tg-bali/photo-contest-queue-drain',{
+   method:'POST',redirect:'error',headers:{Accept:'application/json'},
+   signal:AbortSignal.timeout(65000)});
+  if(!response.ok)console.warn('Photo queue sync HTTP',response.status);
+  else{const status=await response.json();if(status.delivered)console.log('Photos from cloud queue:',status.delivered);}
+ }catch(error){console.warn('Photo queue sync postponed:',error.message)}
+ finally{draining=false}
+}
+setTimeout(()=>drainQueuedPhotos().catch(console.error),3000).unref();
+setInterval(()=>drainQueuedPhotos().catch(console.error),45000).unref();
 setInterval(()=>cleanup().catch(console.error),3600000).unref();
 app.use((err,req,res,_next) => {
   console.error('Request error:',err.message);
