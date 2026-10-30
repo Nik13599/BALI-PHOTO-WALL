@@ -42,3 +42,27 @@ body[data-page="screen"] .wall-event-hint{max-width:75vw;overflow-wrap:anywhere}
  body[data-screen-mode="control"] .screen-toolbar>a{display:none}
  body[data-screen-mode="control"] .wall-settings{top:43px;max-height:calc(100dvh - 52px)}
 }
+
+/* Dedicated editor: large live preview beside controls on desktop. */
+@media(min-width:751px){
+ body[data-screen-mode="control"] .screen{width:calc(100vw - 360px);height:100dvh;margin-right:360px}
+ body[data-screen-mode="control"] .wall-settings{width:350px;max-height:calc(100dvh - 20px)}
+ body[data-screen-mode="control"] .screen-toolbar{max-width:calc(100vw - 370px)}
+}
+/* Compact touch controller: real preview above a scrollable bottom panel. */
+@media(max-width:750px){
+ body[data-screen-mode="control"] .screen{width:100vw;height:44dvh;min-height:160px;overflow:visible}
+ body[data-screen-mode="control"] .wall-grid{overflow:hidden}
+ body[data-screen-mode="control"] .wall-settings{
+   position:fixed;top:auto;bottom:0;left:0;right:0;width:100vw;max-width:none;
+   height:56dvh;max-height:56dvh;border-radius:15px 15px 0 0;
+   border-bottom:0;overflow:hidden
+ }
+ body[data-screen-mode="control"] .wall-settings-head{padding:9px 12px}
+ body[data-screen-mode="control"] .wall-settings-scroll{padding:9px 12px max(10px,env(safe-area-inset-bottom));overflow-y:auto}
+ body[data-screen-mode="control"] .screen-toolbar{left:5px;right:5px;max-width:calc(100vw - 10px);gap:3px}
+ body[data-screen-mode="control"] .screen-control-links{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+ body[data-screen-mode="control"] .screen-control-links .button{font-size:9px;padding:8px 5px;white-space:normal}
+ body[data-screen-mode="control"] .wall-settings[hidden]{display:none}
+ body[data-screen-mode="control"] .screen-toolbar>a{display:inline-flex}
+}
