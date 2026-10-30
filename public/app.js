@@ -302,7 +302,7 @@ if(page==='admin') {
          photoId:Number($('#contestPhotoId').value),name:$('#contestName').value.trim(),
          category:$('#contestCategory').value});
         $('#contestPhotoId').value='';$('#contestName').value='';
-        await loadContest();notice('#adminMessage','Участник конкурса сохранён.');
+        previousDashboard=null;await loadDashboard();await loadContest();notice('#adminMessage','Участник конкурса сохранён.');
       }catch(error){notice('#adminMessage',error.message,true)}
     }
     if(event.target.id==='bulkPhotoForm'){
