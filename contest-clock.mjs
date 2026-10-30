@@ -70,3 +70,11 @@ export function eligiblePartyDay(partyId,contestDate){
   .toLocaleDateString('sv-SE',{timeZone:'Europe/Minsk'});
  return partyId.slice(0,10)===contestDate||partyId.slice(0,10)===previous;
 }
+
+/* The Windows contest timeline, not a separate weekly 03:00 default, controls
+   voting. An explicit operator hide/manual-off remains authoritative. */
+export function contestVotingGate(settings,button,now=Date.now()){
+ const clock=contestClock(settings,now);
+ const visible=button?.visible!==false;
+ return {clock,visible,buttonOpen:visible&&button?.mode!=='manual-off'&&clock.phase==='voting'};
+}

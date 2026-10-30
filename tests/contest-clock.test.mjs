@@ -75,3 +75,18 @@ test('Minsk date and associated BALI event ID validation',()=>{
  const legacy=contestMandatoryTimes('2026-10-31');
  assert.deepEqual(legacy,{opens:'2026-10-30T22:00',voteStart:'2026-10-31T03:00'});
 });
+
+test('manual 02:16 Minsk opens voting despite weekly 03:00 setting',async()=>{
+ const {contestVotingGate}=await import('../contest-clock.mjs');
+ const rule={enabled:1,contest_date:'2026-10-31',
+  registration_opens_at:'2026-10-30T22:00',registration_ends_at:'2026-10-31T02:16',
+  voting_starts_at:'2026-10-31T02:16',voting_ends_at:'2026-10-31T03:16',
+  results_at:'2026-10-31T03:16'};
+ const button={visible:true,mode:'auto',days:[6,0],start:'03:00',end:'04:00',nextDay:false};
+ const at=t=>Date.parse(t+':00+03:00');
+ assert.equal(contestVotingGate(rule,button,at('2026-10-31T02:15')).buttonOpen,false);
+ assert.equal(contestVotingGate(rule,button,at('2026-10-31T02:16')).buttonOpen,true);
+ assert.equal(contestVotingGate(rule,button,at('2026-10-31T02:18')).buttonOpen,true);
+ assert.equal(contestVotingGate(rule,button,at('2026-10-31T03:16')).buttonOpen,false);
+ assert.equal(contestVotingGate(rule,{...button,mode:'manual-off'},at('2026-10-31T02:18')).buttonOpen,false);
+});

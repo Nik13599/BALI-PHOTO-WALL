@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import QRCode from 'qrcode';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
-import {contestClock,minskDay,isContestDate,eligiblePartyDay,validContestTimeline,contestMandatoryTimes} from './contest-clock.mjs';
+import {contestClock,minskDay,isContestDate,eligiblePartyDay,validContestTimeline,contestMandatoryTimes,contestVotingGate} from './contest-clock.mjs';
 import {BUTTON_DEFAULTS,normalizeButtons,publicButtons,buttonWindow} from './miniapp-controls.mjs';
 import {screenArea,screenProfile,SCREEN_DEFAULTS} from './screen-profile.mjs';
 import fs from 'node:fs';
@@ -413,9 +413,13 @@ app.get('/api/public', (req,res) => {
 app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
  await finalizeContest();
  const event=currentEvent.get(),settings=event?contestSettings(event.id):null;
- const clock=contestClock(settings),enabled=!!event&&settings.enabled===1&&clock.phase!=='disabled';
+ const voteSettings=miniappSnapshot().settings.vote;
+ const gate=contestVotingGate(settings,voteSettings);
+ const clock=gate.clock,enabled=!!event&&settings.enabled===1&&clock.phase!=='disabled';
  const rows=enabled?eligibleCandidates(event.id):[];
- const voting=clock.phase==='voting'&&miniappSnapshot().current.buttons.vote.open&&rows.length>0;
+ // The manually saved contest timeline overrides the separate 03:00 weekly
+ // button default. Manual-off and hidden still disable the ballot.
+ const voting=enabled&&gate.buttonOpen&&rows.length>0;
  const base=PUBLIC_URL.startsWith('https://baliminsk.online')?PUBLIC_URL:'https://baliminsk.online';
  const winner=settings?.finalized_at&&settings.winner_photo_id?rows.find(x=>x.photoId===settings.winner_photo_id):null;
  res.json({contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
@@ -423,6 +427,10 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
   server_now:Date.now(),registration_open:clock.phase==='registration',
   registration_ends_at:clock.registrationEndsAt,voting_starts_at:clock.votingStartsAt,
   voting_ends_at:clock.votingEndsAt,voting_open:voting,
+  vote_button_open:enabled&&gate.buttonOpen,vote_button_visible:gate.visible,
+  approved_count:rows.length,ballot_blocked_reason:!gate.visible?'hidden':
+   voteSettings.mode==='manual-off'?'manual-off':clock.phase!=='voting'?'schedule':
+   rows.length===0?'no-approved-candidates':null,
   result_pending:clock.phase==='closed'&&!settings.finalized_at,
   winner:winner?{id:'p_'+winner.photoId,name:winner.name,
    photoUrl:base+'/api/contest/photo/p_'+winner.photoId,votes:settings.winner_votes}:null,
