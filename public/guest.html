@@ -2,18 +2,22 @@
 <html lang="ru"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#0b0e0b"><title>BALI PHOTO WALL · Загрузка фото</title>
-<link rel="stylesheet" href="/style.css?v=20261030-guest-repair-v2">
-<link rel="stylesheet" href="/guest-compact.css?v=20261030-guest-repair-v2">
-<script defer src="/crop.js?v=20261030-guest-repair-v2"></script><script defer src="/app.js?v=20261030-guest-repair-v2"></script>
+<link rel="stylesheet" href="/style.css?v=20261031-guest-fast-v1">
+<link rel="stylesheet" href="/guest-compact.css?v=20261031-guest-fast-v1">
+<script defer src="/guest.js?v=20261031-guest-fast-v1"></script>
 </head><body data-page="guest">
 <div class="noise"></div><div class="shell guest-shell">
 <header class="header guest-header"><a href="/upload" class="guest-brand" aria-label="BALI PHOTO WALL"><img src="/bali-logo.svg" alt="BALI" width="180" height="26"></a><span class="header-note"><span class="pulse"></span> PHOTO WALL</span></header>
 <main class="guest-main">
-  <div class="guest-intro"><span class="eyebrow">ТВОЙ МОМЕНТ В BALI</span><h1>ЗАГРУЗИ <span class="glow">ФОТО</span></h1><p class="intro">Фото появится на экране после одобрения модератором.</p></div>
+  <div class="guest-intro"><span class="eyebrow">ТВОЙ МОМЕНТ В BALI</span><h1>ЗАГРУЗИ <span class="glow">ФОТО</span></h1><p class="intro">Загрузи фото на экран клуба. После отправки его проверит модератор.</p></div>
   <div class="event-pill" id="eventName">Загружаем мероприятие…</div>
   <form id="uploadForm" class="upload-card">
     <label class="dropzone" for="photo"><span class="camera">＋</span><span id="fileLabel">ВЫБРАТЬ ФОТОГРАФИЮ</span><small>JPEG · PNG · WEBP · до 8 МБ</small></label>
     <input type="file" id="photo" name="photo" accept="image/jpeg,image/png,image/webp" required hidden>
+    <div class="guest-photo-preview" id="photoPreview" hidden>
+      <img id="photoPreviewImage" alt="Выбранное фото" loading="lazy">
+    </div>
+    <button type="button" class="guest-edit-photo" id="editPhoto" hidden>✂ ОБРЕЗАТЬ</button>
     <div id="cropEditor" class="crop-editor" hidden>
       <div class="crop-head"><strong>ОБРЕЗКА</strong><span id="cropPolicyLabel">Выбери область кадра</span></div>
       <div id="cropChoices" class="crop-choices" role="group" aria-label="Формат публикации">
@@ -29,6 +33,7 @@
     <label class="consent"><input type="checkbox" id="consent" required><span>Разрешаю показ этой фотографии на экранах BALI и подтверждаю право на её публикацию.</span></label>
     <button class="button primary" id="uploadBtn" type="submit">ОТПРАВИТЬ ФОТО <span>↗</span></button>
     <div class="alert" id="guestMessage" role="status" aria-live="polite"></div>
+    <button type="button" class="guest-retry" id="reloadStatus" hidden>↻ ПОВТОРИТЬ ПОДКЛЮЧЕНИЕ</button>
   </form>
   <p class="small-print" id="guestLimitsText">Каждое фото проходит модерацию.</p>
 </main><footer class="footer guest-footer"><span>BALI PHOTO WALL</span><span>МИНСК</span></footer>
