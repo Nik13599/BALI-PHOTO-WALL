@@ -897,7 +897,7 @@ app.post('/api/admin/contest/settings',adminAuth,requireAction,(req,res)=>{
    // Legacy clients retain the original fixed times, but manual schedules
    // saved by the updated moderator may use ANY valid hour and minute.
    if(i.votingStart!=='03:00'||
-     !/^([01]\\d|2[0-3]):[0-5]\\d$/.test(i.votingEnd)||i.votingEnd<='03:00')
+     !/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingEnd)||i.votingEnd<='03:00')
      return res.status(400).json({error:'Проверь время голосования'});
    timeline={registration_opens_at:'',registration_ends_at:'',voting_starts_at:'',
      voting_ends_at:'',results_at:''};
