@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import QRCode from 'qrcode';
 import Database from 'better-sqlite3';
 import crypto from 'node:crypto';
-import {contestClock,minskDay,isContestDate,eligiblePartyDay} from './contest-clock.mjs';
+import {contestClock,minskDay,isContestDate,eligiblePartyDay,validContestTimeline} from './contest-clock.mjs';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
@@ -118,7 +118,12 @@ for(const [name,definition] of [
  ['winner_photo_id','INTEGER'],
  ['winner_votes','INTEGER NOT NULL DEFAULT 0'],
  ['total_votes','INTEGER NOT NULL DEFAULT 0'],
- ['finalized_at','INTEGER']
+ ['finalized_at','INTEGER'],
+ ['registration_opens_at',"TEXT NOT NULL DEFAULT ''"],
+ ['registration_ends_at',"TEXT NOT NULL DEFAULT ''"],
+ ['voting_starts_at',"TEXT NOT NULL DEFAULT ''"],
+ ['voting_ends_at',"TEXT NOT NULL DEFAULT ''"],
+ ['results_at',"TEXT NOT NULL DEFAULT ''"]
 ])if(!clockFields.includes(name))db.exec('ALTER TABLE contest_settings ADD COLUMN '+name+' '+definition);
 const contestRow=id=>db.prepare('SELECT * FROM contest_settings WHERE event_id=?').get(id);
 const contestSettings=id=>contestRow(id)||{
@@ -653,30 +658,74 @@ app.get('/api/admin/contest',adminAuth,asyncRoute(async(req,res)=>{
    baliEventId:settings.bali_event_id,phase:clock.phase,
    votingOpen:clock.phase==='voting',finalizedAt:settings.finalized_at,
    winnerPhotoId:settings.winner_photo_id,winnerVotes:settings.winner_votes,
-   totalVotes:settings.total_votes,registrationEndsAt:clock.registrationEndsAt,
-   votingEndsAt:clock.votingEndsAt,tallyError:lastTallyError},candidates});
+   totalVotes:settings.total_votes,registrationStartsAt:clock.registrationStartsAt,
+   registrationEndsAt:clock.registrationEndsAt,votingStartsAt:clock.votingStartsAt,
+   votingEndsAt:clock.votingEndsAt,resultsAt:clock.resultsAt,
+   registrationOpensAt:settings.registration_opens_at||'',
+   registrationClosesAt:settings.registration_ends_at||'',
+   votingStartsLocal:settings.voting_starts_at||'',
+   votingEndsLocal:settings.voting_ends_at||'',
+   resultsLocal:settings.results_at||'',
+   tallyError:lastTallyError},candidates});
 }));
 app.post('/api/admin/contest/settings',adminAuth,requireAction,(req,res)=>{
  const i=req.body||{},id=Number(i.eventId);
+ const fields=['registrationOpensAt','registrationClosesAt','votingStartsLocal','votingEndsLocal','resultsLocal'];
+ const advanced=fields.some(key=>Object.hasOwn(i,key));
+ const allowed=['eventId','enabled','contestDate','baliEventId',...(advanced?fields:['votingStart','votingEnd'])];
  if(!Number.isSafeInteger(id)||id<1||typeof i.enabled!=='boolean'||
-  !isContestDate(i.contestDate)||!/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingStart)||
-  !/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingEnd)||
-  i.votingEnd<=i.votingStart||typeof i.baliEventId!=='string'||
-  (i.baliEventId!==''&&!/^\d{4}-\d{2}-\d{2}(?:__(?:2|3))?$/.test(i.baliEventId))||
-  Object.keys(i).sort().join(',')!=='baliEventId,contestDate,enabled,eventId,votingEnd,votingStart')
-  return res.status(400).json({error:'Укажи дату, время открытия и закрытия голосования (по Минску)'});
+   !isContestDate(i.contestDate)||typeof i.baliEventId!=='string'||
+   (i.baliEventId!==''&&!/^\d{4}-\d{2}-\d{2}(?:__(?:2|3))?$/.test(i.baliEventId))||
+   Object.keys(i).sort().join(',')!==allowed.sort().join(','))
+   return res.status(400).json({error:'Заполни расписание конкурса и мероприятие'});
  if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))
-  return res.status(404).json({error:'Мероприятие не найдено'});
+   return res.status(404).json({error:'Мероприятие не найдено'});
  if(i.baliEventId&&!eligiblePartyDay(i.baliEventId,i.contestDate))
-  return res.status(400).json({error:'BALI Event ID должен относиться к дате конкурса или предыдущему дню'});
- const previous=contestRow(id);
- if(previous?.enabled===1&&contestClock(previous).phase!=='registration'&&
-   (previous.contest_date!==i.contestDate||previous.voting_start!==i.votingStart||previous.voting_end!==i.votingEnd||
-    previous.enabled!==Number(i.enabled)||previous.bali_event_id!==i.baliEventId))
-  return res.status(409).json({error:'После начала голосования расписание заблокировано. Для теста создай новое мероприятие.'});
- db.prepare('INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,updated_at) VALUES(?,?,?,?,?,?,?,?) '+
-  'ON CONFLICT(event_id) DO UPDATE SET enabled=excluded.enabled,voting_open=0,contest_date=excluded.contest_date,voting_start=excluded.voting_start,voting_end=excluded.voting_end,bali_event_id=excluded.bali_event_id,updated_at=excluded.updated_at')
-  .run(id,Number(i.enabled),0,i.contestDate,i.votingStart,i.votingEnd,i.baliEventId,Date.now());
+   return res.status(400).json({error:'BALI Event ID должен относиться к дате конкурса или предыдущему дню'});
+ let timeline;
+ if(advanced){
+   timeline={contest_date:i.contestDate,registration_opens_at:i.registrationOpensAt,
+     registration_ends_at:i.registrationClosesAt,voting_starts_at:i.votingStartsLocal,
+     voting_ends_at:i.votingEndsLocal,results_at:i.resultsLocal};
+   if(!validContestTimeline(timeline))
+     return res.status(400).json({error:'Проверь порядок дат и времени регистрации, голосования и объявления результатов. Старт голосования должен совпадать с датой конкурса.'});
+ }else{
+   if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingStart)||
+     !/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingEnd)||i.votingEnd<=i.votingStart)
+     return res.status(400).json({error:'Проверь время голосования'});
+   timeline={registration_opens_at:'',registration_ends_at:'',voting_starts_at:'',
+     voting_ends_at:'',results_at:''};
+ }
+ const start=advanced?i.votingStartsLocal.slice(11):i.votingStart;
+ const end=advanced?i.votingEndsLocal.slice(11):i.votingEnd;
+ const prev=contestRow(id),prevClock=contestClock(prev),now=Date.now();
+ if(prev?.enabled===1&&prevClock.votingStartsAt!==null&&now>=prevClock.votingStartsAt){
+   if(prev.finalized_at||prevClock.phase==='closed')
+     return res.status(409).json({error:'Результат зафиксирован. Для нового расписания создай новое мероприятие.'});
+   const unmodified=prev.contest_date===i.contestDate&&prev.enabled===Number(i.enabled)&&
+     prev.bali_event_id===i.baliEventId&&prev.voting_start===start&&
+     (prev.registration_opens_at||'')===timeline.registration_opens_at&&
+     (prev.registration_ends_at||'')===timeline.registration_ends_at&&
+     (prev.voting_starts_at||'')===timeline.voting_starts_at;
+   if(!unmodified)
+     return res.status(409).json({error:'После начала голосования можно менять только его окончание и время объявления результатов.'});
+   if(prevClock.phase==='awaiting_results'&&(prev.voting_ends_at||'')!==timeline.voting_ends_at)
+     return res.status(409).json({error:'Голосование завершилось. Разрешено менять только время результатов.'});
+   if(prevClock.phase==='voting'&&advanced&&Date.parse(i.votingEndsLocal+':00+03:00')<=now)
+     return res.status(409).json({error:'Новое окончание голосования должно быть в будущем.'});
+ }
+ db.prepare(`INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,
+   registration_opens_at,registration_ends_at,voting_starts_at,voting_ends_at,results_at,updated_at)
+   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+   ON CONFLICT(event_id) DO UPDATE SET enabled=excluded.enabled,voting_open=0,
+     contest_date=excluded.contest_date,voting_start=excluded.voting_start,
+     voting_end=excluded.voting_end,bali_event_id=excluded.bali_event_id,
+     registration_opens_at=excluded.registration_opens_at,registration_ends_at=excluded.registration_ends_at,
+     voting_starts_at=excluded.voting_starts_at,voting_ends_at=excluded.voting_ends_at,
+     results_at=excluded.results_at,updated_at=excluded.updated_at`)
+   .run(id,Number(i.enabled),0,i.contestDate,start,end,i.baliEventId,
+     timeline.registration_opens_at,timeline.registration_ends_at,timeline.voting_starts_at,
+     timeline.voting_ends_at,timeline.results_at,Date.now());
  res.json({ok:true,phase:contestClock(contestSettings(id)).phase});
 });
 app.post('/api/admin/contest/candidates',adminAuth,requireAction,(req,res)=>{
