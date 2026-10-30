@@ -277,7 +277,14 @@ app.use(helmet({
 app.use(express.json({ limit: '32kb' }));
 app.use('/api', (_req,res,next) => { res.set('Cache-Control','no-store'); next(); });
 app.use(express.static(path.join(ROOT, 'public'), { index: false, dotfiles: 'deny', maxAge: '15m' }));
-app.get('/', (req, res) => { guestIdentity(req,res); res.sendFile(path.join(ROOT,'public','guest.html')); });
+// Give guests a dedicated permanent URL independent of the root landing page.
+// Both addresses serve the SAME common-wall upload flow, never the contest form.
+function guestUploadPage(req,res){
+ guestIdentity(req,res);
+ res.set('Cache-Control','no-store');
+ return res.sendFile(path.join(ROOT,'public','guest.html'));
+}
+app.get(['/', '/upload'],guestUploadPage);
 app.get('/admin', (_req,res) => res.redirect(302,'/admin/general'));
 app.get('/admin/general', (_req,res) => res.sendFile(path.join(ROOT,'public','admin.html')));
 app.get('/admin/contest', (_req,res) => res.sendFile(path.join(ROOT,'public','admin.html')));
@@ -319,7 +326,7 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
 }));
 
 app.get('/qr.svg', asyncRoute(async (_req, res) => {
-  const svg = await QRCode.toString(PUBLIC_URL + '/', { type: 'svg', margin: 1, width: 320, color: {dark:'#111111',light:'#ffffff'} });
+  const svg = await QRCode.toString(PUBLIC_URL.replace(/\/$/,'') + '/upload', { type: 'svg', margin: 1, width: 320, color: {dark:'#111111',light:'#ffffff'} });
   res.type('image/svg+xml').set('Cache-Control','public,max-age=600').send(svg);
 }));
 
