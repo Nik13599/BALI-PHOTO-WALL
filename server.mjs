@@ -81,6 +81,7 @@ const photoFields=db.pragma('table_info(photos)').map(x=>x.name);
 if(!photoFields.includes('width'))db.exec('ALTER TABLE photos ADD COLUMN width INTEGER');
 if(!photoFields.includes('height'))db.exec('ALTER TABLE photos ADD COLUMN height');
 if(!photoFields.includes('screen_lane'))db.exec("ALTER TABLE photos ADD COLUMN screen_lane TEXT NOT NULL DEFAULT 'auto' CHECK(screen_lane IN ('auto','top','bottom'))");
+if(!photoFields.includes('photo_area'))db.exec("ALTER TABLE photos ADD COLUMN photo_area TEXT NOT NULL DEFAULT 'general' CHECK(photo_area IN ('general','contest'))");
 // Photo-contest state stays on THIS Windows/PHOTO WALL SQLite server.
 db.exec(`
  CREATE TABLE IF NOT EXISTS contest_settings(
@@ -109,6 +110,9 @@ db.exec(`
  CREATE INDEX IF NOT EXISTS idx_contest_telegram_entries_photo ON contest_telegram_entries(photo_id);
 `);
 
+// Keep all historic contest photos separate, including pending and rejected.
+db.exec("UPDATE photos SET photo_area='contest' WHERE photo_area='general' AND id IN (SELECT photo_id FROM contest_candidates)");
+db.exec("CREATE INDEX IF NOT EXISTS idx_photos_area_status ON photos(event_id,photo_area,status,created_at)");
 const clockFields=db.pragma('table_info(contest_settings)').map(x=>x.name);
 for(const [name,definition] of [
  ['contest_date',"TEXT NOT NULL DEFAULT ''"],
@@ -131,7 +135,7 @@ const contestSettings=id=>contestRow(id)||{
  voting_start:'03:00',voting_end:'06:00',bali_event_id:'',
  winner_photo_id:null,winner_votes:0,total_votes:0,finalized_at:null
 };
-const eligibleCandidates=id=>db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,c.registered_at AS registeredAt,p.status FROM contest_candidates c JOIN photos p ON p.id=c.photo_id AND p.event_id=c.event_id WHERE c.event_id=? AND p.status='approved' ORDER BY c.registered_at,c.photo_id LIMIT 300").all(id);
+const eligibleCandidates=id=>db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,c.registered_at AS registeredAt,p.status FROM contest_candidates c JOIN photos p ON p.id=c.photo_id AND p.event_id=c.event_id WHERE c.event_id=? AND p.photo_area='contest' AND p.status='approved' ORDER BY c.registered_at,c.photo_id LIMIT 300").all(id);
 let finalizing=null,lastTallyError='',lastTallyAttempt=0;
 async function finalizeContest(){
  if(finalizing)return finalizing;
@@ -484,7 +488,7 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
       (contestClock(contestSettings(event.id)).phase!=='registration'&&!validQueued))throw Error('event-changed');
    if(db.prepare('SELECT 1 FROM contest_telegram_entries WHERE event_id=? AND bali_uid=?').get(event.id,proof.uid))
      throw Error('already-registered');
-   const id=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height) VALUES(?,?,?,'pending',?,?,?)")
+   const id=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,photo_area) VALUES(?,?,?,'pending',?,? ,?,'contest')")
      .run(event.id,filename,'contest:'+crypto.randomUUID(),now,dimension.width,dimension.height).lastInsertRowid;
    db.prepare('INSERT INTO contest_telegram_entries(event_id,bali_uid,bali_event_id,photo_id,telegram_username,registered_at) VALUES(?,?,?,?,?,?)')
      .run(event.id,proof.uid,proof.eventId,id,proof.username,now);
@@ -517,19 +521,24 @@ app.get('/api/contest/photo/:id', (req,res)=>{
  const row=db.prepare("SELECT p.* FROM photos p "+
   "JOIN contest_candidates c ON c.photo_id=p.id AND c.event_id=p.event_id "+
   "JOIN contest_settings s ON s.event_id=p.event_id "+
-  "WHERE p.id=? AND p.event_id=? AND p.status='approved' AND s.enabled=1")
+  "WHERE p.id=? AND p.event_id=? AND p.photo_area='contest' AND p.status='approved' AND s.enabled=1")
   .get(Number(match[1]),event.id);
  const settings=contestSettings(event.id),clock=contestClock(settings);
  if(clock.phase!=='voting'&&!(settings.finalized_at&&settings.winner_photo_id===Number(match[1])))
   return res.status(404).end();
  return servePhoto(row,res);
 });
-app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res));
+app.get('/api/photos/:id', screenAuth, (req,res) => {
+ const photo=selectPhoto.get(Number(req.params.id));
+ const area=req.query.feed==='contest'?'contest':'general';
+ if(!photo||photo.photo_area!==area)return res.status(404).end();
+ return servePhoto(photo,res);
+});
 // Keep LED transfers bounded. The newest 500 approved photos are enough
 // for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
   const event = currentEvent.get();
-  const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos p WHERE event_id=? AND status='approved' AND NOT EXISTS (SELECT 1 FROM contest_candidates c WHERE c.photo_id=p.id) ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
+  const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos p WHERE event_id=? AND status='approved' AND photo_area='general' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
   const update=db.prepare('UPDATE photos SET width=?,height=? WHERE id=? AND (width IS NULL OR height IS NULL)');
   // Upgrade photos created before width/height metadata existed, once per photo.
   for(const photo of photos){
@@ -562,7 +571,7 @@ app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
 // Unapproved originals remain accessible to the moderator only.
 app.get('/api/screen/thumbnail/:id', screenAuth, (req,res) => {
   const photo = selectPhoto.get(Number(req.params.id));
-  if(!photo || photo.status!=='approved')return res.status(404).end();
+  if(!photo || photo.status!=='approved'||photo.photo_area!==(req.query.feed==='contest'?'contest':'general'))return res.status(404).end();
   const thumbnail=path.join(THUMBS,photo.filename);
   const original=path.join(PHOTOS,photo.filename);
   res.set('Cache-Control','private,no-store');
@@ -605,10 +614,12 @@ app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
     const event=Number.isSafeInteger(id)&&id>0?
       db.prepare('SELECT id,upload_shape FROM events WHERE id=?').get(id):null;
     if(!event)return res.status(404).json({error:'Мероприятие не найдено'});
+    const area=req.body?.area||'general';
+    if(!['general','contest'].includes(area))return res.status(400).json({error:'Неизвестный раздел загрузки'});
     const status=req.body?.status==='pending'?'pending':'approved';
     const lane=['top','bottom'].includes(req.body?.lane)?req.body.lane:'auto';
     const results=[];
-    const insert=db.prepare('INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,screen_lane) VALUES (?,?,?,?,?,?,?,?)');
+    const insert=db.prepare('INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,screen_lane,photo_area) VALUES (?,?,?,?,?,?,?,?,?)');
     for(const file of files){
       const result={name:file.originalname.slice(0,180)};
       let filename=null;
@@ -633,7 +644,7 @@ app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
         filename=crypto.randomUUID()+'.webp';
         await fsp.writeFile(path.join(PHOTOS,filename),image,{flag:'wx'});
         await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
-        const record=insert.run(event.id,filename,'moderator-import',status,Date.now(),size.width,size.height,lane);
+        const record=insert.run(event.id,filename,'moderator-import',status,Date.now(),size.width,size.height,lane,area);
         result.id=Number(record.lastInsertRowid);result.ok=true;
       }catch(error){
         result.ok=false;
@@ -745,14 +756,14 @@ app.post('/api/admin/contest/candidates',adminAuth,requireAction,(req,res)=>{
    !['add','remove'].includes(input.action)||
    Object.keys(input).some(k=>!['eventId','photoId','name','category','action'].includes(k)))
   return res.status(400).json({error:'Некорректные данные участника'});
- const photo=db.prepare('SELECT id,status FROM photos WHERE id=? AND event_id=?').get(photoId,eventId);
+ const photo=db.prepare('SELECT id,status,photo_area FROM photos WHERE id=? AND event_id=?').get(photoId,eventId);
  if(!photo)return res.status(404).json({error:'Фотография не найдена в мероприятии'});
  if(contestClock(contestSettings(eventId)).phase!=='registration')
    return res.status(409).json({error:'Список участников закрыт с началом голосования'});
  if(input.action==='add'){
   const name=typeof input.name==='string'?input.name.trim():'';
   if(name.length<2||name.length>70||/[<>\u0000-\u001f\u007f]/.test(name)||
-     !['king','queen'].includes(input.category)||photo.status!=='approved')
+     !['king','queen'].includes(input.category)||photo.status!=='approved'||photo.photo_area!=='contest')
    return res.status(400).json({error:'Участнику требуется одобренное фото, имя и категория'});
   db.prepare('INSERT INTO contest_candidates(photo_id,event_id,name,category,registered_at) VALUES(?,?,?,?,?) '+
    'ON CONFLICT(photo_id) DO UPDATE SET name=excluded.name,category=excluded.category')
@@ -792,33 +803,24 @@ app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   if (typeof rawPage !== 'string' || !/^[1-9][0-9]{0,5}$/.test(rawPage)) {
     return res.status(400).json({error:'Неверный номер страницы'});
   }
-  const status = req.query.status ?? 'pending';
-  if (typeof status !== 'string' || !['pending','approved','rejected','contest'].includes(status))
-    return res.status(400).json({error:'Неизвестный раздел фотографий'});
-  // Separate the moderation queue from both independent LED feeds.
-  const counts = selected ? db.prepare(`SELECT
-    COALESCE(SUM(CASE WHEN p.status='pending' THEN 1 ELSE 0 END),0) AS pending,
-    COALESCE(SUM(CASE WHEN p.status='approved' AND c.photo_id IS NULL THEN 1 ELSE 0 END),0) AS approved,
-    COALESCE(SUM(CASE WHEN p.status='rejected' THEN 1 ELSE 0 END),0) AS rejected,
-    COALESCE(SUM(CASE WHEN p.status='approved' AND c.photo_id IS NOT NULL THEN 1 ELSE 0 END),0) AS contest
+  const area=req.query.area||'general';
+  if(typeof area!=='string'||!['general','contest'].includes(area))
+    return res.status(400).json({error:'Неизвестная зона управления'});
+  const status=req.query.status??'pending';
+  if(typeof status!=='string'||!['pending','approved','rejected'].includes(status))
+    return res.status(400).json({error:'Неизвестная очередь фотографий'});
+  const counts=selected?db.prepare(`SELECT
+    COALESCE(SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END),0) AS pending,
+    COALESCE(SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END),0) AS approved,
+    COALESCE(SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END),0) AS rejected
+    FROM photos WHERE event_id=? AND photo_area=?`).get(selected.id,area):{pending:0,approved:0,rejected:0};
+  const total=counts[status],pages=Math.max(1,Math.ceil(total/PAGE_SIZE)),page=Math.min(Number(rawPage),pages);
+  const photos=selected?db.prepare(`SELECT p.id,p.status,p.created_at,p.screen_lane,p.photo_area,
+    CASE WHEN c.photo_id IS NULL THEN 0 ELSE 1 END AS contest
     FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id
-    WHERE p.event_id=?`).get(selected.id) : {pending:0,approved:0,rejected:0,contest:0};
-  const total = counts[status];
-  const pages = Math.max(1,Math.ceil(total/PAGE_SIZE));
-  const page = Math.min(Number(rawPage),pages);
-  const where = {
-    pending: "p.status='pending'",
-    approved: "p.status='approved' AND c.photo_id IS NULL",
-    rejected: "p.status='rejected'",
-    contest: "p.status='approved' AND c.photo_id IS NOT NULL"
-  }[status];
-  const photos = selected ? db.prepare(`SELECT p.id,p.status,p.created_at,p.screen_lane,
-      CASE WHEN c.photo_id IS NULL THEN 0 ELSE 1 END AS contest
-      FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id
-      WHERE p.event_id=? AND ${where}
-      ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`)
-    .all(selected.id,PAGE_SIZE,(page-1)*PAGE_SIZE) : [];
-  res.json({events,active,selected,photos,status,counts,page,pages,total,pageSize:PAGE_SIZE});
+    WHERE p.event_id=? AND p.photo_area=? AND p.status=?
+    ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`).all(selected.id,area,status,PAGE_SIZE,(page-1)*PAGE_SIZE):[];
+  res.json({events,active,selected,photos,status,area,counts,page,pages,total,pageSize:PAGE_SIZE});
 });
 const makeEvent = db.transaction(name => {
   db.prepare('UPDATE events SET active=0').run();
