@@ -500,8 +500,11 @@ app.get('/api/contest/photo/:id', (req,res)=>{
  const row=db.prepare("SELECT p.* FROM photos p "+
   "JOIN contest_candidates c ON c.photo_id=p.id AND c.event_id=p.event_id "+
   "JOIN contest_settings s ON s.event_id=p.event_id "+
-  "WHERE p.id=? AND p.event_id=? AND p.status='approved' AND s.enabled=1 AND s.voting_open=1")
+  "WHERE p.id=? AND p.event_id=? AND p.status='approved' AND s.enabled=1")
   .get(Number(match[1]),event.id);
+ const settings=contestSettings(event.id),clock=contestClock(settings);
+ if(clock.phase!=='voting'&&!(settings.finalized_at&&settings.winner_photo_id===Number(match[1])))
+  return res.status(404).end();
  return servePhoto(row,res);
 });
 app.get('/api/photos/:id', screenAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res));
@@ -524,9 +527,19 @@ app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
 }));
 /* Contest media is a separate LED feed, not mixed into the guests' wall. */
 app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
- const event=currentEvent.get();
- const photos=event?db.prepare("SELECT p.id,p.created_at,p.width,p.height,p.filename,p.screen_lane FROM photos p JOIN contest_candidates c ON c.photo_id=p.id AND c.event_id=p.event_id WHERE p.event_id=? AND p.status='approved' ORDER BY c.registered_at DESC LIMIT 500").all(event.id):[];
- res.json({event,photos:photos.map(({id,created_at,width,height,screen_lane})=>({id,created_at,width,height,screen_lane}))});
+ await finalizeContest();
+ const event=currentEvent.get(),settings=event?contestSettings(event.id):null;
+ const phase=contestClock(settings).phase;
+ const candidates=event?eligibleCandidates(event.id):[];
+ const winner=phase==='closed'&&settings?.finalized_at?
+  candidates.find(c=>c.photoId===settings.winner_photo_id):null;
+ const visible=phase==='closed'?(winner?[winner]:[]):candidates;
+ const photos=visible.slice(0,500).map(c=>
+  db.prepare('SELECT id,created_at,width,height,screen_lane FROM photos WHERE id=?').get(c.photoId)).filter(Boolean);
+ res.json({event,photos,phase,finalized:!!settings?.finalized_at,
+  winner:winner?{id:winner.photoId,name:winner.name,votes:settings.winner_votes,
+   totalVotes:settings.total_votes}:null,
+  resultError:phase==='closed'&&!settings?.finalized_at?'Ожидаем подтверждённые голоса BALI':null});
 }));
 // Only approved photos may appear in the LED mosaic, even as thumbnails.
 // Unapproved originals remain accessible to the moderator only.
