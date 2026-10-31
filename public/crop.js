@@ -10,6 +10,7 @@
   const options={square:1,portrait:3/4,landscape:4/3};
   let picture=null,policy='any',mode='original',factor=1,x=0,y=0,loading=0,drag=null;
   let release=()=>{};
+  const touches=new Map();let pinchDistance=0,pinchFactor=1;
   function imageWidth(){return picture?.width||picture?.naturalWidth||0;}
   function imageHeight(){return picture?.height||picture?.naturalHeight||0;}
   function ratio(){return mode==='original'?imageWidth()/Math.max(1,imageHeight()):options[mode]||1;}
@@ -47,18 +48,30 @@
   zoom.addEventListener('input',()=>{factor=Number(zoom.value);draw();});
   canvas.addEventListener('pointerdown',event=>{
     if(!picture)return;
-    event.preventDefault();drag={id:event.pointerId,px:event.clientX,py:event.clientY};
+    event.preventDefault();
+    touches.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    if(touches.size===1)drag={id:event.pointerId,px:event.clientX,py:event.clientY};
+    if(touches.size===2){const [a,b]=[...touches.values()];pinchDistance=Math.hypot(a.x-b.x,a.y-b.y);pinchFactor=factor;drag=null;}
     canvas.setPointerCapture(event.pointerId);
   });
   canvas.addEventListener('pointermove',event=>{
-    if(!picture||!drag||event.pointerId!==drag.id)return;
+    if(!picture||!touches.has(event.pointerId))return;
     event.preventDefault();
+    touches.set(event.pointerId,{x:event.clientX,y:event.clientY});
+    if(touches.size===2){
+      const [a,b]=[...touches.values()];
+      if(pinchDistance>0)factor=Math.max(1,Math.min(Number(zoom.max),pinchFactor*Math.hypot(a.x-b.x,a.y-b.y)/pinchDistance));
+      draw();return;
+    }
+    if(!drag||event.pointerId!==drag.id)return;
     const rect=cropRect();
     x-=(event.clientX-drag.px)*rect.w/Math.max(1,canvas.getBoundingClientRect().width);
     y-=(event.clientY-drag.py)*rect.h/Math.max(1,canvas.getBoundingClientRect().height);
     drag.px=event.clientX;drag.py=event.clientY;draw();
   });
-  const stop=()=>{drag=null;};
+  const stop=event=>{touches.delete(event.pointerId);drag=null;pinchDistance=0;
+    if(touches.size===1){const [id,point]=[...touches.entries()][0];drag={id,px:point.x,py:point.y};}
+  };
   canvas.addEventListener('pointerup',stop);
   canvas.addEventListener('pointercancel',stop);
   canvas.addEventListener('keydown',event=>{
@@ -72,7 +85,7 @@
   });
   async function load(file){
     const id=++loading;
-    release();picture=null;editor.hidden=true;drag=null;
+    release();picture=null;editor.hidden=true;drag=null;touches.clear();
     if(!file)return;
     if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('Нужен JPEG, PNG или WebP');
     let img,dispose;
@@ -114,8 +127,9 @@
     if(!blob||blob.size>8*1024*1024)throw new Error('Не удалось подготовить фотографию до 8 МБ');
     return new File([blob],'bali-cropped.webp',{type:'image/webp'});
   }
+  function reset(){if(!picture)return;factor=1;x=0;y=0;draw();}
   function clear(){
-    ++loading;release();release=()=>{};picture=null;editor.hidden=true;drag=null;
+    ++loading;release();release=()=>{};picture=null;editor.hidden=true;drag=null;touches.clear();
   }
-  root.BaliCropEditor={load,setPolicy,exportFile,clear};
+  root.BaliCropEditor={load,setPolicy,exportFile,clear,reset};
 })(globalThis);
