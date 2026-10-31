@@ -31,7 +31,7 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
   stdio:['ignore','pipe','pipe']});
  let logs='';app.stdout.on('data',v=>logs+=v);app.stderr.on('data',v=>logs+=v);
  let database=null;
- const req=(p,opts)=>fetch(base+p,opts);
+ const req=(p,opts)=>fetch(base+p,{...opts,signal:AbortSignal.timeout(12000)});
  const img=await sharp({create:{width:96,height:96,channels:3,background:'#24588b'}}).png().toBuffer();
  const upload=async(uid,runId)=>{
   const proof={uid,eventId:date,name:'Verified BALI User',telegramName:'Verified Telegram',
