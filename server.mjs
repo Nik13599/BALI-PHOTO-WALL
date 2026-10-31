@@ -250,6 +250,68 @@ async function telegramPhotoSchedule(){
  })();
  return telegramSchedule.pending;
 }
+
+/* One Telegram broadcast action = one durable folder; never create a folder
+   on a browser refresh, process restart or mere timetable edit. */
+let activeBroadcast=null,broadcastSyncPending=null;
+db.exec(`CREATE TABLE IF NOT EXISTS managed_broadcast_runs(
+ run_id TEXT PRIMARY KEY,folder TEXT NOT NULL UNIQUE,
+ general_event_id INTEGER NOT NULL REFERENCES events(id),
+ contest_event_id INTEGER NOT NULL REFERENCES events(id),
+ event_date TEXT NOT NULL,created_at_ms INTEGER NOT NULL);`);
+async function synchronizeBroadcast(){
+ if(broadcastSyncPending)return broadcastSyncPending;
+ broadcastSyncPending=(async()=>{
+  const policy=await telegramPhotoSchedule(),intent=policy?.broadcast;
+  if(!intent?.active||!/^[a-f0-9-]{36}$/.test(intent.runId||'')){activeBroadcast=null;return null}
+  if(activeBroadcast?.runId===intent.runId)return activeBroadcast;
+  let saved=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(intent.runId);
+  if(!saved){
+   const time=Number(intent.startsAtMs)||Date.now();
+   const folder='broadcast-'+new Date(time+10800000).toISOString().slice(0,19)
+    .replace(/[-:T]/g,'')+'-'+intent.runId.replaceAll('-','').slice(0,10);
+   for(const base of [PHOTOS,THUMBS])
+    fs.mkdirSync(path.join(base,'streams',folder),{recursive:true});
+   const selected=policy.session?.date||'';
+   const partyDate=/^\d{4}-\d{2}-\d{2}$/.test(selected)?
+    selected:new Date(time+10800000).toISOString().slice(0,10);
+   const nextDay=new Date(Date.parse(partyDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+   db.transaction(()=>{
+    const existing=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(intent.runId);
+    if(existing){saved=existing;return}
+    const now=Date.now();
+    db.prepare('UPDATE events SET active=0').run();
+    const generalId=Number(db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,1,?)')
+     .run('BALI PHOTO WALL · '+partyDate,now).lastInsertRowid);
+    const contestId=Number(db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,0,?)')
+     .run('КОРОЛЬ / КОРОЛЕВА · '+partyDate,now).lastInsertRowid);
+    db.prepare("INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,updated_at) VALUES(?,1,0,?,'03:00','04:00',?,?)")
+     .run(contestId,nextDay,partyDate,now);
+    db.prepare('INSERT INTO managed_broadcast_runs(run_id,folder,general_event_id,contest_event_id,event_date,created_at_ms) VALUES(?,?,?,?,?,?)')
+     .run(intent.runId,folder,generalId,contestId,partyDate,now);
+    saved=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(intent.runId);
+   })();
+  }
+  activeBroadcast={runId:intent.runId,folder:saved.folder,
+   generalEventId:saved.general_event_id,contestEventId:saved.contest_event_id,
+   eventDate:saved.event_date};
+  if(db.prepare('SELECT active FROM events WHERE id=?').get(saved.general_event_id)?.active!==1)
+   db.transaction(()=>{db.prepare('UPDATE events SET active=0').run();
+    db.prepare('UPDATE events SET active=1 WHERE id=?').run(saved.general_event_id)})();
+  return activeBroadcast;
+ })().finally(()=>{broadcastSyncPending=null});
+ return broadcastSyncPending;
+}
+function runFilename(eventId){
+ const current=activeBroadcast,name=crypto.randomUUID()+'.webp';
+ return current&&[current.generalEventId,current.contestEventId].includes(Number(eventId))?
+  'streams/'+current.folder+'/'+name:name;
+}
+async function ensurePhotoFolders(filename){
+ const folder=path.dirname(filename);
+ await Promise.all([fsp.mkdir(path.join(PHOTOS,folder),{recursive:true}),
+  fsp.mkdir(path.join(THUMBS,folder),{recursive:true})]);
+}
 // A newly saved Telegram Admin competition becomes its own PHOTO WALL event.
 // Never reuse or alter the general photo wall event, and never duplicate a day.
 let syncContestPending=null;
