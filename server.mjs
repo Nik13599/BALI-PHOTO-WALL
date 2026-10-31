@@ -1535,6 +1535,69 @@ async function contestPhotoMutationLocked(photo){
   Number.isSafeInteger(control?.registrationEndsAtMs)&&
   Date.now()<control.registrationEndsAtMs);
 }
+// Local Photoshop/JPG/PNG/WebP replacement of an existing contest entry.
+// Do not allocate another contestant, rename a Card, touch D1, or reset votes.
+db.exec(`CREATE TABLE IF NOT EXISTS contest_photo_replacements (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ photo_id INTEGER NOT NULL, event_id INTEGER NOT NULL,
+ old_filename TEXT NOT NULL,new_filename TEXT NOT NULL,
+ created_at_ms INTEGER NOT NULL
+)`);
+const contestReplacementUpload=multer({storage:multer.memoryStorage(),
+ limits:{fileSize:8*1024*1024,files:1,fields:0}});
+app.post('/api/admin/photos/:id/replace',adminAuth,requireAction,reserveUploadSlot,
+ contestReplacementUpload.single('photo'),asyncRoute(async(req,res)=>{
+ const id=Number(req.params.id);
+ const photo=Number.isSafeInteger(id)&&id>0?selectPhoto.get(id):null;
+ if(!photo||photo.photo_area!=='contest')return res.status(404).json({error:'Конкурсная фотография не найдена'});
+ if(await contestPhotoMutationLocked(photo))return res.status(409).json({error:'После начала голосования менять фотографию нельзя'});
+ if(!req.file?.buffer)return res.status(400).json({error:'Выберите JPG, PNG или WebP'});
+ let image,thumb,dimensions;
+ try{
+  const input=sharp(req.file.buffer,{limitInputPixels:36_000_000,failOn:'error'});
+  const info=await input.metadata();
+  if(!['jpeg','png','webp'].includes(info.format)||info.width<50||info.height<50)
+   return res.status(415).json({error:'Нужен JPG, PNG или WebP не меньше 50×50'});
+  image=await input.rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
+    .webp({quality:80,effort:4}).toBuffer();
+  dimensions=await sharp(image).metadata();
+  thumb=await sharp(image).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
+    .webp({quality:65}).toBuffer();
+ }catch{return res.status(415).json({error:'Изображение не читается или повреждено'})}
+ const filesystem=await fsp.statfs(DATA);
+ if(Number(filesystem.bavail)*Number(filesystem.bsize)<MIN_FREE_DISK_MB*1048576)
+  return res.status(507).json({error:'Недостаточно места на Windows-диске'});
+ const newFilename=runFilename(photo.event_id);
+ const fullPath=path.join(PHOTOS,newFilename),thumbPath=path.join(THUMBS,newFilename);
+ let saved=false;
+ try{
+  await ensurePhotoFolders(newFilename);
+  await fsp.writeFile(fullPath,image,{flag:'wx'});
+  await fsp.writeFile(thumbPath,thumb,{flag:'wx'});
+  // Read the authoritative Telegram clock AGAIN after image processing and IO.
+  // If the deadline has passed or a different run became active, do not swap.
+  const latest=selectPhoto.get(id);
+  if(!latest||latest.filename!==photo.filename||await contestPhotoMutationLocked(latest))
+   return res.status(409).json({error:'Фотография изменилась или голосование уже началось'});
+  const result=db.transaction(()=>{
+   const current=selectPhoto.get(id);
+   if(!current||current.filename!==photo.filename||current.photo_area!=='contest')return false;
+   const updated=db.prepare('UPDATE photos SET filename=?,width=?,height=? WHERE id=? AND filename=? AND photo_area=?')
+    .run(newFilename,dimensions.width,dimensions.height,id,photo.filename,'contest');
+   if(updated.changes!==1)return false;
+   db.prepare('INSERT INTO contest_photo_replacements(photo_id,event_id,old_filename,new_filename,created_at_ms) VALUES(?,?,?,?,?)')
+    .run(id,photo.event_id,photo.filename,newFilename,Date.now());
+   return true;
+  })();
+  if(!result)return res.status(409).json({error:'Фото изменено в другом окне'});
+  saved=true;
+  await Promise.all([fsp.unlink(path.join(PHOTOS,photo.filename)).catch(()=>{}),
+                     fsp.unlink(path.join(THUMBS,photo.filename)).catch(()=>{})]);
+  return res.json({ok:true,photoId:id,version:Date.now(),width:dimensions.width,height:dimensions.height});
+ }finally{
+  if(!saved)await Promise.all([fsp.unlink(fullPath).catch(()=>{}),fsp.unlink(thumbPath).catch(()=>{})]);
+ }
+}));
 app.post('/api/admin/photos/:id/status', adminAuth, requireAction, asyncRoute(async(req,res) => {
  const status=req.body?.status;
  if(!['approved','rejected','pending'].includes(status))return res.status(400).json({error:'Неизвестный статус'});
