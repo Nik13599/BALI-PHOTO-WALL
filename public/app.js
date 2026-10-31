@@ -440,7 +440,8 @@ if(page==='admin') {
     if(event.target.id==='bulkPhotoForm'){
       event.preventDefault();
       const files=[...$('#bulkPhotoFiles').files];
-      if(!displayedEventId||!files.length)return;
+      if(!displayedEventId){notice('#adminMessage','Сначала выберите мероприятие для загрузки.',true);return;}
+      if(!files.length){notice('#adminMessage','Выберите фотографии.',true);return;}
       const allowed=files.filter(file=>['image/jpeg','image/png','image/webp'].includes(file.type));
       if(allowed.length!==files.length){
         notice('#adminMessage','Выбери только JPEG, PNG или WebP.',true);return;
@@ -448,30 +449,47 @@ if(page==='admin') {
       const button=$('#bulkPhotoSubmit'),progress=$('#bulkProgress');
       button.disabled=true;
       let imported=0,failed=0,done=0;
+      const errors=[];
+      const eventId=displayedEventId,area=adminArea;
+      const lane=$('#bulkPhotoLane').value,status=$('#bulkPhotoStatus').value;
       try{
-        for(let index=0;index<files.length;index+=8){
-          const form=new FormData();
-          form.append('eventId',String(displayedEventId));
-           form.append('area',adminArea);
-          form.append('lane',$('#bulkPhotoLane').value);
-          form.append('status',$('#bulkPhotoStatus').value);
-          for(const file of files.slice(index,index+8)){
+        // Keep requests small enough for reverse proxies and mobile networks.
+        // Isolate failed files so that one bad image does not stop the queue.
+        for(const file of files){
+          try{
+            const form=new FormData();
+            form.append('eventId',String(eventId));
+            form.append('area',area);
+            form.append('lane',lane);
+            form.append('status',status);
             const optimized=await optimizePhoto(file);
             form.append('photos',optimized,file.name);
+            let result;
+            for(let attempt=0;attempt<3;attempt++){
+              try{
+                result=await api('/api/admin/photos/bulk',{
+                  method:'POST',headers:{'X-BALI-Action':'1'},body:form
+                });
+                break;
+              }catch(error){
+                if(error.code!==503 || attempt===2)throw error;
+                await new Promise(resolve=>setTimeout(resolve,800*(attempt+1)));
+              }
+            }
+            imported+=Number(result.imported)||0;
+            failed+=Number(result.failed)||0;
+            if(result.failed)errors.push(file.name+': '+(result.results?.find(item=>!item.ok)?.error||'Ошибка обработки'));
+          }catch(error){
+            failed++;
+            errors.push(file.name+': '+error.message);
           }
-          const result=await api('/api/admin/photos/bulk',{
-            method:'POST',headers:{'X-BALI-Action':'1'},body:form
-          });
-          imported+=result.imported;failed+=result.failed;
-          done+=Math.min(8,files.length-index);
+          done++;
           progress.textContent='Обработано '+done+' из '+files.length+' · загружено '+imported+' · ошибок '+failed;
         }
-        $('#bulkPhotoFiles').value='';
+        if(failed===0)$('#bulkPhotoFiles').value='';
         previousDashboard=null;await loadDashboard();
-        notice('#adminMessage','Массовая загрузка завершена: '+imported+' фото. Ошибок: '+failed,failed>0);
-      }catch(error){
-        progress.textContent='Загрузка остановлена после '+done+' из '+files.length+' файлов.';
-        notice('#adminMessage',error.message+'. Уже импортированные фотографии сохранены.',true);
+        notice('#adminMessage','Массовая загрузка: '+imported+' фото. Ошибок: '+failed+
+          (errors.length?' · '+errors.slice(0,3).join('; '):''),failed>0);
       }finally{button.disabled=false;}
     }
     if(event.target.id==='eventForm'){
