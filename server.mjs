@@ -323,7 +323,7 @@ async function finalizeContest(){
   // Such votes are excluded from ranking, not silently awarded elsewhere.
   if(tally.total>total)console.warn('Contest ballot exclusions:',tally.total-total);
   const places=telegram.winnerCount===3?3:1;
-  const winners=ranked.filter(c=>c.votes>0).slice(0,places).map((c,index)=>{
+  const winners=(ranked[0]?.votes>0?ranked.slice(0,places):[]).map((c,index)=>{
    const nomination=db.prepare('SELECT telegram_username AS username,telegram_display_name AS telegramName FROM contest_telegram_entries WHERE photo_id=?').get(c.photoId);
    return {id:c.photoId,name:nomination?.telegramName||c.name,submittedName:c.name,
     votes:c.votes,place:index+1,telegramUsername:nomination?.username||null,
