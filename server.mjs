@@ -555,10 +555,13 @@ function historicalContests(privateDetails=false){
   return {id:r.id,partyName:r.name,contestDate:r.contest_date,
    partyDate:r.bali_event_id||r.contest_date,finalizedAt:r.finalized_at,
    totalVotes:r.total_votes,configuredPlaces:r.target_places,
-   winners:winners.map(w=>privateDetails?{
-    place:w.place,name:w.name,votes:w.votes,photoId:w.id,
-    telegramUsername:w.telegramUsername||null
-   }:{place:w.place,name:w.name,votes:w.votes})};
+   winners:winners.map(w=>{
+    if(!privateDetails)return {place:w.place,name:w.name,votes:w.votes};
+    const identity=db.prepare('SELECT bali_uid AS uid,telegram_username AS username FROM contest_telegram_entries WHERE photo_id=?').get(w.id);
+    return {place:w.place,name:w.name,votes:w.votes,photoId:w.id,
+     telegramUsername:identity?.username||w.telegramUsername||null,
+     baliUid:identity?.uid||null};
+   })};
  });
 }
 app.get('/api/contest/history',(_req,res)=>{
@@ -569,6 +572,25 @@ app.get('/api/admin/contest/history',adminAuth,(_req,res)=>{
  res.set('Cache-Control','private,no-store');
  res.json({ok:true,contests:historicalContests(true)});
 });
+
+// Telegram Admin retrieves a more detailed archive only with its own
+// short-lived HMAC proof. Never publish BALI UID or Telegram handles openly.
+app.get('/api/contest/history-private',asyncRoute(async(req,res)=>{
+ const auth=String(req.headers.authorization||'');
+ if(!/^Bearer [A-Za-z0-9_.-]{40,1024}$/.test(auth))
+  return res.status(403).json({error:'Administrator verification required'});
+ let verified=false;
+ try{
+  const response=await fetch('https://app.baliminsk.by/api/tg-bali/photo-contest-history-proof',{
+   method:'POST',redirect:'error',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({proof:auth.slice(7)}),signal:AbortSignal.timeout(5000)
+  });
+  verified=response.ok&&(await response.json())?.ok===true;
+ }catch{}
+ if(!verified)return res.status(403).json({error:'Telegram Admin verification expired'});
+ res.set('Cache-Control','private,no-store');
+ res.json({ok:true,contests:historicalContests(true)});
+}));
 
 app.get('/qr.svg', asyncRoute(async (_req, res) => {
   const svg = await QRCode.toString(PUBLIC_URL.replace(/\/$/,'') + '/upload', { type: 'svg', margin: 1, width: 320, color: {dark:'#111111',light:'#ffffff'} });
