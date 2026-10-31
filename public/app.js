@@ -848,7 +848,7 @@ if(page==='screen'){
         const winners=Array.isArray(contestData?.winners)?contestData.winners:
           (contestData?.winner?[{...contestData.winner,place:1}]:[]);
         const ready=contestData?.phase==='closed'&&contestData.finalized===true&&winners.length>0;
-        const key=ready+(contestData?.event?.id||event)+':'+winners.map(w=>w.place+'/'+w.id+'/'+w.votes).join(';'):null;
+        const key=ready?(contestData?.event?.id||event)+':'+winners.map(w=>w.place+'/'+w.id+'/'+w.votes).join(';'):null;
         const grid=$('#wallGrid');
         if(ready){
           grid.style.display='none';
