@@ -780,7 +780,11 @@ app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
 app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
  await finalizeContest();
  const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;
- const phase=contestClock(settings).phase;
+ const policy=await telegramPhotoSchedule();
+ const resultDue=policy?.resultContestId==='event_'+event?.id&&
+  Number.isSafeInteger(policy?.resultAtMs)&&Date.now()>=policy.resultAtMs;
+ const phase=settings?.finalized_at||resultDue?'closed':
+  policy?.buttons.vote?.open?'voting':policy?.buttons.registration?.open?'registration':'waiting';
  const candidates=event?eligibleCandidates(event.id):[];
  const winner=phase==='closed'&&settings?.finalized_at?
   candidates.find(c=>c.photoId===settings.winner_photo_id):null;
