@@ -623,8 +623,8 @@ app.use(express.static(path.join(ROOT, 'public'), { index: false, dotfiles: 'den
 const PAGE_ASSETS=new Map([
  ['guest',{file:'guest.html',css:['style.css','guest-compact.css'],js:['crop.js','guest.js']}],
  ['admin',{file:'admin.html',css:['style.css','admin-compact.css','areas.css'],js:['app.js']}],
- ['screen',{file:'screen.html',css:['style.css','screen-broadcast.css'],
-   js:['mosaic.js','carousel.js','carousel-wall.js','live-mosaic.js','live-wall.js','app.js']}]
+ ['screen',{file:'screen.html',css:['style.css','screen-broadcast.css','showcase-wall.css'],
+   js:['mosaic.js','carousel.js','carousel-wall.js','live-mosaic.js','live-wall.js','showcase-wall.js','app.js']}]
 ]);
 const pageCache=new Map();
 const pageAssetDir=path.join(ROOT,'public');
