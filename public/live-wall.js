@@ -54,7 +54,7 @@ function draw(){
   const width=Math.max(1,stage.clientWidth),height=Math.max(1,stage.clientHeight);
   const result=engine.compute(photos,width,height,{
     seed:(++layoutSeed*314159265+round*13891)>>>0,focusId,
-    gap:options.gap,focusSize:options.liveFocus
+    gap:options.gap,focusSize:options.liveFocus,squareTiles:options.liveTiles==='square'
   });
   const animate=!reduced() && photos.length<=125 && options.liveTransition>0;
   stage.classList.toggle('is-animated',animate);
