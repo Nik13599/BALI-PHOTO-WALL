@@ -84,3 +84,45 @@ body[data-page="screen"] .wall-event-hint{max-width:75vw;overflow-wrap:anywhere}
 
 .royal-test-countdown{position:fixed;z-index:90;inset:0;display:grid;place-items:center;padding:6vw;text-align:center;background:radial-gradient(ellipse,#2a1945ed,#040712f5);color:#ffe9a0;font:950 clamp(32px,6vw,100px)/1.12 system-ui,sans-serif;text-shadow:0 0 30px #d7ae4777;letter-spacing:.03em;pointer-events:none}
 .royal-test-countdown[hidden]{display:none!important}
+
+/* ONE LED feed: live general mosaic behind a single 10-person contest strip. */
+.contest-overlay[hidden]{display:none!important}
+.contest-overlay{position:absolute;z-index:12;left:0;right:0;top:0;height:clamp(170px,29dvh,310px);
+ padding:clamp(8px,1.2vh,15px) 0 8px;pointer-events:none;color:#fff;
+ background:linear-gradient(180deg,#060814ed 0%,#080917cb 66%,transparent 100%);isolation:isolate}
+.contest-overlay-title{display:flex;align-items:baseline;justify-content:center;gap:clamp(12px,3vw,38px);
+ font:950 clamp(17px,2vw,32px)/1.1 system-ui,sans-serif;letter-spacing:.095em;
+ text-align:center;text-shadow:0 3px 9px #000,0 0 14px #da9d5944;color:#ffe8bc;
+ padding:0 12px clamp(8px,1.2vh,14px)}
+.contest-overlay-title small{font:800 clamp(9px,1.0vw,15px)/1.2 system-ui,sans-serif;color:#f2f2ff;letter-spacing:.06em}
+.contest-overlay-viewport{overflow:hidden;width:100%;height:calc(100% - clamp(35px,5.1vh,66px));position:relative;
+ mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent)}
+.contest-overlay-track{height:100%;width:max-content;display:flex;align-items:stretch;gap:clamp(10px,1.15vw,18px);
+ padding:0 clamp(10px,1vw,18px);animation:baliContestMarquee var(--bali-contest-marquee-duration,52s) linear infinite;
+ will-change:transform}
+.contest-overlay-track.is-static{width:100%;justify-content:center;animation:none}
+.contest-overlay-card{box-sizing:border-box;position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;
+ flex:0 0 clamp(105px,11.2vw,195px);height:100%;min-width:0;padding:clamp(4px,.35vw,8px);
+ border:1px solid #ecc27b93;border-radius:12px;background:linear-gradient(160deg,#171a28ee,#121725ee);
+ box-shadow:0 4px 16px #0008,inset 0 1px #ffffff38}
+.contest-overlay-card img{height:calc(100% - clamp(25px,3.1vh,42px));width:100%;min-height:0;
+ object-fit:cover;border-radius:7px;background:#111827}
+.contest-overlay-card strong{font:900 clamp(11px,1.15vw,19px)/1.1 system-ui,sans-serif;
+ max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.contest-overlay-number{position:absolute;left:1px;top:1px;padding:3px 9px;
+ background:linear-gradient(150deg,#f4d08a,#bd8a49);color:#181020;border-radius:10px 0 9px 0;
+ font:950 clamp(12px,1.3vw,20px)/1.1 system-ui,sans-serif}
+@keyframes baliContestMarquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+body[data-page="screen"] .screen-toolbar{opacity:.06;transition:opacity .25s}
+body[data-page="screen"] .screen-toolbar:hover,
+body[data-screen-mode="control"] .screen-toolbar{opacity:1}
+body[data-page="screen"] .royal-result:not([hidden]){z-index:30}
+@media(max-height:550px){
+ .contest-overlay{height:clamp(125px,32dvh,190px)}
+ .contest-overlay-title{font-size:13px;padding-bottom:5px}
+ .contest-overlay-title small{font-size:8px}
+ .contest-overlay-viewport{height:calc(100% - 27px)}
+ .contest-overlay-card{flex-basis:clamp(86px,10.5vw,136px);border-radius:8px}
+}
+@media(prefers-reduced-motion:reduce){.contest-overlay-track{animation:none;width:100%;overflow:visible;justify-content:center;gap:6px}
+ .contest-overlay-card{flex-basis:9.5vw}}
