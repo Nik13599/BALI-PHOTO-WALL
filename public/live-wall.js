@@ -70,7 +70,7 @@ function draw(){
     const prominent=rect.id===focusId;
     node.classList.toggle('live-mosaic-feature',prominent);
     const img=node.firstElementChild;
-    img.style.objectFit=options.liveFit||'cover';
+    img.style.objectFit=photos.length===1?'contain':(options.liveFit||'cover');
     // Show original resolution of the spotlight; light thumbnails for the rest.
     const src=prominent?getPhotoUrl(photo.id,1):getPhotoUrl(photo.id,photos.length);
     if(img.getAttribute('src')!==src)img.src=src;
@@ -81,12 +81,12 @@ function draw(){
   }
 }
 function step(){
-  if(!active||!photos.length || document.hidden||options.livePause||reduced())return;
+  if(!active||photos.length<=1 || document.hidden||options.livePause||reduced())return;
   position+=1;
   draw();
 }
 function startTimer(){
-  const next=options ? options.liveInterval*1000 : 0;
+  const next=options&&photos.length>1 ? options.liveInterval*1000 : 0;
   if(interval && intervalMs===next)return;
   if(interval)root.clearInterval(interval);
   interval=null;intervalMs=next;
