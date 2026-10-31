@@ -69,7 +69,12 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
   assert.equal(firstNomination.telegram_provider_id,'123456789');
   state.policy.broadcast={runId:'',phase:'stopped',startsAtMs:null,active:false,cancelRunId:ids[0]};
   await save();await pause(5300);
-  health=await (await req('/api/operator/ready')).json();
+  for(let attempt=0;attempt<12;attempt++){
+   const response=await req('/api/operator/ready');
+   health=await response.json();
+   if(health.cancelledRunId===ids[0])break;
+   await pause(500);
+  }
   assert.equal(health.cancelledRunId,ids[0],logs);
   assert.equal(health.runId,null);
   assert.equal(database.prepare('SELECT COUNT(*) n FROM managed_broadcast_runs WHERE run_id=?').get(ids[0]).n,0);
