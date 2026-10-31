@@ -120,6 +120,14 @@ if(page==='admin') {
   let activePhotoStatus='pending';
   let contestFormDirty=false;
   const root=$('#adminRoot');
+  async function refreshLocalBroadcast(){
+   try{
+    const data=await api('/api/admin/broadcast-state'),status=$('#localBroadcastStatus');
+    if(status)status.textContent=data.active?'● ЭФИР '+data.runId.slice(0,8)+' · '+data.folder:
+     '○ Трансляция не запущена. Включите в Telegram Admin.';
+    const button=$('#restoreBroadcastPhotos');if(button)button.disabled=!data.active;
+   }catch(error){const status=$('#localBroadcastStatus');if(status)status.textContent='Сервер недоступен: '+error.message}
+  }
   async function loadDashboard(){
     if(busy) return;
     busy=true;
@@ -140,10 +148,18 @@ if(page==='admin') {
 <nav class="admin-area-links" aria-label="Рабочие зоны PHOTO WALL"><a href="/admin/general" class="admin-area-link ${adminArea==='general'?'selected':''}">◩ ОБЩИЕ ФОТО</a><a href="/admin/contest" class="admin-area-link ${adminArea==='contest'?'selected':''}">♛ КОНКУРС</a></nav>
 <div class="admin-quick-actions" aria-label="Управление PHOTO WALL">
   <button class="button secondary" type="button" data-open-panel="bulkPanel">＋ ЗАГРУЗИТЬ ФОТО</button>
-  ${adminArea==='contest'?'<button class="button secondary" type="button" data-open-panel="contestPanel">♛ РАСПИСАНИЕ</button>':''}
-  <button class="button secondary" type="button" data-open-panel="eventPanel">⚙ МЕРОПРИЯТИЕ</button>
+  ${adminArea==='contest'?'<button class="button secondary" type="button" data-open-panel="contestPanel">♛ УЧАСТНИКИ</button>':''}
+  <button class="button secondary" type="button" data-open-panel="eventPanel">📁 АРХИВ</button>
 </div>
-<details class="panel admin-drawer" id="eventPanel"><summary>${adminArea==='contest'?'Выбрать мероприятие конкурса':'Мероприятие и формат загрузки'}</summary>
+<section class="panel" id="localBroadcastPanel" style="margin:10px 0;padding:13px">
+ <h3>📡 ЕДИНЫЙ ЭФИР BALI</h3><p id="localBroadcastStatus" class="muted">Проверяем трансляцию…</p>
+ <div style="display:flex;flex-wrap:wrap;gap:8px">
+ <a class="button primary" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener">TELEGRAM ADMIN · ЗАПУСК</a>
+ <a class="button secondary" href="/screen" target="_blank" rel="noopener">ЕДИНЫЙ LED-ЭКРАН</a>
+ <button type="button" class="button secondary" id="restoreBroadcastPhotos">ВОССТАНОВИТЬ ФОТО</button>
+ </div><p id="restoreBroadcastStatus" class="muted"></p>
+ <small class="muted">Новая трансляция запускается исключительно в Telegram Admin. Здесь только модерация, архив и восстановление фотографий.</small>
+ </section><details class="panel admin-drawer" id="eventPanel"><summary>${adminArea==='contest'?'Выбрать мероприятие конкурса':'Мероприятие и формат загрузки'}</summary>
   <div class="event-panel">
     <form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required aria-label="Название новой вечеринки"><button class="button primary" type="submit">СОЗДАТЬ</button></form>
     <div id="eventList" class="event-list"></div>
@@ -205,6 +221,9 @@ if(page==='admin') {
       $('#photoCount').textContent=data.total+' фото · '+data.page+' / '+data.pages+' стр.';
       $('#selectedEvent').textContent=data.selected?.name||'Нет выбранного мероприятия';
       displayedEventId=data.selected?.id||null;
+      void refreshLocalBroadcast();
+      if($('#eventForm'))$('#eventForm').hidden=true;
+      if($('#contestSettings'))$('#contestSettings').hidden=true;
       if(document.activeElement!==$('#eventUploadShape'))
         $('#eventUploadShape').value=data.selected?.upload_shape==='square'?'square':'any';
       $('#saveUploadShape').disabled=!displayedEventId;
@@ -363,6 +382,16 @@ if(page==='admin') {
   api('/api/admin/me').then(loadDashboard).catch(()=>{});
   setInterval(()=>{if(adminArea==='contest'&&$('#contestPanel')?.open){void loadContest();void refreshCloudQueue()}},5000);
   if(adminArea==='contest')void refreshCloudQueue();
+  $('#restoreBroadcastPhotos')?.addEventListener('click',async()=>{
+   const status=$('#restoreBroadcastStatus'),button=$('#restoreBroadcastPhotos');
+   if(!confirm('Индексировать вручную скопированные WebP-фотографии текущего эфира?'))return;
+   button.disabled=true;status.textContent='Восстановление…';
+   try{const result=await action('/api/admin/broadcast-restore',{});
+    status.textContent=result.imported+' восстановлено · '+result.skipped+' уже существовало · '+result.failed+' пропущено. '+result.folder;
+    previousDashboard=null;await loadDashboard();}
+   catch(error){status.textContent='Ошибка восстановления: '+error.message}
+   finally{button.disabled=false}
+  });
   root.addEventListener('submit',async event=>{
     if(event.target.id==='loginForm'){
       event.preventDefault();
@@ -573,7 +602,7 @@ if(page==='screen'){
       const saved=await api(profileUrl);
       if(!controller||!dirtyProfile){
         if(force||profileRevision!==saved.revision){
-          settings={...defaults,...saved.settings};
+          settings={...defaults,...saved.settings,layout:'live-mosaic'};
           profileRevision=saved.revision;
           applySettings();
         }
@@ -786,6 +815,7 @@ if(page==='screen'){
     const result=$('#royalResult');if(result)result.hidden=true;lastRoyalWinner=null;countdownEnd=null;countdown.hidden=true;
     $('#wallGrid').style.removeProperty('display');$('#wallEmpty').style.removeProperty('display');
     photos=[];signature='';eventId=null;
+    const candidates=$('#contestOverlay');if(candidates)candidates.hidden=true;
     globalThis.BaliCarouselWall?.reset();
     globalThis.BaliLiveWall?.reset();
     layout();
@@ -799,10 +829,40 @@ if(page==='screen'){
    if(left!==null)countdown.textContent=left>0?'ПОБЕДИТЕЛЬ ЧЕРЕЗ '+left:'ВЫБИРАЕМ ПОБЕДИТЕЛЯ…';
   }
   setInterval(paintContestCountdown,200);
-  let lastRoyalWinner=null;
+  let lastRoyalWinner=null,contestCarouselSignature='';
+  function showContestCarousel(contest){
+    const overlay=$('#contestOverlay'),track=$('#contestOverlayTrack');
+    if(!overlay||!track)return;
+    const entries=contest?.phase!=='closed'&&Array.isArray(contest?.participants)?
+      contest.participants.slice(0,10):[];
+    if(!entries.length){overlay.hidden=true;contestCarouselSignature='';track.replaceChildren();return}
+    const next=String(contest.event?.id||'')+':'+entries.map(x=>x.id+'/'+x.number+'/'+x.name).join('|');
+    overlay.hidden=false;
+    if(next===contestCarouselSignature)return;
+    contestCarouselSignature=next;
+    const makeCard=participant=>{
+     const card=document.createElement('article');card.className='contest-overlay-card';
+     const badge=document.createElement('span');badge.className='contest-overlay-number';
+     badge.textContent='№ '+String(participant.number);
+     const image=document.createElement('img');image.alt='Участник конкурса № '+participant.number;
+     image.loading='eager';image.decoding='async';
+     image.src='/api/screen/thumbnail/'+encodeURIComponent(participant.id)+'?feed=contest';
+     const name=document.createElement('strong');
+     name.textContent=participant.name||'Участник № '+participant.number;
+     card.append(badge,image,name);
+     return card;
+    };
+    const loop=entries.length>1;
+    const items=loop?entries.concat(entries):entries;
+    track.replaceChildren(...items.map(makeCard));
+    track.classList.toggle('is-static',!loop);
+    track.style.setProperty('--bali-contest-marquee-duration',Math.max(24,entries.length*6)+'s');
+  }
   async function refresh(){
     try{
-      const data=await api(broadcastArea==='contest'?'/api/screen/contest':'/api/screen');
+      const data=await api('/api/screen');
+      const contestData=await api('/api/screen/contest').catch(()=>null);
+      showContestCarousel(contestData);
       await syncProfile();
       failedPolls=0;
       wasAuthenticated=true;
@@ -810,14 +870,14 @@ if(page==='screen'){
       const event=data.event?.id??null;
       const eventName=data.event?.name||'BALI NIGHT CLUB';
       $('#screenEvent').textContent=eventName;
-      countdownEnd=data.testMode&&Number.isSafeInteger(data.countdownEndsAtMs)&&!data.finalized?data.countdownEndsAtMs:null;
-      countdownClockOffset=Number.isSafeInteger(data.serverNowMs)?data.serverNowMs-Date.now():0;paintContestCountdown();
+      countdownEnd=contestData?.testMode&&Number.isSafeInteger(contestData.countdownEndsAtMs)&&!contestData.finalized?contestData.countdownEndsAtMs:null;
+      countdownClockOffset=Number.isSafeInteger(contestData?.serverNowMs)?contestData.serverNowMs-Date.now():0;paintContestCountdown();
       const royal=$('#royalResult');
       if(royal){
-        const winners=Array.isArray(data.winners)?data.winners:
-          (data.winner?[{...data.winner,place:1}]:[]);
-        const ready=data.phase==='closed'&&data.finalized===true&&winners.length>0;
-        const key=ready?event+':'+winners.map(w=>w.place+'/'+w.id+'/'+w.votes).join(';'):null;
+        const winners=Array.isArray(contestData?.winners)?contestData.winners:
+          (contestData?.winner?[{...contestData.winner,place:1}]:[]);
+        const ready=contestData?.phase==='closed'&&contestData.finalized===true&&winners.length>0;
+        const key=ready?(contestData?.event?.id||event)+':'+winners.map(w=>w.place+'/'+w.id+'/'+w.votes).join(';'):null;
         const grid=$('#wallGrid');
         if(ready){
           grid.style.display='none';

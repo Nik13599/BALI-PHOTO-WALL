@@ -12,7 +12,7 @@ test('moderator can upload several photos at once, approve and assign upper/lowe
   const origin='http://127.0.0.1:'+port;
   const app=spawn(process.execPath,['server.mjs'],{
     stdio:['ignore','pipe','pipe'],env:{
-      ...process.env,DATA_DIR:folder,NODE_ENV:'development',HOST:'127.0.0.1',
+      ...process.env,ALLOW_LEGACY_EVENT_CONTROL:'1',DATA_DIR:folder,NODE_ENV:'development',HOST:'127.0.0.1',
       PORT:String(port),PUBLIC_URL:origin,MIN_FREE_DISK_MB:'100',
       MAX_PHOTOS_PER_GUEST:'0',MAX_PHOTOS_PER_EVENT:'0',
       ADMIN_PASSWORD:'bulk-test-admin-password-123',

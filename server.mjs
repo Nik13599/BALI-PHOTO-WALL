@@ -250,6 +250,68 @@ async function telegramPhotoSchedule(){
  })();
  return telegramSchedule.pending;
 }
+
+/* One Telegram broadcast action = one durable folder; never create a folder
+   on a browser refresh, process restart or mere timetable edit. */
+let activeBroadcast=null,broadcastSyncPending=null;
+db.exec(`CREATE TABLE IF NOT EXISTS managed_broadcast_runs(
+ run_id TEXT PRIMARY KEY,folder TEXT NOT NULL UNIQUE,
+ general_event_id INTEGER NOT NULL REFERENCES events(id),
+ contest_event_id INTEGER NOT NULL REFERENCES events(id),
+ event_date TEXT NOT NULL,created_at_ms INTEGER NOT NULL);`);
+async function synchronizeBroadcast(){
+ if(broadcastSyncPending)return broadcastSyncPending;
+ broadcastSyncPending=(async()=>{
+  const policy=await telegramPhotoSchedule(),intent=policy?.broadcast;
+  if(!intent?.active||!/^[a-f0-9-]{36}$/.test(intent.runId||'')){activeBroadcast=null;return null}
+  if(activeBroadcast?.runId===intent.runId)return activeBroadcast;
+  let saved=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(intent.runId);
+  if(!saved){
+   const time=Number(intent.startsAtMs)||Date.now();
+   const folder='broadcast-'+new Date(time+10800000).toISOString().slice(0,19)
+    .replace(/[-:T]/g,'')+'-'+intent.runId.replaceAll('-','').slice(0,10);
+   for(const base of [PHOTOS,THUMBS])
+    fs.mkdirSync(path.join(base,'streams',folder),{recursive:true});
+   const selected=policy.session?.date||'';
+   const partyDate=/^\d{4}-\d{2}-\d{2}$/.test(selected)?
+    selected:new Date(time+10800000).toISOString().slice(0,10);
+   const nextDay=new Date(Date.parse(partyDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+   db.transaction(()=>{
+    const existing=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(intent.runId);
+    if(existing){saved=existing;return}
+    const now=Date.now();
+    db.prepare('UPDATE events SET active=0').run();
+    const generalId=Number(db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,1,?)')
+     .run('BALI PHOTO WALL · '+partyDate,now).lastInsertRowid);
+    const contestId=Number(db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,0,?)')
+     .run('КОРОЛЬ / КОРОЛЕВА · '+partyDate,now).lastInsertRowid);
+    db.prepare("INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,updated_at) VALUES(?,1,0,?,'03:00','04:00',?,?)")
+     .run(contestId,nextDay,partyDate,now);
+    db.prepare('INSERT INTO managed_broadcast_runs(run_id,folder,general_event_id,contest_event_id,event_date,created_at_ms) VALUES(?,?,?,?,?,?)')
+     .run(intent.runId,folder,generalId,contestId,partyDate,now);
+    saved=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(intent.runId);
+   })();
+  }
+  activeBroadcast={runId:intent.runId,folder:saved.folder,
+   generalEventId:saved.general_event_id,contestEventId:saved.contest_event_id,
+   eventDate:saved.event_date};
+  if(db.prepare('SELECT active FROM events WHERE id=?').get(saved.general_event_id)?.active!==1)
+   db.transaction(()=>{db.prepare('UPDATE events SET active=0').run();
+    db.prepare('UPDATE events SET active=1 WHERE id=?').run(saved.general_event_id)})();
+  return activeBroadcast;
+ })().finally(()=>{broadcastSyncPending=null});
+ return broadcastSyncPending;
+}
+function runFilename(eventId){
+ const current=activeBroadcast,name=crypto.randomUUID()+'.webp';
+ return current&&[current.generalEventId,current.contestEventId].includes(Number(eventId))?
+  'streams/'+current.folder+'/'+name:name;
+}
+async function ensurePhotoFolders(filename){
+ const folder=path.dirname(filename);
+ await Promise.all([fsp.mkdir(path.join(PHOTOS,folder),{recursive:true}),
+  fsp.mkdir(path.join(THUMBS,folder),{recursive:true})]);
+}
 // A newly saved Telegram Admin competition becomes its own PHOTO WALL event.
 // Never reuse or alter the general photo wall event, and never duplicate a day.
 let syncContestPending=null;
@@ -258,6 +320,10 @@ async function ensureTelegramContest(){
  syncContestPending=(async()=>{
   const policy=await telegramPhotoSchedule(),session=policy?.current?.session||policy?.session;
   const testSession=testContestSession(policy);
+  if(policy?.broadcast){
+   await synchronizeBroadcast();
+   if(!testSession)return; // Only explicit Telegram Admin runs may create competitions.
+  }
   if(testSession){
    if(!db.prepare('SELECT 1 FROM contest_settings WHERE test_session_id=?').get(testSession.testSessionId)){
     db.transaction(()=>{
@@ -365,11 +431,15 @@ const recentContestEvents=db.prepare(
  'ORDER BY s.updated_at DESC,e.id DESC LIMIT 40'
 );
 const currentContestEvent={get(){
- // Telegram Admin is the time authority; an OLD Windows clock must never
- // silently choose a different contest after the moderator saves a new one.
- const choices=recentContestEvents.all();
+ // Telegram Admin's explicit rehearsal works without a public live broadcast.
  const test=testContestSession(telegramSchedule.value);
  if(test)return db.prepare('SELECT e.id,e.name,e.upload_shape FROM events e JOIN contest_settings s ON s.event_id=e.id WHERE s.test_session_id=? AND s.enabled=1').get(test.testSessionId)||null;
+ // Telegram Admin is the time authority; old Windows clocks cannot override it.
+ if(telegramSchedule.value?.broadcast){
+  if(!telegramSchedule.value.broadcast.active||!activeBroadcast)return null;
+  return db.prepare('SELECT id,name,upload_shape FROM events WHERE id=?').get(activeBroadcast.contestEventId)||null;
+ }
+ const choices=recentContestEvents.all();
  return chooseContestEvent(choices,telegramSchedule.value,contestSettings)||
   (testContestSession(telegramSchedule.value)?null:currentEvent.get());
 }};
@@ -524,18 +594,62 @@ app.get('/admin', (_req,res) => res.redirect(302,'/admin/general'));
 app.get('/admin/general', (req,res) => serveBaliPage(req,res,'admin'));
 app.get('/admin/contest', (req,res) => serveBaliPage(req,res,'admin'));
 app.get('/screen', (req,res) => serveBaliPage(req,res,'screen'));
+app.get('/live',(_req,res)=>res.redirect(302,'/screen'));
+app.get('/operator',(_req,res)=>res.redirect(302,'/control/general'));
+app.get('/control',(_req,res)=>res.redirect(302,'/control/general'));
 for(const area of ['general','contest']){
- app.get('/live/'+area,(req,res)=>serveBaliPage(req,res,'screen'));
+ app.get('/live/'+area,(_req,res)=>res.redirect(302,'/screen'));
  app.get('/control/'+area,(req,res)=>{
    if(!validSession(req,'bali_admin'))return res.redirect(302,'/admin/'+area);
    serveBaliPage(req,res,'screen');
  });
 }
+app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
+ await synchronizeBroadcast();
+ res.set('Cache-Control','no-store').json({ok:true,managedBroadcast:true,
+  runId:activeBroadcast?.runId||null,screen:'/screen',folder:activeBroadcast?.folder||null});
+}));
+/* Local operator can restore already curated WebP photos copied from an
+   earlier broadcast folder. They are indexed only in the CURRENT run. */
+app.get('/api/admin/broadcast-state',adminAuth,asyncRoute(async(_req,res)=>{
+ await synchronizeBroadcast();
+ res.json({ok:true,active:!!activeBroadcast,runId:activeBroadcast?.runId||null,
+  folder:activeBroadcast?'data/photos/streams/'+activeBroadcast.folder:null,
+  telegramAdmin:'https://app.baliminsk.by/telegram-admin.html#tcPhoto',
+  screen:'/screen'});
+}));
+app.post('/api/admin/broadcast-restore',adminAuth,requireAction,asyncRoute(async(_req,res)=>{
+ await synchronizeBroadcast();
+ const run=activeBroadcast;
+ if(!run)return res.status(409).json({error:'Запусти трансляцию через Telegram Admin'});
+ const dir=path.join(PHOTOS,'streams',run.folder);
+ const entries=(await fsp.readdir(dir,{withFileTypes:true})).filter(x=>x.isFile()&&/^[a-f0-9-]{36}\.webp$/i.test(x.name)).slice(0,2000);
+ const exists=db.prepare('SELECT id FROM photos WHERE filename=?');
+ const insert=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,photo_area) VALUES(?,?,?,'approved',?,?,?,'general')");
+ let imported=0,skipped=0,failed=0;
+ for(const file of entries){
+  const filename='streams/'+run.folder+'/'+file.name;
+  if(exists.get(filename)){skipped++;continue}
+  try{
+   const full=path.join(dir,file.name),stat=await fsp.stat(full);
+   if(stat.size<=0||stat.size>8*1024*1024){failed++;continue}
+   const info=await sharp(full,{limitInputPixels:36_000_000,failOn:'error'}).metadata();
+   if(info.format!=='webp'||!info.width||!info.height){failed++;continue}
+   const thumb=path.join(THUMBS,filename);await fsp.mkdir(path.dirname(thumb),{recursive:true});
+   if(!fs.existsSync(thumb))
+    await sharp(full).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
+     .webp({quality:65}).toFile(thumb);
+   insert.run(run.generalEventId,filename,'operator-restored',Date.now(),info.width,info.height);
+   imported++;
+  }catch(error){failed++;console.warn('PHOTO WALL restore skipped:',error.message)}
+ }
+ res.json({ok:true,imported,skipped,failed,folder:'data/photos/streams/'+run.folder});
+}));
 app.get('/healthz', (_req,res) => {
  const required=['style.css','admin-compact.css','areas.css','screen-broadcast.css',
   'app.js','guest.js','crop.js','bali-logo.svg'];
  const missing=required.filter(file=>!fs.existsSync(path.join(pageAssetDir,file)));
- res.json({ok:missing.length===0,assetsOk:missing.length===0,missingAssets:missing});
+ res.json({ok:missing.length===0,assetsOk:missing.length===0,missingAssets:missing,managedBroadcast:true,runId:activeBroadcast?.runId||null});
 });
 
 /* Single Windows authority for Telegram's button clocks and visibility.
@@ -565,11 +679,12 @@ app.post('/api/admin/miniapp/buttons',adminAuth,requireAction,(req,res)=>{
    .run(JSON.stringify(next),Date.now());
  res.json({ok:true,...miniappSnapshot()});
 });
-app.get('/api/public', (req,res) => {
+app.get('/api/public', asyncRoute(async(req,res)=>{
+  await synchronizeBroadcast();
   guestIdentity(req,res);
   const event = currentEvent.get();
-  res.json({ event, uploadShape:event?.upload_shape||'any', limit:null });
-});
+  res.json({ event:activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?event:null, uploadShape:event?.upload_shape||'any', limit:null });
+}));
 // Public contest feed for Telegram Mini App. Approved nominations only.
 // Never return upload tokens, guest identifiers, source filenames or staff data.
 app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
@@ -592,6 +707,7 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
  res.json({test_supported:true,test_session_id:settings?.test_session_id||null,
   contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
   phase:actualPhase,contest_date:settings?.contest_date||null,bali_event_id:settings?.bali_event_id||null,
+  broadcast_run_id:activeBroadcast?.runId||null,
   server_now:Date.now(),registration_open:enabled&&registrationRule?.open===true,
   registration_ends_at:registrationRule?.closesAtMs??null,
   voting_starts_at:voteRule?.open?control.serverNowMs:voteRule?.nextOpensAtMs??null,
@@ -703,7 +819,8 @@ app.use('/api/upload', (req,res,next) => {
   next();
 });
 app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo'), asyncRoute(async (req,res) => {
-  const event = currentEvent.get();
+  await synchronizeBroadcast();
+  const event = activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?currentEvent.get():null;
   if (!event) return res.status(409).json({error:'Сейчас нет активного мероприятия'});
   if (req.body?.consent !== 'yes') return res.status(400).json({error:'Необходимо согласие на показ фотографии'});
   if (!req.file?.path) return res.status(400).json({error:'Выберите фотографию'});
@@ -739,14 +856,15 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
     }
   }
   const dimension=await sharp(processed).metadata();
-  const filename = crypto.randomUUID() + '.webp';
+  const filename = runFilename(event.id);
   const thumbnail = await sharp(processed).resize({width:360,height:360,fit:'inside',withoutEnlargement:true}).webp({quality:65}).toBuffer();
   const discardProcessed = () => Promise.all([
     fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{}),
     fsp.unlink(path.join(THUMBS,filename)).catch(()=>{})
   ]);
   try {
-    await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
+    await ensurePhotoFolders(filename);
+   await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
     await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
     // Preserve the optional per-event quota and active-event check atomically.
     const result = db.prepare(`INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height)
@@ -821,7 +939,17 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  // The event ID in the ticket is signed by BALI's Telegram backend.
  await ensureTelegramContest();
  let event=currentContestEvent.get();
- if(proof.queued){
+ if(proof.broadcastRunId){
+  if(!/^[a-f0-9]{8}-[a-f0-9-]{27}$/.test(proof.broadcastRunId))
+   return res.status(401).json({error:'Некорректный ID запуска конкурса'});
+  const assigned=db.prepare('SELECT e.id,e.name,e.upload_shape FROM managed_broadcast_runs b '+
+   'JOIN events e ON e.id=b.contest_event_id WHERE b.run_id=?').get(proof.broadcastRunId);
+  if(!assigned)return res.status(409).json({error:'Запуск конкурса ещё не синхронизирован. Фото сохранено в очереди Telegram.'});
+  if(!proof.queued&&activeBroadcast?.runId!==proof.broadcastRunId)
+   return res.status(409).json({error:'Запущена другая трансляция, повторите подачу фотографии'});
+  event=assigned;
+ }
+ if(proof.queued&&!proof.broadcastRunId){
   // Never silently attach yesterday's queued photo to today's current
   // contest. Look up the originally signed BALI Event ID, including a
   // historic contest whose enabled flag was later turned off.
@@ -873,12 +1001,13 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
   if(Number(stat.bavail)*Number(stat.bsize)<MIN_FREE_DISK_MB*1048576)
     return res.status(507).json({error:'На фотосервере недостаточно места'});
  }catch(error){if(!['ENOSYS','ENOTSUP','EOPNOTSUPP'].includes(error.code))throw error}
- const filename=crypto.randomUUID()+'.webp';
+ const filename=runFilename(event.id);
  const thumbnail=await sharp(processed).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
   .webp({quality:65}).toBuffer();
  const cleanup=()=>Promise.all([fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{}),fsp.unlink(path.join(THUMBS,filename)).catch(()=>{})]);
  try{
-  await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
+  await ensurePhotoFolders(filename);
+   await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
   await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
   const insert=db.transaction(()=>{
    const now=Date.now();
@@ -946,7 +1075,8 @@ app.get('/api/photos/:id', screenAuth, (req,res) => {
 // Keep LED transfers bounded. The newest 500 approved photos are enough
 // for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
-  const event = currentEvent.get();
+  await synchronizeBroadcast();
+  const event = activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?currentEvent.get():null;
   const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos p WHERE event_id=? AND status='approved' AND photo_area='general' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
   const update=db.prepare('UPDATE photos SET width=?,height=? WHERE id=? AND (width IS NULL OR height IS NULL)');
   // Upgrade photos created before width/height metadata existed, once per photo.
@@ -974,9 +1104,10 @@ app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
  const podium=phase==='closed'&&settings?.finalized_at?contestPodium(event.id):null;
  const winners=podium?.winners||[];
  const visible=phase==='closed'?winners.map(w=>({photoId:w.id})):candidates;
+ const participants=phase==='closed'?[]:candidates.slice(0,10).map((c,i)=>({id:c.photoId,number:i+1,name:c.name||'Участник №'+(i+1)}));
  const photos=visible.slice(0,500).map(c=>
   db.prepare("SELECT id,created_at,width,height,screen_lane FROM photos WHERE id=? AND status='approved' AND photo_area='contest'").get(c.photoId)).filter(Boolean);
- res.json({event,photos,phase,finalized:!!settings?.finalized_at,serverNowMs:Date.now(),
+ res.json({event,photos,participants,phase,finalized:!!settings?.finalized_at,serverNowMs:Date.now(),
   testMode:!!settings?.test_session_id,
   countdownEndsAtMs:settings?.test_session_id&&policy?.test?.phase==='countdown'?policy.test.deadlineMs:null,
   winner:winners[0]?{id:winners[0].id,name:winners[0].name,votes:winners[0].votes,totalVotes:settings.total_votes}:null,
@@ -1109,8 +1240,9 @@ app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
           throw new Error('Для мероприятия разрешены только квадратные фото 1:1');
         const thumbnail=await sharp(image).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
           .webp({quality:65}).toBuffer();
-        filename=crypto.randomUUID()+'.webp';
-        await fsp.writeFile(path.join(PHOTOS,filename),image,{flag:'wx'});
+        filename=runFilename(event.id);
+        await ensurePhotoFolders(filename);
+   await fsp.writeFile(path.join(PHOTOS,filename),image,{flag:'wx'});
         await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
         const record=insert.run(event.id,filename,'moderator-import',status,Date.now(),size.width,size.height,lane,area);
         result.id=Number(record.lastInsertRowid);result.ok=true;
@@ -1157,6 +1289,7 @@ app.get('/api/admin/contest',adminAuth,asyncRoute(async(req,res)=>{
    tallyError:lastTallyError},candidates});
 }));
 app.post('/api/admin/contest/settings',adminAuth,requireAction,(req,res)=>{
+  if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Расписание и запуск конкурса доступны только в Telegram Admin'});
  const i=req.body||{},id=Number(i.eventId);
  const fields=['registrationOpensAt','registrationClosesAt','votingStartsLocal','votingEndsLocal','resultsLocal'];
  const advanced=fields.some(key=>Object.hasOwn(i,key));
@@ -1270,7 +1403,8 @@ app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   const events = db.prepare('SELECT id,name,active,created_at,upload_shape FROM events ORDER BY id DESC').all();
   const active = currentEvent.get();
   const requested = req.query.eventId;
-  const selected = requested === undefined ? active
+  const selected = requested === undefined ? (req.query.area==='contest'&&activeBroadcast?
+   db.prepare('SELECT id,name,upload_shape FROM events WHERE id=?').get(activeBroadcast.contestEventId):active)
     : (typeof requested === 'string' && /^\d+$/.test(requested)
       ? db.prepare('SELECT id,name,upload_shape FROM events WHERE id=?').get(Number(requested)) : null);
   if (requested !== undefined && !selected) return res.status(404).json({error:'Мероприятие не найдено'});
@@ -1303,6 +1437,8 @@ const makeEvent = db.transaction(name => {
   return db.prepare('INSERT INTO events(name,active,created_at) VALUES (?,1,?)').run(name,Date.now()).lastInsertRowid;
 });
 app.post('/api/admin/events', adminAuth, requireAction, (req,res) => {
+  if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Создание нового эфира доступно только в Telegram Admin'});
+  if(telegramSchedule.value?.broadcast)return res.status(403).json({error:'Запуск трансляции только через Telegram Admin'});
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   if (name.length < 3 || name.length > 90) return res.status(400).json({error:'Название мероприятия: 3–90 символов'});
   const id = makeEvent(name);
@@ -1325,6 +1461,8 @@ app.post('/api/admin/events/:id/upload-shape', adminAuth, requireAction, (req,re
   res.json({ok:true,uploadShape:shape});
 });
 app.post('/api/admin/events/:id/activate', adminAuth, requireAction, (req,res) => {
+  if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Запуск эфира доступен только в Telegram Admin'});
+  if(telegramSchedule.value?.broadcast)return res.status(403).json({error:'Выбор эфира только через Telegram Admin'});
   if (!activateEvent(Number(req.params.id))) return res.status(404).json({error:'Мероприятие не найдено'});
   res.json({ok:true});
 });
@@ -1407,6 +1545,10 @@ async function cleanup() {
 }
 cleanup().catch(console.error);
 setInterval(()=>finalizeContest().catch(console.error),2000).unref();
+// Independent poll continues even when the browser/LED screen is closed.
+// Scheduled Telegram runs can therefore start after the Windows PC comes online.
+setInterval(()=>synchronizeBroadcast().catch(e=>console.warn('Broadcast sync:',e.message)),2500).unref();
+void synchronizeBroadcast().catch(e=>console.warn('Broadcast startup:',e.message));
 // Pull the cloud escrow after boot and while the computer is online. Cloudflare
 // pushes queued bytes only to this site's verified public HTTPS hostname.
 let draining=false;

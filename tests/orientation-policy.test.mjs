@@ -11,7 +11,7 @@ test('moderator square policy is enforced and orientation metadata reaches LED',
   const origin='http://127.0.0.1:13439';
   const server=spawn(process.execPath,['server.mjs'],{
     stdio:['ignore','pipe','pipe'],
-    env:{...process.env,DATA_DIR:dir,HOST:'127.0.0.1',PORT:'13439',
+    env:{...process.env,ALLOW_LEGACY_EVENT_CONTROL:'1',DATA_DIR:dir,HOST:'127.0.0.1',PORT:'13439',
       PUBLIC_URL:origin,NODE_ENV:'development',MAX_PHOTOS_PER_GUEST:'0',
       MAX_PHOTOS_PER_EVENT:'0',UPLOAD_REQUESTS_PER_HOUR:'0',MIN_FREE_DISK_MB:'100',
       ADMIN_PASSWORD:'test-admin-shapes-12345',SCREEN_PASSWORD:'test-screen-shapes-12345',

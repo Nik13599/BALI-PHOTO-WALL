@@ -9,11 +9,15 @@
 <body data-page="screen">
 <main class="screen" id="wallScreen">
   <div class="wall-grid" id="wallGrid" aria-label="Фотостена BALI"></div>
+  <section class="contest-overlay" id="contestOverlay" aria-label="Участники конкурса" hidden>
+    <div class="contest-overlay-title">👑 УЧАСТНИКИ КОНКУРСА <small>ГОЛОСУЙ В BALI TELEGRAM</small></div>
+    <div class="contest-overlay-viewport"><div class="contest-overlay-track" id="contestOverlayTrack"></div></div>
+  </section>
   <div class="royal-result" id="royalResult" hidden aria-live="polite">
     <div class="royal-podium-heading">🏆 ПОБЕДИТЕЛИ BALI</div>
     <div class="royal-podium" id="royalPodium"></div>
   </div>
-  <div class="wall-empty" id="wallEmpty"><div class="wall-empty-title">ТВОЙ МОМЕНТ <span class="glow">НА ЭКРАНЕ</span></div><p>Отсканируй QR-код и загрузи фотографию</p></div>
+  <div class="wall-empty" id="wallEmpty"><div class="wall-empty-title">ТВОЙ МОМЕНТ <span class="glow">НА ЭКРАНЕ</span></div><p>Фотографии появятся здесь после одобрения модератором</p></div>
   <img class="wall-logo wall-floating" id="wallLogo" src="/bali-logo.svg" alt="BALI Night Club">
   <div class="wall-live wall-floating" id="wallLive"><span class="pulse"></span><span>PHOTO LIVE</span></div>
   <div class="wall-event-name wall-floating" id="screenEvent">BALI NIGHT CLUB</div>
@@ -23,21 +27,20 @@
     <form id="screenLoginForm" class="screen-login-card">
       <img class="login-logo" src="/bali-logo.svg" alt="Логотип BALI">
       <h2>ПОДКЛЮЧЕНИЕ LED-ЭКРАНА</h2>
-      <p>Введите пароль оператора экрана. Одобренные фотографии появятся живой сеткой.</p>
+      <p>Введите пароль просмотра экрана. Сам эфир запускается исключительно через Telegram Admin.</p>
       <input class="field" id="screenPassword" type="password" autocomplete="current-password" placeholder="Пароль экрана" required>
-      <button class="button primary" type="submit">ЗАПУСТИТЬ ФОТОСТЕНУ</button>
+      <button class="button primary" type="submit">ОТКРЫТЬ LED-ЭКРАН</button>
       <div class="alert" role="status" id="screenLoginMessage"></div>
     </form>
   </div>
   <div class="screen-toolbar">
-    <a class="screen-gear" href="/live/general" style="text-decoration:none" aria-label="Общая трансляция">◩ Общая трансляция</a>
-    <a class="screen-gear" href="/live/contest" style="text-decoration:none" aria-label="Конкурсная трансляция">♛ Конкурсная трансляция</a>
-    <button class="screen-gear" id="wallSettingsToggle" type="button" aria-label="Настройки фотостены" aria-expanded="false"><span aria-hidden="true">⚙</span> Настройки</button>
+    <a class="screen-gear" id="unifiedTelegramAdmin" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener" style="text-decoration:none">🎛 Telegram Admin</a>
+    <button class="screen-gear" id="wallSettingsToggle" type="button" aria-label="Настройки отображения" aria-expanded="false"><span aria-hidden="true">⚙</span> Настройки</button>
     <button class="screen-gear" id="fullscreenBtn" type="button">⛶ Весь экран</button>
   </div>
   <aside class="wall-settings" id="wallSettings" hidden aria-label="Настройки фотостены">
     <div class="wall-settings-head"><div><strong>Пульт BALI · оформление трансляции</strong><small>Сохраняется на сервере и синхронизируется со всеми экранами</small></div><button type="button" class="screen-close" id="wallSettingsClose" aria-label="Закрыть">×</button></div>
-    <div class="wall-settings-scroll"><p id="screenProfileMessage" class="profile-sync-message" role="status" aria-live="polite"></p><p class="wall-setting-note">📲 Время кнопок и объявления победителя теперь задаётся в <a href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">Telegram Admin</a>.</p><div class="screen-control-links"><a class="button secondary" href="/admin/general">Общие фото</a><a class="button secondary" href="/admin/contest">Конкурс</a><a class="button primary" id="controlLiveLink" href="/live/general" target="_blank" rel="noopener">↗ Открыть трансляцию</a></div>
+    <div class="wall-settings-scroll"><p id="screenProfileMessage" class="profile-sync-message" role="status" aria-live="polite"></p><p class="wall-setting-note">📲 Время кнопок и объявления победителя теперь задаётся в <a href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">Telegram Admin</a>.</p><div class="screen-control-links"><a class="button secondary" href="/admin/general">Общие фото</a><a class="button secondary" href="/admin/contest">Конкурс</a><a class="button primary" id="controlLiveLink" href="/screen" target="_blank" rel="noopener">↗ Открыть трансляцию</a></div>
       <label class="wall-toggle"><input id="setCenterGrowth" data-wall-setting="centerGrowth" type="checkbox" checked> Центрировать и расширять композицию от центра</label>
       <label class="wall-setting" for="setLayout"><span>Расположение фотографий</span><select id="setLayout" data-wall-setting="layout"><option value="puzzle">Пазл: квадратные, вертикальные, горизонтальные</option><option value="grid">Обычная сетка с одинаковыми ячейками</option><option value="live-mosaic">Живая мозаика: случайные перестройки и увеличение</option>
 <option value="carousel-quad">Карусель 4 полосы: две большие и две маленькие</option>

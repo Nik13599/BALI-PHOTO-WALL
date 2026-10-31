@@ -13,7 +13,7 @@ test('legacy guest limit is ignored and guests can upload unlimited photos', { t
   const server = spawn(process.execPath,['server.mjs'],{
     stdio:['ignore','pipe','pipe'],
     env:{
-      ...process.env,
+      ...process.env,ALLOW_LEGACY_EVENT_CONTROL:'1',
       NODE_ENV:'development', HOST:'127.0.0.1', PORT:String(port),
       DATA_DIR:dataDir, PUBLIC_URL:url,
       MAX_PHOTOS_PER_GUEST:'1', MAX_PHOTOS_PER_EVENT:'0', UPLOAD_REQUESTS_PER_HOUR:'0',
