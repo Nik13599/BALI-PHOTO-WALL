@@ -67,3 +67,30 @@ test('ordinary QR and overlay visibility are shared by operator preview and LED 
  assert.ok(server.includes("QRCode.toString(PUBLIC_URL.replace(/\\/$/,'')+'/upload'"));
  assert.ok(html.includes('id="wallQRImage"'));
 });
+
+test('LED broadcast uses the exact operator profile for all five overlays',()=>{
+ const get=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+ const css=get('public/screen-broadcast.css');
+ const style=get('public/style.css');
+ const app=get('public/app.js');
+ const html=get('public/screen.html');
+ // Regression: older CSS forced display:none!important for QR, live, event,
+ // hint and forced the club logo to a fixed bottom-left 32px irrespective of
+ // the operator panel. It must not override [hidden]/positionFloating().
+ for(const id of ['wallQR','wallLogo','wallLive','screenEvent','eventHint']){
+  assert.doesNotMatch(css,new RegExp('body\\[data-screen-mode="broadcast"\\] #'+id+'[^{}]*\\{[^{}]*display\\s*:\\s*none\\s*!important','s'),id+' must not be force-hidden');
+  assert.doesNotMatch(css,new RegExp('body\\[data-screen-mode="broadcast"\\] #'+id+'\\s*\\{[^}]*!important','s'),id+' must not be force-positioned');
+ }
+ assert.match(style,/\\.screen \\[hidden\\]\\{display:none!important\\}/,'Operator show/hide must be respected');
+ assert.match(html,/id="wallQR"/);
+ assert.match(html,/id="wallQRImage"/);
+ assert.match(html,/id="setShowQr"[^>]*checked/);
+ for(const [id,flag] of [
+  ['wallQR','broadcastArea===\'general\'&&settings.showQr'],
+  ['wallLogo','settings.showLogo'],
+  ['wallLive','settings.showLive'],
+  ['screenEvent','settings.showEvent'],
+  ['eventHint','settings.showHint']
+ ])assert.ok(app.includes("setShown($('#"+id+"'),"+flag+")"),id+' must obey saved profile');
+ assert.ok(app.includes('positionFloating();syncShiftControls();'));
+});
