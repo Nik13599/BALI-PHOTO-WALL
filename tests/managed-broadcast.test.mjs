@@ -15,7 +15,7 @@ test('one broadcast screen: general live mosaic with 10 real approved contestant
  assert.match(ui,/const data=await api\('\/api\/screen'\)/);
  assert.match(ui,/const contestData=await api\('\/api\/screen\/contest'\)/);
  assert.match(ui,/contest\.participants\.slice\(0,10\)/);
- assert.match(ui,/layout:'live-mosaic'/);
+ assert.match(ui,/layout:'puzzle'/);
  assert.match(css,/animation:baliContestMarquee/);
  assert.match(server,/const participants=phase==='closed'\?\[\]:candidates\.slice\(0,10\)/);
 });
