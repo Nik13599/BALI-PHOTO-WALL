@@ -45,7 +45,8 @@ test('Real server isolates rehearsal photos, accepts uploads outside hours, coun
   assert.equal(adminLogin.status,200);
   const adminCookie=adminLogin.headers.get('set-cookie').split(';')[0];
   const mutationHeaders={Cookie:adminCookie,'X-BALI-Action':'1','Content-Type':'application/json'};
-  const firstPhotoId=ballot.candidates[0].id;
+  const firstPhotoId=Number(String(ballot.candidates[0].id).replace(/^p_/,''));
+  assert.ok(Number.isSafeInteger(firstPhotoId)&&firstPhotoId>0);
   const changedDuringBallot=await request('/api/admin/photos/'+firstPhotoId+'/status',{
    method:'POST',headers:mutationHeaders,body:JSON.stringify({status:'rejected'})});
   assert.equal(changedDuringBallot.status,409,'moderators must not change vote-eligible photographs');
