@@ -67,3 +67,28 @@
  .showcase-stage.showcase-cascade .showcase-rail-2{left:12.5%}
  .showcase-stage.showcase-cascade .showcase-rail-3{right:12.5%}
 }
+
+/* Extra mass-photo modes, all run on the same moderated, bounded gallery. */
+.showcase-stage.showcase-orbit .showcase-focus{left:29%;width:42%;top:12%;height:76%;border-radius:45% / 48%;border:3px solid #e2fdff66;box-shadow:0 0 90px #000e,0 0 32px #46d9ff33}
+.showcase-stage.showcase-orbit .showcase-rail-1{left:0;right:0;top:0;height:17%}
+.showcase-stage.showcase-orbit .showcase-rail-2{left:0;right:0;bottom:0;height:17%}
+.showcase-stage.showcase-orbit .showcase-rail-3{left:0;width:28%;top:18%;height:64%}
+.showcase-stage.showcase-orbit .showcase-rail-4{right:0;width:28%;top:18%;height:64%}
+.showcase-stage.showcase-orbit .showcase-rail-3 .showcase-ticker,
+.showcase-stage.showcase-orbit .showcase-rail-4 .showcase-ticker{animation-duration:45s}
+.showcase-stage.showcase-wall .showcase-focus{left:31%;width:38%;top:24%;height:52%;border:3px solid #fbe49f70;box-shadow:0 0 55px #000e,0 0 34px #ffde7d30}
+.showcase-stage.showcase-wall .showcase-rail{left:0;right:0;height:16%;mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+.showcase-stage.showcase-wall .showcase-rail-1{top:0}
+.showcase-stage.showcase-wall .showcase-rail-2{top:16.5%}
+.showcase-stage.showcase-wall .showcase-rail-3{top:33%}
+.showcase-stage.showcase-wall .showcase-rail-4{top:49.5%}
+.showcase-stage.showcase-wall .showcase-rail-5{top:66%}
+.showcase-stage.showcase-wall .showcase-rail-6{top:82.5%}
+.showcase-stage.showcase-wall .showcase-focus{z-index:4}
+.showcase-stage.showcase-ribbon .showcase-focus{left:23%;width:54%;top:15%;height:70%;transform:rotate(-2deg);border-radius:22px;border:3px solid #e8b7ff66;box-shadow:0 0 80px #000e,0 0 38px #d970ff30}
+.showcase-stage.showcase-ribbon .showcase-rail{left:-8%;right:-8%;width:116%;height:19%;transform:rotate(-5deg)}
+.showcase-stage.showcase-ribbon .showcase-rail-1{top:2%}
+.showcase-stage.showcase-ribbon .showcase-rail-2{top:28%}
+.showcase-stage.showcase-ribbon .showcase-rail-3{top:55%}
+.showcase-stage.showcase-ribbon .showcase-rail-4{top:82%}
+@media(prefers-reduced-motion:reduce){.showcase-stage .showcase-focus-image{transition:none!important}}
