@@ -144,9 +144,9 @@ if(page==='admin') {
         root.innerHTML=`<section id="dashboard" class="bali-admin-v2">
 <div class="admin-heading">
   <div class="admin-identity"><div class="eyebrow">PHOTO WALL · ${adminArea==='contest'?'ROYAL CONTEST':'GENERAL CONTROL'}</div><h1>${adminArea==='contest'?'♛ МОДЕРАЦИЯ КОНКУРСА':'ОБЩАЯ ФОТОСТЕНА'}</h1><span class="muted" id="activeEvent"></span></div>
-  <div class="admin-links"><a class="button secondary" href="/live/${adminArea}" target="_blank" rel="noopener">◩ ТРАНСЛЯЦИЯ</a><a class="button secondary" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">📲 ЗАПУСК · TELEGRAM ADMIN</a><a class="button secondary" href="/control/${adminArea}" target="_blank" rel="noopener">⚙ НАСТРОЙКА ЭКРАНА</a><button type="button" class="button secondary" id="logoutBtn">ВЫЙТИ</button></div>
+  <div class="admin-links"><a class="button secondary" href="/live/${adminArea}" target="_blank" rel="noopener">◩ ТРАНСЛЯЦИЯ</a><a class="button secondary" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">📲 TELEGRAM MINI APP</a><a class="button secondary" href="/control/${adminArea}" target="_blank" rel="noopener">⚙ НАСТРОЙКА ЭКРАНА</a><button type="button" class="button secondary" id="logoutBtn">ВЫЙТИ</button></div>
 </div>
-<nav class="admin-area-links" aria-label="Рабочие зоны PHOTO WALL"><a href="/admin/general" class="admin-area-link ${adminArea==='general'?'selected':''}">◩ ОБЩИЕ ФОТО</a><a href="/admin/contest" class="admin-area-link ${adminArea==='contest'?'selected':''}">♛ КОНКУРС</a></nav>
+<nav class="admin-area-links" aria-label="Рабочие зоны PHOTO WALL"><a href="/admin/general" class="admin-area-link ${adminArea==='general'?'selected':''}">◩ ОБЩИЕ ФОТО</a></nav>
 <div class="admin-quick-actions" aria-label="Управление PHOTO WALL">
   <button class="button secondary" type="button" data-open-panel="bulkPanel">＋ ЗАГРУЗИТЬ ФОТО</button>
   ${adminArea==='contest'?'<button class="button secondary" type="button" data-open-panel="contestPanel">⚙ ДОПОЛНИТЕЛЬНО</button>':''}
@@ -600,7 +600,7 @@ if(page==='screen'){
   if(profileTitle)profileTitle.textContent=broadcastArea==='contest'?'♛ Пульт конкурса':'◩ Пульт общей фотостены';
   const defaults={
     maxPhotos:500,columns:0,gap:2,fit:'contain',layout:'puzzle',centerGrowth:true,
-    liveInterval:8,liveFocus:40,liveTransition:1400,liveFit:'cover',livePause:false,
+    liveInterval:8,liveFocus:40,liveTransition:1400,liveFit:'cover',livePause:false,showcaseInterval:3,
     carouselStart:10,carouselSpeed:85,carouselOuterSpeed:120,carouselTopHeight:12,carouselBottomHeight:12,carouselCenterSplit:50,carouselPause:false,
     logoPos:'tl',livePos:'tr',eventPos:'bl',hintPos:'bc',qrPos:'br',
     logoX:0,logoY:0,liveX:0,liveY:0,eventX:0,eventY:0,hintX:0,hintY:0,qrX:0,qrY:0,
@@ -609,7 +609,7 @@ if(page==='screen'){
   };
   const limits={
     maxPhotos:[1,500],columns:[0,40],gap:[0,16],
-    liveInterval:[3,45],liveFocus:[25,65],liveTransition:[300,2500],
+    liveInterval:[3,45],liveFocus:[25,65],liveTransition:[300,2500],showcaseInterval:[2,12],
     carouselStart:[5,30],carouselSpeed:[20,260],carouselOuterSpeed:[20,300],carouselTopHeight:[6,25],carouselBottomHeight:[6,25],carouselCenterSplit:[25,75],
     logoX:[-250,250],logoY:[-250,250],liveX:[-250,250],liveY:[-250,250],
     eventX:[-250,250],eventY:[-250,250],hintX:[-250,250],hintY:[-250,250],
@@ -641,7 +641,7 @@ if(page==='screen'){
       const saved=await api(profileUrl);
       if(!controller||!dirtyProfile){
         if(force||profileRevision!==saved.revision){
-          settings={...defaults,...saved.settings,layout:'live-mosaic'};
+          settings={...defaults,...saved.settings};
           profileRevision=saved.revision;
           applySettings();
         }
@@ -723,8 +723,9 @@ if(page==='screen'){
     setShown($('#wallQR'),broadcastArea==='general'&&settings.showQr);
     positionFloating();syncShiftControls();
     $('#columnsSettings').hidden=settings.layout!=='grid';
-    $('#carouselSettings').hidden=!globalThis.BaliCarousel?.isCarousel(settings.layout);
+    $('#carouselSettings').hidden=!(globalThis.BaliCarousel?.isCarousel(settings.layout)||settings.layout.startsWith('showcase-'));
     $('#liveMosaicSettings').hidden=settings.layout!=='live-mosaic';
+    $('#showcaseSettings').hidden=!settings.layout.startsWith('showcase-');
     for(const control of controls){
       const key=control.dataset.wallSetting;
       if(control.type==='checkbox')control.checked=settings[key];
@@ -765,6 +766,7 @@ if(page==='screen'){
       grid.replaceChildren();
       globalThis.BaliCarouselWall?.stop();
       globalThis.BaliLiveWall?.stop();
+      globalThis.BaliShowcaseWall?.stop();
       return;
     }
     if(settings.layout==='live-mosaic' && globalThis.BaliLiveWall){
@@ -773,6 +775,12 @@ if(page==='screen'){
       return;
     }
     globalThis.BaliLiveWall?.stop();
+    if(settings.layout.startsWith('showcase-')&&globalThis.BaliShowcaseWall){
+      globalThis.BaliCarouselWall?.stop();
+      globalThis.BaliShowcaseWall.render({grid,photos:all,eventId,settings,getPhotoUrl});
+      return;
+    }
+    globalThis.BaliShowcaseWall?.stop();
     if(globalThis.BaliCarousel?.isCarousel(settings.layout) && n>=settings.carouselStart &&
         globalThis.BaliCarouselWall){
       globalThis.BaliCarouselWall.render({grid,photos:all,eventId,settings,getPhotoUrl});

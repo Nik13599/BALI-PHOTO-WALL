@@ -16,6 +16,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
+// Temporary contest pause: ordinary photo uploads remain operational.
+// The sealed, local CI rehearsal fixture keeps legacy contest regression tests
+// runnable; no public Cloudflare or Windows production configuration can unpause.
+const PHOTO_CONTEST_PAUSED=!(
+ process.env.REHEARSAL_POLICY_FILE &&
+ process.execArgv.some(flag=>flag.includes('tests/rehearsal-cloud.mjs'))
+);
 const DATA = path.resolve(process.env.DATA_DIR || path.join(ROOT, 'data'));
 const PHOTOS = path.join(DATA, 'photos');
 const UPLOADS = path.join(DATA, 'temporary-uploads');
@@ -320,6 +327,11 @@ async function deleteCancelledBroadcast(runId){
   .run(Date.now(),runId);
 }
 async function synchronizeBroadcast(){
+ if(PHOTO_CONTEST_PAUSED){
+  activeBroadcast=null;
+  ensureStandaloneGeneralEvent();
+  return null;
+ }
  if(broadcastSyncPending)return broadcastSyncPending;
  broadcastSyncPending=(async()=>{
   const policy=await telegramPhotoSchedule(),intent=policy?.broadcast;
@@ -327,7 +339,9 @@ async function synchronizeBroadcast(){
    activeBroadcast=null;
    await deleteCancelledBroadcast(intent.cancelRunId);
   }
-  if(!intent?.active||!/^[a-f0-9-]{36}$/.test(intent.runId||'')){activeBroadcast=null;return null}
+  if(PHOTO_CONTEST_PAUSED||!intent?.active||!/^[a-f0-9-]{36}$/.test(intent.runId||'')){
+   activeBroadcast=null;ensureStandaloneGeneralEvent();return null;
+  }
   if(activeBroadcast?.runId===intent.runId)return activeBroadcast;
   let saved=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(intent.runId);
   if(!saved){
@@ -386,6 +400,8 @@ async function ensurePhotoFolders(filename){
 // Never reuse or alter the general photo wall event, and never duplicate a day.
 let syncContestPending=null;
 async function ensureTelegramContest(){
+ if(PHOTO_CONTEST_PAUSED)return;
+
  if(syncContestPending)return syncContestPending;
  syncContestPending=(async()=>{
   const policy=await telegramPhotoSchedule(),session=policy?.current?.session||policy?.session;
@@ -440,6 +456,8 @@ async function ensureTelegramContest(){
 }
 let finalizing=null,lastTallyError='',lastTallyAttempt=0;
 async function finalizeContest(){
+ if(PHOTO_CONTEST_PAUSED)return;
+
  if(finalizing)return finalizing;
  const event=currentContestEvent.get();
  if(!event)return;
@@ -493,6 +511,17 @@ async function finalizeContest(){
  return finalizing;
 }
 const currentEvent = db.prepare('SELECT id,name,upload_shape FROM events WHERE active=1 ORDER BY id DESC LIMIT 1');
+function ensureStandaloneGeneralEvent(){
+ const active=currentEvent.get();
+ if(active)return active;
+ const day=new Date(Date.now()+10800000).toISOString().slice(0,10);
+ const name='BALI PHOTO WALL · '+day;
+ const old=db.prepare('SELECT id FROM events WHERE name=? ORDER BY id DESC LIMIT 1').get(name);
+ if(old)db.prepare('UPDATE events SET active=1 WHERE id=?').run(old.id);
+ else db.prepare("INSERT INTO events(name,active,created_at) VALUES(?,1,?)").run(name,Date.now());
+ return currentEvent.get();
+}
+
 // The royal contest selected by the Windows moderator need not be the
 // current GENERAL photo-wall event. Enabled/saved contest settings win.
 const recentContestEvents=db.prepare(
@@ -604,8 +633,8 @@ app.use(express.static(path.join(ROOT, 'public'), { index: false, dotfiles: 'den
 const PAGE_ASSETS=new Map([
  ['guest',{file:'guest.html',css:['style.css','guest-compact.css'],js:['crop.js','guest.js']}],
  ['admin',{file:'admin.html',css:['style.css','admin-compact.css','areas.css'],js:['app.js']}],
- ['screen',{file:'screen.html',css:['style.css','screen-broadcast.css'],
-   js:['mosaic.js','carousel.js','carousel-wall.js','live-mosaic.js','live-wall.js','app.js']}]
+ ['screen',{file:'screen.html',css:['style.css','screen-broadcast.css','showcase-wall.css'],
+   js:['mosaic.js','carousel.js','carousel-wall.js','live-mosaic.js','live-wall.js','showcase-wall.js','app.js']}]
 ]);
 const pageCache=new Map();
 const pageAssetDir=path.join(ROOT,'public');
@@ -662,7 +691,7 @@ app.get('/',(req,res)=>res.set('Cache-Control','no-store').redirect(302,'/upload
 app.get('/upload',guestUploadPage);
 app.get('/admin', (_req,res) => res.redirect(302,'/admin/general'));
 app.get('/admin/general', (req,res) => serveBaliPage(req,res,'admin'));
-app.get('/admin/contest', (req,res) => serveBaliPage(req,res,'admin'));
+app.get('/admin/contest', (_req,res) => res.redirect(302,'/admin/general'));
 app.get('/screen', (req,res) => serveBaliPage(req,res,'screen'));
 app.get('/live',(_req,res)=>res.redirect(302,'/screen'));
 app.get('/operator',(_req,res)=>res.redirect(302,'/control/general'));
@@ -670,7 +699,8 @@ app.get('/control',(_req,res)=>res.redirect(302,'/control/general'));
 for(const area of ['general','contest']){
  app.get('/live/'+area,(_req,res)=>res.redirect(302,'/screen'));
  app.get('/control/'+area,(req,res)=>{
-   if(!validSession(req,'bali_admin'))return res.redirect(302,'/admin/'+area);
+   if(area==='contest')return res.redirect(302,'/control/general');
+   if(!validSession(req,'bali_admin'))return res.redirect(302,'/admin/general');
    serveBaliPage(req,res,'screen');
  });
 }
@@ -680,6 +710,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS contest_moderation_nonces(
  nonce TEXT PRIMARY KEY,used_at_ms INTEGER NOT NULL
 )`);
 app.post('/api/operator/contest-moderation',asyncRoute(async(req,res)=>{
+ if(PHOTO_CONTEST_PAUSED)return res.status(410).json({error:'Фотоконкурсы временно отключены'});
  const payload=req.body||{},auth=String(req.headers.authorization||'');
  if(!/^Bearer [A-Za-z0-9_.-]{40,1500}$/.test(auth)||req.get('Content-Type')?.split(';')[0]!=='application/json')
   return res.status(403).json({error:'Требуется подтверждение Telegram Admin'});
@@ -842,11 +873,12 @@ app.get('/api/public', asyncRoute(async(req,res)=>{
   await synchronizeBroadcast();
   guestIdentity(req,res);
   const event = currentEvent.get();
-  res.json({ event:activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?event:null, uploadShape:event?.upload_shape||'any', limit:null });
+  res.json({ event:ensureStandaloneGeneralEvent()||event, uploadShape:event?.upload_shape||'any', limit:null });
 }));
 // Public contest feed for Telegram Mini App. Approved nominations only.
 // Never return upload tokens, guest identifiers, source filenames or staff data.
 app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
+ if(PHOTO_CONTEST_PAUSED)return res.json({contest_available:false,registration_open:false,voting_open:false,phase:'paused',candidates:[],winners:[]});
  await ensureTelegramContest();
  await finalizeContest();
  const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;
@@ -979,7 +1011,7 @@ app.use('/api/upload', (req,res,next) => {
 });
 app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo'), asyncRoute(async (req,res) => {
   await synchronizeBroadcast();
-  const event = activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?currentEvent.get():null;
+  const event = ensureStandaloneGeneralEvent();
   if (!event) return res.status(409).json({error:'Сейчас нет активного мероприятия'});
   if (req.body?.consent !== 'yes') return res.status(400).json({error:'Необходимо согласие на показ фотографии'});
   if (!req.file?.path) return res.status(400).json({error:'Выберите фотографию'});
@@ -1075,6 +1107,7 @@ app.use('/api/contest/entry',(req,res,next)=>{
  res.on('finish',discard);res.on('close',discard);next();
 });
 app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.single('photo'),asyncRoute(async(req,res)=>{
+ if(PHOTO_CONTEST_PAUSED)return res.status(410).json({error:'Фотоконкурс временно отключён. Отправь фото через общую фотостену.'});
  if(req.headers.origin!==contestOrigin)return res.status(403).json({error:'Отправляй фото из приложения BALI'});
  if(!req.file?.path)return res.status(400).json({error:'Выбери фото'});
  const ticket=String(req.body?.ticket||'');
@@ -1240,7 +1273,7 @@ app.get('/api/photos/:id', screenAuth, (req,res) => {
 // for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
   await synchronizeBroadcast();
-  const event = activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?currentEvent.get():null;
+  const event = ensureStandaloneGeneralEvent();
   const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos p WHERE event_id=? AND status='approved' AND photo_area='general' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
   const update=db.prepare('UPDATE photos SET width=?,height=? WHERE id=? AND (width IS NULL OR height IS NULL)');
   // Upgrade photos created before width/height metadata existed, once per photo.
@@ -1256,6 +1289,7 @@ app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
 }));
 /* Contest media is a separate LED feed, not mixed into the guests' wall. */
 app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
+ if(PHOTO_CONTEST_PAUSED)return res.json({event:null,photos:[],participants:[],phase:'paused',finalized:false,winners:[]});
  await ensureTelegramContest();
  await finalizeContest();
  const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;

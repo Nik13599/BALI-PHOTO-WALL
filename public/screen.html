@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#080b09"><meta name="robots" content="noindex,nofollow">
 <title>BALI PHOTO WALL · LIVE SCREEN</title>
-<link rel="stylesheet" href="/style.css?v=20261030-contest-crown-v1"><link rel="stylesheet" href="/screen-broadcast.css?v=20261030-synced-v1"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/carousel-wall.js"></script><script defer src="/live-mosaic.js"></script><script defer src="/live-wall.js"></script><script defer src="/app.js?v=20261030-synced-v1"></script>
+<link rel="stylesheet" href="/style.css?v=20261030-contest-crown-v1"><link rel="stylesheet" href="/showcase-wall.css?v=20261031-mass-v2"><link rel="stylesheet" href="/screen-broadcast.css?v=20261030-synced-v1"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/carousel-wall.js"></script><script defer src="/live-mosaic.js"></script><script defer src="/live-wall.js"></script><script defer src="/showcase-wall.js?v=20261031-mass-v2"></script><script defer src="/app.js?v=20261030-synced-v1"></script>
 </head>
 <body data-page="screen">
 <main class="screen" id="wallScreen">
@@ -40,13 +40,19 @@
   </div>
   <aside class="wall-settings" id="wallSettings" hidden aria-label="Настройки фотостены">
     <div class="wall-settings-head"><div><strong>Пульт BALI · оформление трансляции</strong><small>Сохраняется на сервере и синхронизируется со всеми экранами</small></div><button type="button" class="screen-close" id="wallSettingsClose" aria-label="Закрыть">×</button></div>
-    <div class="wall-settings-scroll"><p id="screenProfileMessage" class="profile-sync-message" role="status" aria-live="polite"></p><p class="wall-setting-note">📲 Время кнопок и объявления победителя теперь задаётся в <a href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">Telegram Admin</a>.</p><div class="screen-control-links"><a class="button secondary" href="/admin/general">Общие фото</a><a class="button secondary" href="/admin/contest">Конкурс</a><a class="button primary" id="controlLiveLink" href="/screen" target="_blank" rel="noopener">↗ Открыть трансляцию</a></div>
+    <div class="wall-settings-scroll"><p id="screenProfileMessage" class="profile-sync-message" role="status" aria-live="polite"></p><p class="wall-setting-note">📲 Время кнопок и объявления победителя теперь задаётся в <a href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">Telegram Admin</a>. Конкурс временно отключён.</p><div class="screen-control-links"><a class="button secondary" href="/admin/general">Общие фото</a><a class="button secondary" href="/admin/general">Модерация фото</a><a class="button primary" id="controlLiveLink" href="/screen" target="_blank" rel="noopener">↗ Открыть трансляцию</a></div>
       <label class="wall-toggle"><input id="setCenterGrowth" data-wall-setting="centerGrowth" type="checkbox" checked> Центрировать и расширять композицию от центра</label>
       <label class="wall-setting" for="setLayout"><span>Расположение фотографий</span><select id="setLayout" data-wall-setting="layout"><option value="puzzle">Пазл: квадратные, вертикальные, горизонтальные</option><option value="grid">Обычная сетка с одинаковыми ячейками</option><option value="live-mosaic">Живая мозаика: случайные перестройки и увеличение</option>
 <option value="carousel-quad">Карусель 4 полосы: две большие и две маленькие</option>
 <option value="carousel-double">Карусель 2 полосы: встречные потоки</option>
 <option value="carousel-triple">Карусель 3 полосы: крупная по центру</option>
-<option value="carousel-festival">Фестивальная: четыре чередующиеся ленты</option></select></label>
+<option value="carousel-festival">Фестивальная: четыре чередующиеся ленты</option>
+<option value="showcase-spotlight">NEW · Фото в центре + 2 бегущие ленты</option>
+<option value="showcase-film">NEW · Кинолента: 3 ряда и крупный кадр</option>
+<option value="showcase-cascade">NEW · Каскад: 4 вертикальные ленты</option>
+<option value="showcase-orbit">NEW · Орбита: кольцо кадров вокруг главного фото</option>
+<option value="showcase-wall">NEW · Массовая фотостена: 6 бегущих рядов и крупный кадр</option>
+<option value="showcase-ribbon">NEW · Диагональные ленты: плавные потоки и главный кадр</option></select></label>
       <div class="carousel-settings" id="carouselSettings" hidden>
         <div class="wall-setting-separator">Настройки движущихся каруселей</div>
         <p class="wall-setting-note">При менее чем 10 одобренных снимках по умолчанию показывается неподвижная композиция. Снимки сначала проходят крупную ленту, затем переходят в соответствующую маленькую.</p>
@@ -59,7 +65,13 @@
         <label class="wall-toggle"><input id="setCarouselPause" data-wall-setting="carouselPause" type="checkbox"> Приостановить движение (без отключения карусели)</label>
         <p class="wall-setting-note">Настройки скорости и высоты сохраняются на сервере и одинаково доступны всем подключённым экранам.</p>
       </div>
-      <div class="live-mosaic-settings" id="liveMosaicSettings" hidden>
+      <div class="carousel-settings" id="showcaseSettings" hidden>
+ <div class="wall-setting-separator">🎬 Массовые фотоэффекты</div>
+ <p class="wall-setting-note">Фотографии непрерывно движутся, а одна по очереди увеличивается в центре. Каждому гостю достаётся очередь; новые фотографии получают приоритет. Без голосования и конкурсов.</p>
+ <label class="wall-setting" for="setShowcaseInterval"><span>Главный кадр каждые <output id="outShowcaseInterval">3</output> сек</span><input id="setShowcaseInterval" data-wall-setting="showcaseInterval" type="range" min="2" max="12" step="1" value="3"></label>
+ <p class="wall-setting-note">Скорость лент берётся из настроек движущихся каруселей. Пауза карусели также действует здесь.</p>
+ </div>
+ <div class="live-mosaic-settings" id="liveMosaicSettings" hidden>
         <div class="wall-setting-separator">Случайная живая мозаика</div>
         <p class="wall-setting-note">Фотографии по очереди становятся крупными, меняют места и образуют новые полноэкранные мозаики. Все одобренные снимки остаются в композиции.</p>
         <label class="wall-setting" for="setLiveInterval"><span>Новая мозаика каждые <output id="outLiveInterval">8</output> секунд</span><input id="setLiveInterval" data-wall-setting="liveInterval" type="range" min="3" max="45" value="8"></label>
