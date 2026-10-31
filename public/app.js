@@ -723,7 +723,7 @@ if(page==='screen'){
     setShown($('#wallQR'),broadcastArea==='general'&&settings.showQr);
     positionFloating();syncShiftControls();
     $('#columnsSettings').hidden=settings.layout!=='grid';
-    $('#carouselSettings').hidden=!globalThis.BaliCarousel?.isCarousel(settings.layout);
+    $('#carouselSettings').hidden=!(globalThis.BaliCarousel?.isCarousel(settings.layout)||settings.layout.startsWith('showcase-'));
     $('#liveMosaicSettings').hidden=settings.layout!=='live-mosaic';
     $('#showcaseSettings').hidden=!settings.layout.startsWith('showcase-');
     for(const control of controls){
