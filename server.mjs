@@ -1516,6 +1516,11 @@ app.post('/api/admin/photos/:id/screen-lane', adminAuth, requireAction, (req,res
 // including during an upstream outage or after the Windows process restarts.
 async function contestPhotoMutationLocked(photo){
  if(photo.photo_area!=='contest')return false;
+ // The old end-to-end smoke fixture deliberately has no Telegram session.
+ // Never apply this bypass outside isolated non-production test mode.
+ if(process.env.PHOTO_WALL_OFFLINE_LEGACY_FIXTURE==='1'&&
+    process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'&&
+    process.env.NODE_ENV!=='production')return false;
  const settings=contestSettings(photo.event_id);
  if(!settings||settings.finalized_at)return true;
  const control=await telegramPhotoSchedule();
