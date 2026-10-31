@@ -17,7 +17,8 @@
 
 /* BALI PHOTO WALL: live full-screen mosaic, 1 to 500 approved photos */
 body[data-page="screen"]{overflow:hidden;background:#050705}
-.screen{height:100vh;height:100dvh;width:100vw;overflow:hidden;isolation:isolate;--wall-gap:2px;--wall-fit:cover;--wall-logo-size:76px;--wall-live-size:20px;--wall-event-size:32px;--wall-qr-size:92px;--wall-inset:18px}
+/* All overlays must be anchored to the real preview canvas, not the browser viewport. */
+.screen{position:relative;height:100vh;height:100dvh;width:100vw;overflow:hidden;isolation:isolate;--wall-gap:2px;--wall-fit:cover;--wall-logo-size:76px;--wall-live-size:20px;--wall-event-size:32px;--wall-qr-size:92px;--wall-inset:18px}
 .screen:after,.screen-background{display:none}
 .wall-grid{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;gap:var(--wall-gap);background:#080a08;overflow:hidden}
 .wall-grid-row{display:flex;flex:1 1 0;min-height:0;min-width:0;width:100%;gap:var(--wall-gap)}
