@@ -31,7 +31,7 @@ test('Real server isolates rehearsal photos, accepts uploads outside hours, coun
   const image=await sharp({create:{width:64,height:64,channels:3,background:'#cda450'}}).png().toBuffer();
   const proof=n=>({uid:'user-'+n,eventId:date+'__3',name:'Test Person '+n,username:'',telegramName:'Test Person '+n,testSessionId:sid});
   async function upload(p){const form=new FormData();form.append('ticket',Buffer.from(JSON.stringify(p)).toString('base64url'));form.append('photo',new Blob([image],{type:'image/png'}),'test.png');return request('/api/contest/entry',{method:'POST',headers:{Origin:'https://app.baliminsk.by'},body:form})}
-  for(let n=1;n<=3;n++){const r=await upload(proof(n));assert.equal(r.status,200,await r.text())}
+  for(let n=1;n<=3;n++){const r=await upload(proof(n));assert.equal(r.status,201,await r.text())}
   assert.equal((await upload(proof(1))).status,409,'one contestant photo per BALI ID');
   assert.equal((await upload({...proof(4),testSessionId:'test_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'})).status,409,'a stale proof cannot enter this test');
   const login=await request('/api/screen/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'rehearsal-screen-password'})});

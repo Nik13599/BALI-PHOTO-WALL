@@ -902,7 +902,8 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
    return id;
   });
   const id=insert();
-  return res.status(201).json({ok:true,id,status:'pending',message:'Фото отправлено на модерацию конкурса'});
+  return res.status(201).json({ok:true,id,status:setting.test_session_id?'approved':'pending',
+   message:setting.test_session_id?'Тестовое фото принято и готово к голосованию':'Фото отправлено на модерацию конкурса'});
  }catch(error){
   await cleanup();
   return res.status(409).json({error:error?.message==='already-registered'?'Фото уже подано на конкурс.':'Мероприятие изменилось или фотография не принята. Попробуй снова.'});
