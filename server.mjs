@@ -595,6 +595,8 @@ app.get('/admin/general', (req,res) => serveBaliPage(req,res,'admin'));
 app.get('/admin/contest', (req,res) => serveBaliPage(req,res,'admin'));
 app.get('/screen', (req,res) => serveBaliPage(req,res,'screen'));
 app.get('/live',(_req,res)=>res.redirect(302,'/screen'));
+app.get('/operator',(_req,res)=>res.redirect(302,'/control/general'));
+app.get('/control',(_req,res)=>res.redirect(302,'/control/general'));
 for(const area of ['general','contest']){
  app.get('/live/'+area,(_req,res)=>res.redirect(302,'/screen'));
  app.get('/control/'+area,(req,res)=>{
@@ -1353,7 +1355,8 @@ app.get('/api/admin/dashboard', adminAuth, (req,res) => {
   const events = db.prepare('SELECT id,name,active,created_at,upload_shape FROM events ORDER BY id DESC').all();
   const active = currentEvent.get();
   const requested = req.query.eventId;
-  const selected = requested === undefined ? active
+  const selected = requested === undefined ? (req.query.area==='contest'&&activeBroadcast?
+   db.prepare('SELECT id,name,upload_shape FROM events WHERE id=?').get(activeBroadcast.contestEventId):active)
     : (typeof requested === 'string' && /^\d+$/.test(requested)
       ? db.prepare('SELECT id,name,upload_shape FROM events WHERE id=?').get(Number(requested)) : null);
   if (requested !== undefined && !selected) return res.status(404).json({error:'Мероприятие не найдено'});
@@ -1409,6 +1412,7 @@ app.post('/api/admin/events/:id/upload-shape', adminAuth, requireAction, (req,re
   res.json({ok:true,uploadShape:shape});
 });
 app.post('/api/admin/events/:id/activate', adminAuth, requireAction, (req,res) => {
+  if(telegramSchedule.value?.broadcast)return res.status(403).json({error:'Выбор эфира только через Telegram Admin'});
   if (!activateEvent(Number(req.params.id))) return res.status(404).json({error:'Мероприятие не найдено'});
   res.json({ok:true});
 });
@@ -1491,6 +1495,10 @@ async function cleanup() {
 }
 cleanup().catch(console.error);
 setInterval(()=>finalizeContest().catch(console.error),2000).unref();
+// Independent poll continues even when the browser/LED screen is closed.
+// Scheduled Telegram runs can therefore start after the Windows PC comes online.
+setInterval(()=>synchronizeBroadcast().catch(e=>console.warn('Broadcast sync:',e.message)),2500).unref();
+void synchronizeBroadcast().catch(e=>console.warn('Broadcast startup:',e.message));
 // Pull the cloud escrow after boot and while the computer is online. Cloudflare
 // pushes queued bytes only to this site's verified public HTTPS hostname.
 let draining=false;
