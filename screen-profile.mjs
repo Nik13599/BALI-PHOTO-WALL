@@ -2,7 +2,7 @@
 export const SCREEN_AREAS=Object.freeze(['general','contest']);
 export const SCREEN_DEFAULTS=Object.freeze({
  maxPhotos:500,columns:0,gap:2,fit:'contain',layout:'puzzle',centerGrowth:true,
- liveInterval:8,liveFocus:40,liveTransition:1400,liveFit:'cover',livePause:false,showcaseInterval:3,
+ liveInterval:8,liveFocus:40,liveTransition:1400,liveFit:'cover',liveShape:'square',liveTiles:'square',livePause:false,showcaseInterval:3,
  carouselStart:10,carouselSpeed:85,carouselOuterSpeed:120,carouselTopHeight:12,
  carouselBottomHeight:12,carouselCenterSplit:50,carouselPause:false,
  logoPos:'tl',livePos:'tr',eventPos:'bl',hintPos:'bc',qrPos:'br',
@@ -28,7 +28,7 @@ export function screenArea(value){return SCREEN_AREAS.includes(value)?value:null
 export function screenProfile(raw){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Invalid screen profile');
  if(Object.keys(raw).some(k=>!Object.hasOwn(SCREEN_DEFAULTS,k))||
-    Object.keys(SCREEN_DEFAULTS).some(k=>k!=='showcaseInterval'&&!Object.hasOwn(raw,k)))
+    Object.keys(SCREEN_DEFAULTS).some(k=>!['showcaseInterval','liveShape','liveTiles'].includes(k)&&!Object.hasOwn(raw,k)))
   throw Error('Incomplete or unknown screen profile');
  const result={};
  for(const [key,defaultValue] of Object.entries(SCREEN_DEFAULTS)){
@@ -42,6 +42,12 @@ export function screenProfile(raw){
    result[key]=value;
   }else if(key==='layout'){
    if(!layouts.has(value))throw Error('Invalid screen layout');
+   result[key]=value;
+  }else if(key==='liveShape'){
+   if(!['any','square','rectangle','portrait','landscape'].includes(value))throw Error('Invalid image shape filter');
+   result[key]=value;
+  }else if(key==='liveTiles'){
+   if(!['square','natural'].includes(value))throw Error('Invalid tile shape');
    result[key]=value;
   }else if(key==='fit'||key==='liveFit'){
    if(!['cover','contain'].includes(value))throw Error('Invalid image fit');
