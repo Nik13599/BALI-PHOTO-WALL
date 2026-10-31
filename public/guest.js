@@ -9,6 +9,10 @@ const editButton=$('editPhoto'),editor=$('cropEditor'),limit=$('guestLimitsText'
 let policy='any',eventAvailable=false,ready=false,selected=null;
 let cropped=false,loadingCrop=null,previewUrl=null,submitting=false;
 const allowed=['image/jpeg','image/png','image/webp'];
+// The same crop/upload flow runs inside Telegram's WebView when launched as a Web App.
+const telegramEntry=location.pathname==='/telegram-upload';
+if(telegramEntry){document.body.classList.add('telegram-photo-upload');document.title='BALI · Отправить фото';}
+
 function status(text,error=false){message.textContent=text;message.className='alert '+(error?'bad':'good');}
 function setState(){
  button.disabled=!ready||!eventAvailable||!selected||submitting||(policy==='square'&&!cropped);
