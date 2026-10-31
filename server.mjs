@@ -602,6 +602,11 @@ for(const area of ['general','contest']){
    serveBaliPage(req,res,'screen');
  });
 }
+app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
+ await synchronizeBroadcast();
+ res.set('Cache-Control','no-store').json({ok:true,managedBroadcast:true,
+  runId:activeBroadcast?.runId||null,screen:'/screen',folder:activeBroadcast?.folder||null});
+}));
 app.get('/healthz', (_req,res) => {
  const required=['style.css','admin-compact.css','areas.css','screen-broadcast.css',
   'app.js','guest.js','crop.js','bali-logo.svg'];
@@ -812,14 +817,15 @@ app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo')
     }
   }
   const dimension=await sharp(processed).metadata();
-  const filename = crypto.randomUUID() + '.webp';
+  const filename = runFilename(event.id);
   const thumbnail = await sharp(processed).resize({width:360,height:360,fit:'inside',withoutEnlargement:true}).webp({quality:65}).toBuffer();
   const discardProcessed = () => Promise.all([
     fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{}),
     fsp.unlink(path.join(THUMBS,filename)).catch(()=>{})
   ]);
   try {
-    await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
+    await ensurePhotoFolders(filename);
+   await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
     await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
     // Preserve the optional per-event quota and active-event check atomically.
     const result = db.prepare(`INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height)
@@ -946,12 +952,13 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
   if(Number(stat.bavail)*Number(stat.bsize)<MIN_FREE_DISK_MB*1048576)
     return res.status(507).json({error:'На фотосервере недостаточно места'});
  }catch(error){if(!['ENOSYS','ENOTSUP','EOPNOTSUPP'].includes(error.code))throw error}
- const filename=crypto.randomUUID()+'.webp';
+ const filename=runFilename(event.id);
  const thumbnail=await sharp(processed).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
   .webp({quality:65}).toBuffer();
  const cleanup=()=>Promise.all([fsp.unlink(path.join(PHOTOS,filename)).catch(()=>{}),fsp.unlink(path.join(THUMBS,filename)).catch(()=>{})]);
  try{
-  await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
+  await ensurePhotoFolders(filename);
+   await fsp.writeFile(path.join(PHOTOS,filename),processed,{flag:'wx'});
   await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
   const insert=db.transaction(()=>{
    const now=Date.now();
@@ -1048,9 +1055,10 @@ app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
  const podium=phase==='closed'&&settings?.finalized_at?contestPodium(event.id):null;
  const winners=podium?.winners||[];
  const visible=phase==='closed'?winners.map(w=>({photoId:w.id})):candidates;
+ const participants=phase==='closed'?[]:candidates.slice(0,10).map((c,i)=>({id:c.photoId,number:i+1,name:c.name||'Участник №'+(i+1)}));
  const photos=visible.slice(0,500).map(c=>
   db.prepare("SELECT id,created_at,width,height,screen_lane FROM photos WHERE id=? AND status='approved' AND photo_area='contest'").get(c.photoId)).filter(Boolean);
- res.json({event,photos,phase,finalized:!!settings?.finalized_at,serverNowMs:Date.now(),
+ res.json({event,photos,participants,phase,finalized:!!settings?.finalized_at,serverNowMs:Date.now(),
   testMode:!!settings?.test_session_id,
   countdownEndsAtMs:settings?.test_session_id&&policy?.test?.phase==='countdown'?policy.test.deadlineMs:null,
   winner:winners[0]?{id:winners[0].id,name:winners[0].name,votes:winners[0].votes,totalVotes:settings.total_votes}:null,
@@ -1183,8 +1191,9 @@ app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
           throw new Error('Для мероприятия разрешены только квадратные фото 1:1');
         const thumbnail=await sharp(image).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
           .webp({quality:65}).toBuffer();
-        filename=crypto.randomUUID()+'.webp';
-        await fsp.writeFile(path.join(PHOTOS,filename),image,{flag:'wx'});
+        filename=runFilename(event.id);
+        await ensurePhotoFolders(filename);
+   await fsp.writeFile(path.join(PHOTOS,filename),image,{flag:'wx'});
         await fsp.writeFile(path.join(THUMBS,filename),thumbnail,{flag:'wx'});
         const record=insert.run(event.id,filename,'moderator-import',status,Date.now(),size.width,size.height,lane,area);
         result.id=Number(record.lastInsertRowid);result.ok=true;
