@@ -573,7 +573,7 @@ if(page==='screen'){
       const saved=await api(profileUrl);
       if(!controller||!dirtyProfile){
         if(force||profileRevision!==saved.revision){
-          settings={...defaults,...saved.settings};
+          settings={...defaults,...saved.settings,layout:'live-mosaic'};
           profileRevision=saved.revision;
           applySettings();
         }
@@ -786,6 +786,7 @@ if(page==='screen'){
     const result=$('#royalResult');if(result)result.hidden=true;lastRoyalWinner=null;countdownEnd=null;countdown.hidden=true;
     $('#wallGrid').style.removeProperty('display');$('#wallEmpty').style.removeProperty('display');
     photos=[];signature='';eventId=null;
+    const candidates=$('#contestOverlay');if(candidates)candidates.hidden=true;
     globalThis.BaliCarouselWall?.reset();
     globalThis.BaliLiveWall?.reset();
     layout();
@@ -799,10 +800,40 @@ if(page==='screen'){
    if(left!==null)countdown.textContent=left>0?'ПОБЕДИТЕЛЬ ЧЕРЕЗ '+left:'ВЫБИРАЕМ ПОБЕДИТЕЛЯ…';
   }
   setInterval(paintContestCountdown,200);
-  let lastRoyalWinner=null;
+  let lastRoyalWinner=null,contestCarouselSignature='';
+  function showContestCarousel(contest){
+    const overlay=$('#contestOverlay'),track=$('#contestOverlayTrack');
+    if(!overlay||!track)return;
+    const entries=contest?.phase!=='closed'&&Array.isArray(contest?.participants)?
+      contest.participants.slice(0,10):[];
+    if(!entries.length){overlay.hidden=true;contestCarouselSignature='';track.replaceChildren();return}
+    const next=String(contest.event?.id||'')+':'+entries.map(x=>x.id+'/'+x.number+'/'+x.name).join('|');
+    overlay.hidden=false;
+    if(next===contestCarouselSignature)return;
+    contestCarouselSignature=next;
+    const makeCard=participant=>{
+     const card=document.createElement('article');card.className='contest-overlay-card';
+     const badge=document.createElement('span');badge.className='contest-overlay-number';
+     badge.textContent='№ '+String(participant.number);
+     const image=document.createElement('img');image.alt='Участник конкурса № '+participant.number;
+     image.loading='eager';image.decoding='async';
+     image.src='/api/screen/thumbnail/'+encodeURIComponent(participant.id)+'?feed=contest';
+     const name=document.createElement('strong');
+     name.textContent=participant.name||'Участник № '+participant.number;
+     card.append(badge,image,name);
+     return card;
+    };
+    const loop=entries.length>1;
+    const items=loop?entries.concat(entries):entries;
+    track.replaceChildren(...items.map(makeCard));
+    track.classList.toggle('is-static',!loop);
+    track.style.setProperty('--bali-contest-marquee-duration',Math.max(24,entries.length*6)+'s');
+  }
   async function refresh(){
     try{
-      const data=await api(broadcastArea==='contest'?'/api/screen/contest':'/api/screen');
+      const data=await api('/api/screen');
+      const contestData=await api('/api/screen/contest').catch(()=>null);
+      showContestCarousel(contestData);
       await syncProfile();
       failedPolls=0;
       wasAuthenticated=true;
@@ -810,14 +841,14 @@ if(page==='screen'){
       const event=data.event?.id??null;
       const eventName=data.event?.name||'BALI NIGHT CLUB';
       $('#screenEvent').textContent=eventName;
-      countdownEnd=data.testMode&&Number.isSafeInteger(data.countdownEndsAtMs)&&!data.finalized?data.countdownEndsAtMs:null;
-      countdownClockOffset=Number.isSafeInteger(data.serverNowMs)?data.serverNowMs-Date.now():0;paintContestCountdown();
+      countdownEnd=contestData?.testMode&&Number.isSafeInteger(contestData.countdownEndsAtMs)&&!contestData.finalized?contestData.countdownEndsAtMs:null;
+      countdownClockOffset=Number.isSafeInteger(contestData?.serverNowMs)?contestData.serverNowMs-Date.now():0;paintContestCountdown();
       const royal=$('#royalResult');
       if(royal){
-        const winners=Array.isArray(data.winners)?data.winners:
-          (data.winner?[{...data.winner,place:1}]:[]);
-        const ready=data.phase==='closed'&&data.finalized===true&&winners.length>0;
-        const key=ready?event+':'+winners.map(w=>w.place+'/'+w.id+'/'+w.votes).join(';'):null;
+        const winners=Array.isArray(contestData?.winners)?contestData.winners:
+          (contestData?.winner?[{...contestData.winner,place:1}]:[]);
+        const ready=contestData?.phase==='closed'&&contestData.finalized===true&&winners.length>0;
+        const key=ready+(contestData?.event?.id||event)+':'+winners.map(w=>w.place+'/'+w.id+'/'+w.votes).join(';'):null;
         const grid=$('#wallGrid');
         if(ready){
           grid.style.display='none';
