@@ -115,6 +115,8 @@ db.exec(`
 // Preserve Telegram-signed display names independently of editable nomination labels.
 const entryFields=db.pragma('table_info(contest_telegram_entries)').map(x=>x.name);
 if(!entryFields.includes('telegram_display_name'))db.exec("ALTER TABLE contest_telegram_entries ADD COLUMN telegram_display_name TEXT NOT NULL DEFAULT ''");
+if(!entryFields.includes('bali_card_number'))db.exec("ALTER TABLE contest_telegram_entries ADD COLUMN bali_card_number TEXT NOT NULL DEFAULT ''");
+if(!entryFields.includes('telegram_provider_id'))db.exec("ALTER TABLE contest_telegram_entries ADD COLUMN telegram_provider_id TEXT NOT NULL DEFAULT ''");
 
 // Keep all historic contest photos separate, including pending and rejected.
 db.exec("UPDATE photos SET photo_area='contest' WHERE photo_area='general' AND id IN (SELECT photo_id FROM contest_candidates)");
@@ -1009,7 +1011,9 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
     !/^\d{4}-\d{2}-\d{2}(?:__\d+)?$/.test(proof.eventId||'')||
     typeof proof.name!=='string'||proof.name.length<2||proof.name.length>70||
     !/^(?:|@[A-Za-z0-9_]{5,32})$/.test(proof.username||'')||
-    typeof proof.telegramName!=='string'||proof.telegramName.length>100)
+    typeof proof.telegramName!=='string'||proof.telegramName.length>100||
+    (proof.cardNumber!==undefined&&!/^\d{6}$/.test(proof.cardNumber))||
+    (proof.telegramId!==undefined&&!/^\d{1,25}$/.test(proof.telegramId)))
    return res.status(401).json({error:'Подтверждение истекло. Попробуй отправить фото снова.'});
  // A queued nomination belongs to the event that was open when it was
  // submitted, not necessarily the event currently shown on club screens.
@@ -1102,8 +1106,9 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
    const submissionAt=validQueued?proof.queuedAtMs:now;
    const id=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,photo_area) VALUES(?,?,?,?,?,? ,?,'contest')")
      .run(event.id,filename,'contest:'+crypto.randomUUID(),setting.test_session_id?'approved':'pending',submissionAt,dimension.width,dimension.height).lastInsertRowid;
-   db.prepare('INSERT INTO contest_telegram_entries(event_id,bali_uid,bali_event_id,photo_id,telegram_username,telegram_display_name,registered_at) VALUES(?,?,?,?,?,?,?)')
-     .run(event.id,proof.uid,proof.eventId,id,proof.username,proof.telegramName||proof.name,submissionAt);
+   db.prepare('INSERT INTO contest_telegram_entries(event_id,bali_uid,bali_event_id,photo_id,telegram_username,telegram_display_name,bali_card_number,telegram_provider_id,registered_at) VALUES(?,?,?,?,?,?,?,?,?)')
+     .run(event.id,proof.uid,proof.eventId,id,proof.username,proof.telegramName||proof.name,
+      proof.cardNumber||'',proof.telegramId||'',submissionAt);
    // One royal nomination, legacy DB category uses "king" internally.
    db.prepare('INSERT INTO contest_candidates(photo_id,event_id,name,category,registered_at) VALUES(?,?,?,?,?)')
      .run(id,event.id,proof.name,'king',submissionAt);
@@ -1510,8 +1515,11 @@ app.get('/api/admin/dashboard', adminAuth, asyncRoute(async(req,res) => {
     FROM photos WHERE event_id=? AND photo_area=?`).get(selected.id,area):{pending:0,approved:0,rejected:0};
   const total=counts[status],pages=Math.max(1,Math.ceil(total/PAGE_SIZE)),page=Math.min(Number(rawPage),pages);
   const photos=selected?db.prepare(`SELECT p.id,p.status,p.created_at,p.screen_lane,p.photo_area,
-    CASE WHEN c.photo_id IS NULL THEN 0 ELSE 1 END AS contest
+    CASE WHEN c.photo_id IS NULL THEN 0 ELSE 1 END AS contest,
+    t.telegram_username AS telegramUsername,t.telegram_display_name AS telegramName,
+    t.bali_card_number AS cardNumber,t.telegram_provider_id AS telegramId
     FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id
+    LEFT JOIN contest_telegram_entries t ON t.photo_id=p.id
     WHERE p.event_id=? AND p.photo_area=? AND p.status=?
     ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`).all(selected.id,area,status,PAGE_SIZE,(page-1)*PAGE_SIZE):[];
   res.json({events,active,selected,photos,status,area,counts,page,pages,total,pageSize:PAGE_SIZE});
