@@ -747,6 +747,10 @@ app.get('/api/contest/photo/:id', (req,res)=>{
  // Photo bytes must remain readable after approval, even before voting or
  // after voting has closed. Telegram D1 controls the ballot, not image URLs.
  // The SQL above already requires an approved nominated contest photograph.
+ // Helmet defaults to Cross-Origin-Resource-Policy: same-origin, which blocks
+ // an <img> embedded inside app.baliminsk.by even when this URL returns 200.
+ // Only this approved public contest image endpoint is cross-origin embeddable.
+ res.set('Cross-Origin-Resource-Policy','cross-origin');
  return servePhoto(row,res);
 });
 app.get('/api/photos/:id', screenAuth, (req,res) => {
