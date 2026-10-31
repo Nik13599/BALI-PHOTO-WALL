@@ -11,7 +11,7 @@ let cropped=false,loadingCrop=null,previewUrl=null,submitting=false;
 const allowed=['image/jpeg','image/png','image/webp'];
 function status(text,error=false){message.textContent=text;message.className='alert '+(error?'bad':'good');}
 function setState(){
- button.disabled=!ready||!eventAvailable||!selected||submitting;
+ button.disabled=!ready||!eventAvailable||!selected||submitting||(policy==='square'&&!cropped);
  button.textContent=submitting?'ОТПРАВЛЯЕМ…':'ОТПРАВИТЬ ФОТО ↗';
 }
 function clearPreview(){
@@ -42,7 +42,7 @@ async function getSettings(){
   policy=data.uploadShape==='square'?'square':'any';
   eventAvailable=!!data.event?.id;
   eventName.textContent=data.event?.name||'Сейчас нет активного мероприятия';
-  limit.textContent=eventAvailable?'Фото появится на фотостене после одобрения.':'Загрузка откроется после запуска мероприятия.';
+  limit.textContent=eventAvailable?(policy==='square'?'Для этого мероприятия обязателен квадрат 1:1. Выберите область кадра перед отправкой.':'Фото появится на фотостене после одобрения.'):'Загрузка откроется после запуска мероприятия.';
   ready=true;
   $('reloadStatus').hidden=true;
   if(selected&&policy==='square'&&!cropped)await openCrop();
@@ -58,7 +58,7 @@ function loadCropScript(){
  if(loadingCrop)return loadingCrop;
  loadingCrop=new Promise((resolve,reject)=>{
   const script=document.createElement('script');
-  script.src='/crop.js?v=20261031-guest-fast-v1';
+  script.src='/crop.js?v=20261031-square-pinch-v2';
   script.async=true;
   script.onload=()=>globalThis.BaliCropEditor?resolve(globalThis.BaliCropEditor):reject(Error('Редактор не запустился'));
   script.onerror=()=>reject(Error('Не удалось загрузить редактор обрезки'));
@@ -78,7 +78,7 @@ async function openCrop(){
   preview.hidden=true;
   editor.hidden=false;
   editButton.textContent='✓ КАДР ВЫБРАН';
-  status('Готово. При необходимости поправьте кадр и отправьте фото.');
+  status(policy==='square'?'Формат 1:1. Перемещайте фото и меняйте масштаб до нужного кадра.':'Готово. При необходимости поправьте кадр и отправьте фото.');
  }catch(error){
   cropped=false;
   if(policy==='square'){
@@ -109,11 +109,12 @@ input.addEventListener('change',async()=>{
  selected=file;
  fileLabel.textContent=file.name.length>40?file.name.slice(0,36)+'…':file.name;
  showPreview(file);
- status('Фото выбрано. Отправка не требует обязательной обрезки.');
+ status(policy==='square'?'Для мероприятия требуется квадрат 1:1. Настройте кадр ниже.':'Фото выбрано. При желании его можно обрезать.');
  setState();
  if(policy==='square'&&ready)await openCrop();
 });
 editButton.addEventListener('click',openCrop);
+$('cropReset')?.addEventListener('click',()=>globalThis.BaliCropEditor?.reset());
 $('reloadStatus').addEventListener('click',getSettings);
 $('consent').addEventListener('change',setState);
 form.addEventListener('submit',async event=>{
