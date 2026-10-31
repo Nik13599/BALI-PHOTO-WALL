@@ -231,6 +231,20 @@ async function ensureTelegramContest(){
   const contestDate=[partyDate,nextDay].includes(resultDate)?resultDate:nextDay;
   db.transaction(()=>{
    if(db.prepare('SELECT 1 FROM contest_settings WHERE bali_event_id=? LIMIT 1').get(partyDate))return;
+   // Adopt a single already configured unbound event instead of silently
+   // abandoning its existing contestants when Telegram Admin names are saved.
+   const eligible=db.prepare("SELECT event_id,contest_date FROM contest_settings WHERE enabled=1 AND bali_event_id='' AND finalized_at IS NULL")
+    .all().filter(x=>eligiblePartyDay(partyDate,x.contest_date));
+   if(eligible.length===1){
+    const otherDates=db.prepare('SELECT DISTINCT bali_event_id AS d FROM contest_telegram_entries WHERE event_id=?')
+     .all(eligible[0].event_id);
+    if(otherDates.every(x=>x.d===partyDate)){
+     db.prepare('UPDATE contest_settings SET bali_event_id=?,updated_at=? WHERE event_id=?')
+      .run(partyDate,Date.now(),eligible[0].event_id);
+     console.log('PHOTO WALL: linked existing contest',eligible[0].event_id,partyDate);
+     return;
+    }
+   }
    const name=(String(session.partyName).trim()+' · '+String(session.contestName).trim()).slice(0,90);
    const id=db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,0,?)').run(name,Date.now()).lastInsertRowid;
    db.prepare("INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,updated_at) VALUES(?,1,0,?,'03:00','04:00',?,?)")
