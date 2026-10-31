@@ -606,8 +606,20 @@ for(const area of ['general','contest']){
 }
 app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
  await synchronizeBroadcast();
+ // Anonymous dashboard receives only aggregate counters, never guest photos,
+ // names, access tokens or BALI IDs. It cannot control a broadcast.
+ const contestId=activeBroadcast?.contestEventId;
+ const counts=contestId?db.prepare(`SELECT
+  SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending,
+  SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved,
+  SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS rejected
+  FROM photos WHERE event_id=? AND photo_area='contest'`).get(contestId):null;
+ const registered=contestId?db.prepare(
+  'SELECT COUNT(*) AS n FROM contest_telegram_entries WHERE event_id=?').get(contestId)?.n||0:0;
  res.set('Cache-Control','no-store').json({ok:true,managedBroadcast:true,
-  runId:activeBroadcast?.runId||null,screen:'/screen',folder:activeBroadcast?.folder||null});
+  runId:activeBroadcast?.runId||null,screen:'/screen',
+  counts:{pending:Number(counts?.pending)||0,approved:Number(counts?.approved)||0,
+   rejected:Number(counts?.rejected)||0,registered:Number(registered)||0}});
 }));
 /* Local operator can restore already curated WebP photos copied from an
    earlier broadcast folder. They are indexed only in the CURRENT run. */
