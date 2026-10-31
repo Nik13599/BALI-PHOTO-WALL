@@ -327,6 +327,11 @@ async function deleteCancelledBroadcast(runId){
   .run(Date.now(),runId);
 }
 async function synchronizeBroadcast(){
+ if(PHOTO_CONTEST_PAUSED){
+  activeBroadcast=null;
+  ensureStandaloneGeneralEvent();
+  return null;
+ }
  if(broadcastSyncPending)return broadcastSyncPending;
  broadcastSyncPending=(async()=>{
   const policy=await telegramPhotoSchedule(),intent=policy?.broadcast;
