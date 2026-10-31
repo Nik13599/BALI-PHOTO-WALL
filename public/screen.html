@@ -4,7 +4,7 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#080b09"><meta name="robots" content="noindex,nofollow">
 <title>BALI PHOTO WALL · LIVE SCREEN</title>
-<link rel="stylesheet" href="/style.css?v=20261030-contest-crown-v1"><link rel="stylesheet" href="/showcase-wall.css?v=20261031-mass-v2"><link rel="stylesheet" href="/screen-broadcast.css?v=20261030-synced-v1"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/carousel-wall.js"></script><script defer src="/live-mosaic.js"></script><script defer src="/live-wall.js"></script><script defer src="/showcase-wall.js?v=20261031-mass-v2"></script><script defer src="/app.js?v=20261030-synced-v1"></script>
+<link rel="stylesheet" href="/style.css?v=20261030-contest-crown-v1"><link rel="stylesheet" href="/showcase-wall.css?v=20261031-mass-v2"><link rel="stylesheet" href="/screen-broadcast.css?v=20261030-synced-v1"><script defer src="/mosaic.js"></script><script defer src="/carousel.js"></script><script defer src="/carousel-wall.js"></script><script defer src="/live-mosaic.js?v=20261031-squares"></script><script defer src="/live-wall.js"></script><script defer src="/showcase-wall.js?v=20261031-mass-v2"></script><script defer src="/app.js?v=20261031-squares"></script>
 </head>
 <body data-page="screen">
 <main class="screen" id="wallScreen">
@@ -77,6 +77,8 @@
         <label class="wall-setting" for="setLiveInterval"><span>Новая мозаика каждые <output id="outLiveInterval">8</output> секунд</span><input id="setLiveInterval" data-wall-setting="liveInterval" type="range" min="3" max="45" value="8"></label>
         <label class="wall-setting" for="setLiveFocus"><span>Размер выделенной фотографии <output id="outLiveFocus">40</output>%</span><input id="setLiveFocus" data-wall-setting="liveFocus" type="range" min="25" max="65" value="40"></label>
         <label class="wall-setting" for="setLiveTransition"><span>Плавность перестройки <output id="outLiveTransition">1400</output> мс</span><input id="setLiveTransition" data-wall-setting="liveTransition" type="range" min="300" max="2500" step="100" value="1400"></label>
+        <label class="wall-setting" for="setLiveShape"><span>Какие фотографии показывать</span><select id="setLiveShape" data-wall-setting="liveShape"><option value="square">Только квадратные 1:1</option><option value="any">Любые пропорции</option><option value="rectangle">Все неквадратные</option><option value="portrait">Вертикальные</option><option value="landscape">Горизонтальные</option></select></label>
+        <label class="wall-setting" for="setLiveTiles"><span>Форма плиток и увеличений</span><select id="setLiveTiles" data-wall-setting="liveTiles"><option value="square">Всегда квадрат 1:1</option><option value="natural">Свободная мозаика</option></select></label>
         <label class="wall-setting" for="setLiveFit"><span>Фотографии в мозаике</span><select id="setLiveFit" data-wall-setting="liveFit"><option value="cover">Заполнить ячейку, подрезая края</option><option value="contain">Показать фотографию целиком</option></select></label>
         <label class="wall-toggle"><input id="setLivePause" data-wall-setting="livePause" type="checkbox"> Пауза автоматической перестройки</label>
         <button id="liveMosaicNext" class="button secondary" type="button">Следующая мозаика сейчас ↻</button>
