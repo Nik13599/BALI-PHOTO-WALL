@@ -228,7 +228,7 @@ const telegramContestMatches=(control,event,settings)=>{
 };
 /* Read-only Telegram Admin schedule. This supersedes Windows button clocks
    but never changes Windows event/candidate/photo data. */
-let telegramSchedule={expires:0,value:null,pending:null};
+let telegramSchedule={expires:0,value:null,pending:null,lastGoodAt:0,lastWarningAt:0};
 async function telegramPhotoSchedule(){
  if(Date.now()<telegramSchedule.expires)return telegramSchedule.value;
  if(telegramSchedule.pending)return telegramSchedule.pending;
@@ -241,10 +241,22 @@ async function telegramPhotoSchedule(){
    if(!response.ok||value?.ok!==true||!value?.buttons?.vote||!value?.buttons?.registration)
     throw Error('Telegram Admin schedule unavailable');
    telegramSchedule.value=value;
+   telegramSchedule.lastGoodAt=Date.now();
    telegramSchedule.expires=Date.now()+5000;
   }catch(error){
-   telegramSchedule.value=null;telegramSchedule.expires=Date.now()+5000;
-   console.warn('Telegram Admin button settings:',error.message);
+   const now=Date.now();
+   // Temporary 5-second upstream timeouts must NOT clear the active
+   // broadcast, which would make the moderator see the wrong event
+   // and remove the winner mosaic from the club screen.
+   // The grace period is bounded: after 120s fail closed and do not
+   // accept new operations based on stale Telegram instructions.
+   if(!telegramSchedule.lastGoodAt||now-telegramSchedule.lastGoodAt>120000)
+    telegramSchedule.value=null;
+   telegramSchedule.expires=now+5000;
+   if(now-telegramSchedule.lastWarningAt>60000){
+    telegramSchedule.lastWarningAt=now;
+    console.warn('Telegram Admin synchronization delayed:',error.message);
+   }
   }finally{telegramSchedule.pending=null}
   return telegramSchedule.value;
  })();
