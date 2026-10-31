@@ -215,6 +215,32 @@ async function telegramPhotoSchedule(){
  })();
  return telegramSchedule.pending;
 }
+// A newly saved Telegram Admin competition becomes its own PHOTO WALL event.
+// Never reuse or alter the general photo wall event, and never duplicate a day.
+let syncContestPending=null;
+async function ensureTelegramContest(){
+ if(syncContestPending)return syncContestPending;
+ syncContestPending=(async()=>{
+  const policy=await telegramPhotoSchedule(),session=policy?.current?.session;
+  if(!session||!/\d{4}-\d{2}-\d{2}$/.test(session.date||'')||
+     !String(session.partyName||'').trim()||!String(session.contestName||'').trim())return;
+  const partyDate=session.date;
+  const nextDay=new Date(Date.parse(partyDate+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+  const resultDate=Number.isSafeInteger(policy.resultAtMs)?
+   new Date(policy.resultAtMs+10800000).toISOString().slice(0,10):'';
+  const contestDate=[partyDate,nextDay].includes(resultDate)?resultDate:nextDay;
+  db.transaction(()=>{
+   if(db.prepare('SELECT 1 FROM contest_settings WHERE bali_event_id=? LIMIT 1').get(partyDate))return;
+   const name=(String(session.partyName).trim()+' · '+String(session.contestName).trim()).slice(0,90);
+   const id=db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,0,?)').run(name,Date.now()).lastInsertRowid;
+   db.prepare("INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,updated_at) VALUES(?,1,0,?,'03:00','04:00',?,?)")
+    .run(id,contestDate,partyDate,Date.now());
+   console.log('PHOTO WALL: created Telegram-linked competition',id,partyDate);
+  })();
+ })().catch(error=>console.warn('Telegram competition sync:',error.message))
+  .finally(()=>{syncContestPending=null});
+ return syncContestPending;
+}
 let finalizing=null,lastTallyError='',lastTallyAttempt=0;
 async function finalizeContest(){
  if(finalizing)return finalizing;
@@ -481,6 +507,7 @@ app.get('/api/public', (req,res) => {
 // Public contest feed for Telegram Mini App. Approved nominations only.
 // Never return upload tokens, guest identifiers, source filenames or staff data.
 app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
+ await ensureTelegramContest();
  await finalizeContest();
  const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;
  const control=await telegramPhotoSchedule();
@@ -671,6 +698,7 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  // A queued nomination belongs to the event that was open when it was
  // submitted, not necessarily the event currently shown on club screens.
  // The event ID in the ticket is signed by BALI's Telegram backend.
+ await ensureTelegramContest();
  let event=currentContestEvent.get();
  if(proof.queued){
   // Never silently attach yesterday's queued photo to today's current
@@ -811,6 +839,7 @@ app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
 }));
 /* Contest media is a separate LED feed, not mixed into the guests' wall. */
 app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
+ await ensureTelegramContest();
  await finalizeContest();
  const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;
  const policy=await telegramPhotoSchedule();
@@ -1293,6 +1322,7 @@ app.post('/api/admin/contest/cloud-queue/retry',adminAuth,requireAction,(_req,re
 });
 setTimeout(()=>drainQueuedPhotos().catch(console.error),3000).unref();
 setInterval(()=>drainQueuedPhotos().catch(console.error),45000).unref();
+setInterval(()=>ensureTelegramContest().catch(console.error),30000).unref();
 setInterval(()=>cleanup().catch(console.error),3600000).unref();
 app.use((err,req,res,_next) => {
   console.error('Request error:',err.message);
