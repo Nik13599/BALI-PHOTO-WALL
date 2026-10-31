@@ -258,6 +258,10 @@ if(page==='admin') {
       };
       $('#photoGrid').innerHTML=data.photos.length ? data.photos.map(p=>
         '<article class="photo-card '+(p.contest?'contest-photo':'')+'"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото #'+p.id+'" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+(p.contest?' · ♛':'')+'</span><span class="status '+p.status+'">'+({pending:'ОЖИДАЕТ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div>'+
+        (adminArea==='contest'&&p.telegramName?'<div class="photo-meta" style="display:block;overflow-wrap:anywhere">'+
+          '<strong>'+esc(p.telegramName)+'</strong> · BALI Card '+esc(p.cardNumber||'не указан')+
+          (p.telegramUsername?' · '+esc(p.telegramUsername):' · Telegram без @username')+
+          '</div>':'')+
         (adminArea==='general'&&p.status==='approved'?'<label class="photo-lane-label">Поток <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Авто</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верх</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Низ</option></select></label>':'')+
         '<div class="photo-actions">'+actions(p)+(adminArea==='contest'?'<button class="button small secondary" type="button" data-replace-photo="'+p.id+'">↥ ЗАМЕНИТЬ С ПК</button>':'')+'<button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
       ).join('') : '<div class="empty">'+({pending:'Новых фотографий пока нет. Как только гости загрузят снимки, они появятся здесь.',approved:'На обычной фотостене пока нет опубликованных фотографий.',contest:'В конкурсе пока нет одобренных фотографий.',rejected:'Отклонённых фотографий нет.'}[activePhotoStatus]||'Фотографий нет.')+'</div>';
