@@ -14,7 +14,7 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env, DATA_DIR: tempData,
-      ALLOW_LEGACY_EVENT_CONTROL:'1', PHOTO_WALL_OFFLINE_LEGACY_FIXTURE:'1', NODE_ENV: 'development', HOST: '127.0.0.1', PORT: String(port),
+      ALLOW_LEGACY_EVENT_CONTROL:'0', PHOTO_WALL_OFFLINE_LEGACY_FIXTURE:'0', NODE_ENV: 'production', HOST: '127.0.0.1', PORT: String(port),
       PUBLIC_URL: url, ADMIN_PASSWORD: 'smoketest-only-secret-pass',
       SCREEN_PASSWORD: 'smoketest-screen-access',
       SESSION_SECRET: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGH'
@@ -71,8 +71,15 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
     assert.match(served.headers.get('cache-control'),/no-store/);
     const screen = await (await request('/api/screen',{headers:{Cookie:screenCookie}})).json();
     assert.ok(screen.photos.some(p=>p.id===uploaded.id));
+    // Reproduce the live-club incident: production-like Windows settings
+    // without the old Telegram-specific environment override.
+    const noAdmin = await request('/api/admin/events',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:'UNAUTHORIZED EVENT'})
+    });
+    assert.equal(noAdmin.status,401,'Only PHOTO WALL admin may create a broadcast');
     const newEvent = await request('/api/admin/events',{method:'POST',headers,body:JSON.stringify({name:'SMOKE TEST EVENT'})});
-    assert.equal(newEvent.status,201);
+    assert.equal(newEvent.status,201,'Standalone general PHOTO WALL event creation must not depend on Telegram Admin: '+await newEvent.text().catch(()=>''));
     const next = await (await request('/api/public',{headers:{Cookie:guest}})).json();
     assert.equal(next.event.name,'SMOKE TEST EVENT');
     const empty = await (await request('/api/screen',{headers:{Cookie:screenCookie}})).json();
@@ -105,6 +112,25 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
     assert.equal(hidden.status,404);
     const screensAfterReject = await (await request('/api/screen',{headers:{Cookie:screenCookie}})).json();
     assert.ok(screensAfterReject.photos.every(x=>x.id!==afterBurst.photos[0].id));
+
+    // Select a previous photo wall event from the local archive without
+    // contest IDs, Telegram scheduling or a winner announcement time.
+    const back = await request('/api/admin/events/'+publicResult.event.id+'/activate',{
+      method:'POST',headers,body:'{}'
+    });
+    assert.equal(back.status,200,'Local archive activation should work without Telegram: '+await back.text().catch(()=>''));
+    const oldAgain=await (await request('/api/public',{headers:{Cookie:guest}})).json();
+    assert.equal(oldAgain.event.id,publicResult.event.id,'Existing event should become active again');
+    const liveAgain=await (await request('/api/screen',{headers:{Cookie:screenCookie}})).json();
+    assert.equal(liveAgain.event.id,publicResult.event.id,'LED must use the selected PHOTO WALL event');
+    const absentEvent=await request('/api/admin/events/99999999/activate',{
+      method:'POST',headers,body:'{}'
+    });
+    assert.equal(absentEvent.status,404,'Unknown archive event cannot be activated');
+
+    const client=await (await request('/admin/general')).text();
+    assert.match(client,/＋ СОЗДАТЬ НОВЫЙ ЭФИР/,'Admin must offer a clear creation control');
+    assert.match(client,/\$\('#eventForm'\)\.hidden=adminArea!=='general'/,'Normal event form must not be hidden');
   } finally {
     if (app.exitCode===null) {
       const exit = new Promise(resolve=>app.once('exit',resolve));
