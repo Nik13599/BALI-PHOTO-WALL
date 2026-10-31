@@ -124,8 +124,7 @@ if(page==='admin') {
   async function refreshLocalBroadcast(){
    try{
     const data=await api('/api/admin/broadcast-state'),status=$('#localBroadcastStatus');
-    if(status)status.textContent=data.active?'● ЭФИР '+data.runId.slice(0,8)+' · '+data.folder:
-     '○ Трансляция не запущена. Включите в Telegram Admin.';
+    if(status)status.textContent='✓ PHOTO WALL готова к показу. Откройте LED-экран: карусели, QR и оформление управляются здесь, без конкурса.';
     const button=$('#restoreBroadcastPhotos');if(button)button.disabled=!data.active;
    }catch(error){const status=$('#localBroadcastStatus');if(status)status.textContent='Сервер недоступен: '+error.message}
   }
@@ -144,7 +143,7 @@ if(page==='admin') {
         root.innerHTML=`<section id="dashboard" class="bali-admin-v2">
 <div class="admin-heading">
   <div class="admin-identity"><div class="eyebrow">PHOTO WALL · ${adminArea==='contest'?'ROYAL CONTEST':'GENERAL CONTROL'}</div><h1>${adminArea==='contest'?'♛ МОДЕРАЦИЯ КОНКУРСА':'ОБЩАЯ ФОТОСТЕНА'}</h1><span class="muted" id="activeEvent"></span></div>
-  <div class="admin-links"><a class="button secondary" href="/live/${adminArea}" target="_blank" rel="noopener">◩ ТРАНСЛЯЦИЯ</a><a class="button secondary" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">📲 TELEGRAM MINI APP</a><a class="button secondary" href="/control/${adminArea}" target="_blank" rel="noopener">⚙ НАСТРОЙКА ЭКРАНА</a><button type="button" class="button secondary" id="logoutBtn">ВЫЙТИ</button></div>
+  <div class="admin-links"><a class="button secondary" href="/live/${adminArea}" target="_blank" rel="noopener">◩ ТРАНСЛЯЦИЯ</a><a class="button secondary" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">📲 КНОПКА В TELEGRAM</a><a class="button secondary" href="/control/${adminArea}" target="_blank" rel="noopener">⚙ НАСТРОЙКА ЭКРАНА</a><button type="button" class="button secondary" id="logoutBtn">ВЫЙТИ</button></div>
 </div>
 <nav class="admin-area-links" aria-label="Рабочие зоны PHOTO WALL"><a href="/admin/general" class="admin-area-link ${adminArea==='general'?'selected':''}">◩ ОБЩИЕ ФОТО</a></nav>
 <div class="admin-quick-actions" aria-label="Управление PHOTO WALL">
@@ -156,13 +155,13 @@ if(page==='admin') {
  <span>1. Проверь фото. 2. Одобри или отклони. 3. Одобренные попадут в голосование.</span>
  <strong id="contestModeratorCounter" aria-live="polite">Проверяем новые фото…</strong></div>
 <section class="panel" id="localBroadcastPanel" style="margin:10px 0;padding:13px">
- <h3>📡 ЕДИНЫЙ ЭФИР BALI</h3><p id="localBroadcastStatus" class="muted">Проверяем трансляцию…</p>
+ <h3>📺 ТРАНСЛЯЦИЯ ФОТОСТЕНЫ</h3><p id="localBroadcastStatus" class="muted">Проверяем трансляцию…</p>
  <div style="display:flex;flex-wrap:wrap;gap:8px">
- <a class="button primary" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener">TELEGRAM ADMIN · ЗАПУСК</a>
+ <a class="button primary" href="/control/general" target="_blank" rel="noopener">⚙ НАСТРОИТЬ ЭКРАН И QR</a>
  <a class="button secondary" href="/screen" target="_blank" rel="noopener">ЕДИНЫЙ LED-ЭКРАН</a>
  <button type="button" class="button secondary" id="restoreBroadcastPhotos">ВОССТАНОВИТЬ ФОТО</button>
  </div><p id="restoreBroadcastStatus" class="muted"></p>
- <small class="muted">Новая трансляция запускается исключительно в Telegram Admin. Здесь только модерация, архив и восстановление фотографий.</small>
+ <small class="muted">Трансляция и оформление настраиваются здесь, в PHOTO WALL. Telegram Admin управляет только кнопкой «Покажи себя на экране» и её расписанием.</small>
  </section><details class="panel admin-drawer" id="eventPanel"><summary>${adminArea==='contest'?'Выбрать мероприятие конкурса':'Мероприятие и формат загрузки'}</summary>
   <div class="event-panel">
     <form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required aria-label="Название новой вечеринки"><button class="button primary" type="submit">СОЗДАТЬ</button></form>
@@ -615,7 +614,7 @@ if(page==='screen'){
     eventX:[-250,250],eventY:[-250,250],hintX:[-250,250],hintY:[-250,250],
     qrX:[-250,250],qrY:[-250,250],
     logoSize:[24,240],liveSize:[10,55],eventSize:[12,85],
-    qrSize:[40,250],inset:[0,80]
+    qrSize:[40,480],inset:[0,80]
   };
   let settings={...defaults};
   const embeddedLogo=$('#wallLogo')?.getAttribute('src')||'/bali-logo.svg';
@@ -714,7 +713,7 @@ if(page==='screen'){
     screen.style.setProperty('--wall-logo-size',Math.max(17,Math.round(settings.logoSize*fitScale))+'px');
     screen.style.setProperty('--wall-live-size',Math.max(10,Math.round(settings.liveSize*fitScale))+'px');
     screen.style.setProperty('--wall-event-size',Math.max(10,Math.round(settings.eventSize*fitScale))+'px');
-    screen.style.setProperty('--wall-qr-size',Math.max(36,Math.round(settings.qrSize*fitScale))+'px');
+    screen.style.setProperty('--wall-qr-size',Math.max(36,Math.min(Math.round(settings.qrSize*fitScale),Math.round(screen.clientWidth*.46),Math.round(screen.clientHeight*.58)))+'px');
     screen.style.setProperty('--wall-inset',Math.round(settings.inset*fitScale)+'px');
     setShown($('#wallLogo'),settings.showLogo);
     setShown($('#wallLive'),settings.showLive);

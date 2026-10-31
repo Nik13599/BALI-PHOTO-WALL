@@ -34,13 +34,13 @@
     </form>
   </div>
   <div class="screen-toolbar">
-    <a class="screen-gear" id="unifiedTelegramAdmin" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener" style="text-decoration:none">🎛 Telegram Admin</a>
+    <a class="screen-gear" id="unifiedTelegramAdmin" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener" style="text-decoration:none">📲 Кнопка в Telegram</a>
     <button class="screen-gear" id="wallSettingsToggle" type="button" aria-label="Настройки отображения" aria-expanded="false"><span aria-hidden="true">⚙</span> Настройки</button>
     <button class="screen-gear" id="fullscreenBtn" type="button">⛶ Весь экран</button>
   </div>
   <aside class="wall-settings" id="wallSettings" hidden aria-label="Настройки фотостены">
-    <div class="wall-settings-head"><div><strong>Пульт BALI · оформление трансляции</strong><small>Сохраняется на сервере и синхронизируется со всеми экранами</small></div><button type="button" class="screen-close" id="wallSettingsClose" aria-label="Закрыть">×</button></div>
-    <div class="wall-settings-scroll"><p id="screenProfileMessage" class="profile-sync-message" role="status" aria-live="polite"></p><p class="wall-setting-note">📲 Время работы кнопки «Покажи себя на экране» задаётся в <a href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">Telegram Admin</a>. Конкурс временно отключён.</p><div class="screen-control-links"><a class="button secondary" href="/admin/general">Общие фото</a><a class="button secondary" href="/admin/general">Модерация фото</a><a class="button primary" id="controlLiveLink" href="/screen" target="_blank" rel="noopener">↗ Открыть трансляцию</a></div>
+    <div class="wall-settings-head"><div><strong>PHOTO WALL · Настройки трансляции</strong><small>Сохраняется на сервере и синхронизируется со всеми экранами</small></div><button type="button" class="screen-close" id="wallSettingsClose" aria-label="Закрыть">×</button></div>
+    <div class="wall-settings-scroll"><p id="screenProfileMessage" class="profile-sync-message" role="status" aria-live="polite"></p><p class="wall-setting-note">Все карусели, QR-код, размеры и видимость элементов настраиваются здесь. В <a href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">Telegram Admin</a> задаётся только включение и расписание кнопки «Покажи себя на экране». Конкурс временно отключён.</p><div class="screen-control-links"><a class="button secondary" href="/admin/general">Общие фото</a><a class="button secondary" href="/admin/general">Модерация фото</a><a class="button primary" id="controlLiveLink" href="/screen" target="_blank" rel="noopener">↗ Открыть трансляцию</a></div>
       <label class="wall-toggle"><input id="setCenterGrowth" data-wall-setting="centerGrowth" type="checkbox" checked> Центрировать и расширять композицию от центра</label>
       <label class="wall-setting" for="setLayout"><span>Расположение фотографий</span><select id="setLayout" data-wall-setting="layout"><option value="puzzle">Пазл: квадратные, вертикальные, горизонтальные</option><option value="grid">Обычная сетка с одинаковыми ячейками</option><option value="live-mosaic">Живая мозаика: случайные перестройки и увеличение</option>
 <option value="carousel-quad">Карусель 4 полосы: две большие и две маленькие</option>
@@ -106,7 +106,7 @@
       <div class="wall-logo-buttons"><button class="button secondary" id="wallLogoDefault" type="button">Вернуть логотип BALI</button><span id="wallLogoMessage" role="status" aria-live="polite"></span></div>
       <label class="wall-setting" for="setLiveSize"><span>Размер PHOTO LIVE <output id="outLiveSize">20</output> px</span><input id="setLiveSize" data-wall-setting="liveSize" type="range" min="10" max="55" value="20"></label>
       <label class="wall-setting" for="setEventSize"><span>Размер названия вечеринки <output id="outEventSize">32</output> px</span><input id="setEventSize" data-wall-setting="eventSize" type="range" min="12" max="85" value="32"></label>
-      <label class="wall-setting" for="setQrSize"><span>Размер QR-кода <output id="outQrSize">92</output> px</span><input id="setQrSize" data-wall-setting="qrSize" type="range" min="40" max="250" value="92"></label>
+      <label class="wall-setting" for="setQrSize"><span>Размер QR-кода <output id="outQrSize">92</output> px</span><input id="setQrSize" data-wall-setting="qrSize" type="range" min="40" max="480" value="92"></label>
       <label class="wall-setting" for="setInset"><span>Отступы от краёв <output id="outInset">18</output> px</span><input id="setInset" data-wall-setting="inset" type="range" min="0" max="80" value="18"></label>
       <label class="wall-toggle"><input id="setShowLogo" data-wall-setting="showLogo" type="checkbox" checked> Показывать логотип</label>
       <label class="wall-toggle"><input id="setShowLive" data-wall-setting="showLive" type="checkbox" checked> Показывать PHOTO LIVE</label>

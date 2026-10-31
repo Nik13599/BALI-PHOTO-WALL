@@ -19,7 +19,8 @@ body[data-screen-mode="control"] .wall-setting{gap:5px}
 body[data-screen-mode="control"] .wall-settings-head strong{font-size:15px}
 body[data-screen-mode="control"] .wall-settings-head small{font-size:10px}
 body[data-screen-mode="control"] .wall-settings{width:min(335px,calc(100vw - 20px))}
-body[data-page="screen"] .wall-qr{max-width:min(38vw,300px)}
+/* Let the QR size slider control the real LED image; never cap at 300px. */
+body[data-page="screen"] .wall-qr{max-width:min(46%,calc(100% - 14px));z-index:8}
 body[data-page="screen"] .wall-qr img{max-width:100%;height:auto;aspect-ratio:1}
 body[data-page="screen"] .wall-logo{max-width:min(45vw,520px)}
 body[data-page="screen"] .wall-live{max-width:52vw;white-space:normal}
