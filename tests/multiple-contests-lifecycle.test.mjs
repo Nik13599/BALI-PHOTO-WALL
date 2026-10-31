@@ -17,7 +17,7 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
   current:{session:{date,eventId:date,partyName:'BALI',contestName:'КОРОЛЬ ВЕЧЕРА'}},
   session:{date,eventId:date,partyName:'BALI',contestName:'КОРОЛЬ ВЕЧЕРА'},
   buttons:{wall:{open:true},registration:{open:true},vote:{open:false,visible:true}},
-  resultAtMs:Date.now()+3600000,
+  resultAtMs:Date.now()+3600000,contestPhase:'registration',registrationEndsAtMs:Date.now()+3600000,
   broadcast:{runId:ids[0],phase:'running',startsAtMs:Date.now()-30000,active:true,cancelRunId:''}}};
  const save=()=>writeFile(stateFile,JSON.stringify(state));
  await save();
