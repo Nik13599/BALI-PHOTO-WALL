@@ -13,7 +13,7 @@ test('300 approved photos are visible on screen and paginated for moderator', {t
   const port=13235,origin='http://127.0.0.1:'+port;
   const server=spawn(process.execPath,['server.mjs'],{
     stdio:['ignore','pipe','pipe'],
-    env:{...process.env,DATA_DIR:dir,PORT:String(port),HOST:'127.0.0.1',
+    env:{...process.env,ALLOW_LEGACY_EVENT_CONTROL:'1',DATA_DIR:dir,PORT:String(port),HOST:'127.0.0.1',
       NODE_ENV:'production',PUBLIC_URL:'https://baliminsk.online',MAX_PHOTOS_PER_EVENT:'300',
       ADMIN_PASSWORD:'test-admin-password-12345',
       SCREEN_PASSWORD:'test-screen-password-12345',
