@@ -2,7 +2,7 @@
 export const SCREEN_AREAS=Object.freeze(['general','contest']);
 export const SCREEN_DEFAULTS=Object.freeze({
  maxPhotos:500,columns:0,gap:2,fit:'contain',layout:'puzzle',centerGrowth:true,
- liveInterval:8,liveFocus:40,liveTransition:1400,liveFit:'cover',livePause:false,
+ liveInterval:8,liveFocus:40,liveTransition:1400,liveFit:'cover',livePause:false,showcaseInterval:3,
  carouselStart:10,carouselSpeed:85,carouselOuterSpeed:120,carouselTopHeight:12,
  carouselBottomHeight:12,carouselCenterSplit:50,carouselPause:false,
  logoPos:'tl',livePos:'tr',eventPos:'bl',hintPos:'bc',qrPos:'br',
@@ -12,7 +12,7 @@ export const SCREEN_DEFAULTS=Object.freeze({
 });
 const ranges={
  maxPhotos:[1,500],columns:[0,40],gap:[0,16],
- liveInterval:[3,45],liveFocus:[25,65],liveTransition:[300,2500],
+ liveInterval:[3,45],liveFocus:[25,65],liveTransition:[300,2500],showcaseInterval:[2,12],
  carouselStart:[5,30],carouselSpeed:[20,260],carouselOuterSpeed:[20,300],
  carouselTopHeight:[6,25],carouselBottomHeight:[6,25],carouselCenterSplit:[25,75],
  logoX:[-250,250],logoY:[-250,250],liveX:[-250,250],liveY:[-250,250],
@@ -21,16 +21,16 @@ const ranges={
  eventSize:[12,85],qrSize:[40,250],inset:[0,80]
 };
 const layouts=new Set(['puzzle','grid','live-mosaic','carousel-quad','carousel-double',
- 'carousel-triple','carousel-festival']);
+ 'carousel-triple','carousel-festival',
+ 'showcase-spotlight','showcase-film','showcase-cascade']);
 const anchors=new Set(['tl','tc','tr','ml','mc','mr','bl','bc','br']);
 export function screenArea(value){return SCREEN_AREAS.includes(value)?value:null;}
 export function screenProfile(raw){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Invalid screen profile');
- if(Object.keys(raw).length!==Object.keys(SCREEN_DEFAULTS).length ||
-    Object.keys(raw).some(k=>!Object.hasOwn(SCREEN_DEFAULTS,k)))throw Error('Incomplete screen profile');
+ if(Object.keys(raw).some(k=>!Object.hasOwn(SCREEN_DEFAULTS,k)))throw Error('Unknown screen profile setting');
  const result={};
  for(const [key,defaultValue] of Object.entries(SCREEN_DEFAULTS)){
-  const value=raw[key],range=ranges[key];
+  const value=Object.hasOwn(raw,key)?raw[key]:defaultValue,range=ranges[key];
   if(range){
    if(typeof value!=='number'||!Number.isSafeInteger(value)||value<range[0]||value>range[1])
     throw Error('Invalid screen setting: '+key);
