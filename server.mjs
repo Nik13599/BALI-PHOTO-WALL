@@ -1643,8 +1643,12 @@ const makeEvent = db.transaction(name => {
   return db.prepare('INSERT INTO events(name,active,created_at) VALUES (?,1,?)').run(name,Date.now()).lastInsertRowid;
 });
 app.post('/api/admin/events', adminAuth, requireAction, (req,res) => {
-  if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Создание нового эфира доступно только в Telegram Admin'});
-  if(telegramSchedule.value?.broadcast?.active)return res.status(403).json({error:'Запуск трансляции только через Telegram Admin'});
+  // Ordinary PHOTO WALL events are local operator actions, not Telegram contests.
+  // Keep legacy contest-run safeguards only if contest mode is re-enabled.
+  if(!PHOTO_CONTEST_PAUSED){
+   if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Во время конкурсного эфира нельзя переключать обычную фотостену'});
+   if(telegramSchedule.value?.broadcast?.active)return res.status(403).json({error:'Сначала останови активный конкурсный эфир'});
+  }
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   if (name.length < 3 || name.length > 90) return res.status(400).json({error:'Название мероприятия: 3–90 символов'});
   const id = makeEvent(name);
@@ -1667,8 +1671,16 @@ app.post('/api/admin/events/:id/upload-shape', adminAuth, requireAction, (req,re
   res.json({ok:true,uploadShape:shape});
 });
 app.post('/api/admin/events/:id/activate', adminAuth, requireAction, (req,res) => {
-  if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Запуск эфира доступен только в Telegram Admin'});
-  if(telegramSchedule.value?.broadcast?.active)return res.status(403).json({error:'Выбор эфира только через Telegram Admin'});
+  // The local PHOTO WALL archive can be selected without any Telegram
+  // broadcast, schedule, result announcement or cloud connectivity.
+  if(!PHOTO_CONTEST_PAUSED){
+   if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Во время конкурсного эфира нельзя переключать обычную фотостену'});
+   if(telegramSchedule.value?.broadcast?.active)return res.status(403).json({error:'Сначала останови активный конкурсный эфир'});
+  }
+  // Never use ordinary-wall activation to display the archived contest feed.
+  if(PHOTO_CONTEST_PAUSED&&
+     db.prepare('SELECT 1 FROM contest_settings WHERE event_id=?').get(Number(req.params.id)))
+   return res.status(409).json({error:'Это архив конкурса. Выбери мероприятие обычной фотостены'});
   if (!activateEvent(Number(req.params.id))) return res.status(404).json({error:'Мероприятие не найдено'});
   res.json({ok:true});
 });
