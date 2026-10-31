@@ -230,6 +230,11 @@ const telegramContestMatches=(control,event,settings)=>{
    but never changes Windows event/candidate/photo data. */
 let telegramSchedule={expires:0,value:null,pending:null,lastGoodAt:0,lastWarningAt:0};
 async function telegramPhotoSchedule(){
+ // Only isolated local smoke fixtures may bypass the real Telegram authority.
+ // This never runs on a production Windows server.
+ if(process.env.PHOTO_WALL_OFFLINE_LEGACY_FIXTURE==='1' &&
+    process.env.ALLOW_LEGACY_EVENT_CONTROL==='1' &&
+    process.env.NODE_ENV!=='production')return null;
  if(Date.now()<telegramSchedule.expires)return telegramSchedule.value;
  if(telegramSchedule.pending)return telegramSchedule.pending;
  telegramSchedule.pending=(async()=>{
@@ -1133,7 +1138,9 @@ app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
  const participants=phase==='closed'?[]:candidates.slice(0,10).map((c,i)=>({id:c.photoId,number:i+1,name:c.name||'Участник №'+(i+1)}));
  const photos=visible.slice(0,500).map(c=>
   db.prepare("SELECT id,created_at,width,height,screen_lane FROM photos WHERE id=? AND status='approved' AND photo_area='contest'").get(c.photoId)).filter(Boolean);
- res.json({event,photos,participants,phase,finalized:!!settings?.finalized_at,serverNowMs:Date.now(),
+ const contestTitle=policy?.current?.session?.contestName||policy?.session?.contestName||'ПОБЕДИТЕЛИ BALI';
+ res.json({event,photos,participants,phase,contestTitle:String(contestTitle).slice(0,90),
+  finalized:!!settings?.finalized_at,serverNowMs:Date.now(),
   testMode:!!settings?.test_session_id,
   countdownEndsAtMs:settings?.test_session_id&&policy?.test?.phase==='countdown'?policy.test.deadlineMs:null,
   winner:winners[0]?{id:winners[0].id,name:winners[0].name,votes:winners[0].votes,totalVotes:settings.total_votes}:null,
@@ -1467,7 +1474,7 @@ const makeEvent = db.transaction(name => {
 });
 app.post('/api/admin/events', adminAuth, requireAction, (req,res) => {
   if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Создание нового эфира доступно только в Telegram Admin'});
-  if(telegramSchedule.value?.broadcast)return res.status(403).json({error:'Запуск трансляции только через Telegram Admin'});
+  if(telegramSchedule.value?.broadcast?.active)return res.status(403).json({error:'Запуск трансляции только через Telegram Admin'});
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   if (name.length < 3 || name.length > 90) return res.status(400).json({error:'Название мероприятия: 3–90 символов'});
   const id = makeEvent(name);
@@ -1491,7 +1498,7 @@ app.post('/api/admin/events/:id/upload-shape', adminAuth, requireAction, (req,re
 });
 app.post('/api/admin/events/:id/activate', adminAuth, requireAction, (req,res) => {
   if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Запуск эфира доступен только в Telegram Admin'});
-  if(telegramSchedule.value?.broadcast)return res.status(403).json({error:'Выбор эфира только через Telegram Admin'});
+  if(telegramSchedule.value?.broadcast?.active)return res.status(403).json({error:'Выбор эфира только через Telegram Admin'});
   if (!activateEvent(Number(req.params.id))) return res.status(404).json({error:'Мероприятие не найдено'});
   res.json({ok:true});
 });
@@ -1504,16 +1511,43 @@ app.post('/api/admin/photos/:id/screen-lane', adminAuth, requireAction, (req,res
   if(!result.changes)return res.status(404).json({error:'Фотография не найдена'});
   res.json({ok:true,lane});
 });
-app.post('/api/admin/photos/:id/status', adminAuth, requireAction, (req,res) => {
-  const status = req.body?.status;
-  if (!['approved','rejected','pending'].includes(status)) return res.status(400).json({error:'Неизвестный статус'});
-  const result = db.prepare('UPDATE photos SET status=? WHERE id=?').run(status,Number(req.params.id));
-  if (!result.changes) return res.status(404).json({error:'Фотография не найдена'});
-  res.json({ok:true});
-});
+// Contest photographs become immutable as soon as Telegram opens voting.
+// Never let a moderator remove a finalist or alter the tally after the deadline,
+// including during an upstream outage or after the Windows process restarts.
+async function contestPhotoMutationLocked(photo){
+ if(photo.photo_area!=='contest')return false;
+ // The old end-to-end smoke fixture deliberately has no Telegram session.
+ // Never apply this bypass outside isolated non-production test mode.
+ if(process.env.PHOTO_WALL_OFFLINE_LEGACY_FIXTURE==='1'&&
+    process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'&&
+    process.env.NODE_ENV!=='production')return false;
+ const settings=contestSettings(photo.event_id);
+ if(!settings||settings.finalized_at)return true;
+ const control=await telegramPhotoSchedule();
+ if(settings.test_session_id){
+  const rehearsal=testContestSession(control);
+  return !(rehearsal?.testSessionId===settings.test_session_id&&control?.test?.phase==='registration');
+ }
+ await synchronizeBroadcast();
+ return !(activeBroadcast?.contestEventId===photo.event_id&&
+  control?.broadcast?.active===true&&
+  control?.contestPhase==='registration'&&
+  Number.isSafeInteger(control?.registrationEndsAtMs)&&
+  Date.now()<control.registrationEndsAtMs);
+}
+app.post('/api/admin/photos/:id/status', adminAuth, requireAction, asyncRoute(async(req,res) => {
+ const status=req.body?.status;
+ if(!['approved','rejected','pending'].includes(status))return res.status(400).json({error:'Неизвестный статус'});
+ const photo=selectPhoto.get(Number(req.params.id));
+ if(!photo)return res.status(404).json({error:'Фотография не найдена'});
+ if(await contestPhotoMutationLocked(photo))return res.status(409).json({error:'Голосование началось или завершено. Конкурсное фото уже нельзя изменять.'});
+ db.prepare('UPDATE photos SET status=? WHERE id=?').run(status,photo.id);
+ res.json({ok:true});
+}));
 app.delete('/api/admin/photos/:id', adminAuth, requireAction, asyncRoute(async (req,res) => {
   const item = selectPhoto.get(Number(req.params.id));
   if (!item) return res.status(404).json({error:'Фотография не найдена'});
+  if(await contestPhotoMutationLocked(item))return res.status(409).json({error:'Нельзя удалить конкурсное фото после начала голосования либо из архива победителей.'});
   db.prepare('DELETE FROM photos WHERE id=?').run(item.id);
   await Promise.all([
     fsp.unlink(path.join(PHOTOS,item.filename)).catch(()=>{}),

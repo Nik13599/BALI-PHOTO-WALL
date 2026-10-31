@@ -40,6 +40,19 @@ test('Real server isolates rehearsal photos, accepts uploads outside hours, coun
   state.policy.test.phase='voting';state.policy.buttons.registration.open=false;state.policy.buttons.vote={open:true,visible:true,mode:'manual-on'};await save();await pause(5200);
   const ballot=await (await request('/api/contest/status')).json();
   assert.equal(ballot.voting_open,true);assert.equal(ballot.candidates.length,3,'test photos need no production moderation');
+  const adminLogin=await request('/api/admin/login',{method:'POST',
+   headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'rehearsal-admin-password'})});
+  assert.equal(adminLogin.status,200);
+  const adminCookie=adminLogin.headers.get('set-cookie').split(';')[0];
+  const mutationHeaders={Cookie:adminCookie,'X-BALI-Action':'1','Content-Type':'application/json'};
+  const firstPhotoId=Number(String(ballot.candidates[0].id).replace(/^p_/,''));
+  assert.ok(Number.isSafeInteger(firstPhotoId)&&firstPhotoId>0);
+  const changedDuringBallot=await request('/api/admin/photos/'+firstPhotoId+'/status',{
+   method:'POST',headers:mutationHeaders,body:JSON.stringify({status:'rejected'})});
+  assert.equal(changedDuringBallot.status,409,'moderators must not change vote-eligible photographs');
+  const removedDuringBallot=await request('/api/admin/photos/'+firstPhotoId,{
+   method:'DELETE',headers:mutationHeaders,body:'{}'});
+  assert.equal(removedDuringBallot.status,409,'contestants cannot vanish during voting');
   state.tally=ballot.candidates.map((c,i)=>({id:c.id,votes:3-i}));
   const deadline=Date.now()+7300;state.policy.test.phase='countdown';state.policy.test.deadlineMs=deadline;
   state.policy.resultAtMs=deadline;state.policy.buttons.vote.open=false;await save();await pause(5200);
@@ -50,6 +63,9 @@ test('Real server isolates rehearsal photos, accepts uploads outside hours, coun
   assert.equal(winners.finalized,true,logs);assert.equal(winners.phase,'closed');assert.equal(winners.winners.length,3);
   assert.deepEqual(winners.winners.map(w=>[w.place,w.votes]),[[1,3],[2,2],[3,1]]);
   assert.equal(winners.photos.length,3);
+  const removedAfterResult=await request('/api/admin/photos/'+firstPhotoId,{
+   method:'DELETE',headers:mutationHeaders,body:'{}'});
+  assert.equal(removedAfterResult.status,409,'the permanent winner archive must not be deleted by moderation');
   const history=await (await request('/api/contest/history')).json();assert.equal(history.contests.length,0,'rehearsal awards never enter real history');
   state.policy.test={enabled:false};state.policy.current.session=null;state.policy.resultAtMs=null;await save();await pause(5200);
   const stopped=await (await request('/api/contest/status')).json();assert.equal(stopped.test_session_id,null);assert.equal(stopped.contest_available,false);
