@@ -1,0 +1,42 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+const ui=readFileSync(new URL('../public/app.js',import.meta.url),'utf8');
+const html=readFileSync(new URL('../public/screen.html',import.meta.url),'utf8');
+const css=readFileSync(new URL('../public/screen-broadcast.css',import.meta.url),'utf8');
+test('one broadcast screen: general live mosaic with 10 real approved contestant cards',()=>{
+ assert.match(html,/id="wallGrid"/);
+ assert.match(html,/id="contestOverlay"/);
+ assert.match(html,/id="contestOverlayTrack"/);
+ assert.match(html,/УЧАСТНИКИ КОНКУРСА/);
+ assert.doesNotMatch(html,/href="\/live\/contest"/);
+ assert.doesNotMatch(html,/href="\/live\/general"/);
+ assert.match(ui,/const data=await api\('\/api\/screen'\)/);
+ assert.match(ui,/const contestData=await api\('\/api\/screen\/contest'\)/);
+ assert.match(ui,/contest\.participants\.slice\(0,10\)/);
+ assert.match(ui,/layout:'live-mosaic'/);
+ assert.match(css,/animation:baliContestMarquee/);
+ assert.match(server,/const participants=phase==='closed'\?\[\]:candidates\.slice\(0,10\)/);
+});
+test('only Telegram may start a live broadcast: one run UUID one folder even across restarts',()=>{
+ assert.match(server,/CREATE TABLE IF NOT EXISTS managed_broadcast_runs/);
+ assert.match(server,/WHERE run_id=\?/);
+ assert.match(server,/function runFilename\(eventId\)/);
+ assert.match(server,/async function synchronizeBroadcast\(\)/);
+ assert.match(server,/if\(activeBroadcast\?\.runId===intent\.runId\)return activeBroadcast/);
+ assert.match(server,/if\(!testSession\)return/);
+ assert.match(server,/app\.get\('\/api\/operator\/ready'/);
+ assert.match(server,/managedBroadcast:true,runId:activeBroadcast\?\.runId/);
+ assert.match(server,/app\.get\('\/live',\(_req,res\)=>res\.redirect\(302,'\/screen'\)/);
+ assert.match(server,/setInterval\(\(\)=>synchronizeBroadcast\(\)/);
+ assert.match(server,/ALLOW_LEGACY_EVENT_CONTROL!=='1'/);
+});
+test('photo restore never issues a new Telegram run or erases historical images',()=>{
+ assert.match(server,/app\.post\('\/api\/admin\/broadcast-restore',adminAuth,requireAction/);
+ assert.match(server,/operator-restored/);
+ assert.match(server,/imported,skipped,failed/);
+ assert.match(server,/const filename='streams\/'\+run\.folder\+'\/'\+file\.name/);
+ assert.match(server,/path\.join\(PHOTOS,'streams',run\.folder\)/);
+ assert.match(server,/managed_broadcast_runs WHERE run_id=\?/);
+});
