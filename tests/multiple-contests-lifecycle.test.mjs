@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mkdtemp,rm,writeFile} from 'node:fs/promises';
+import {existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -45,6 +46,14 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
   assert.ok(online,logs);
   let health=await (await req('/api/operator/ready')).json();
   assert.equal(health.runId,ids[0]);
+  const visitor=await req('/api/public');
+  const visitorCookie=visitor.headers.get('set-cookie')?.split(';')[0];
+  assert.ok(visitorCookie);
+  const generalForm=new FormData();
+  generalForm.append('photo',new Blob([img],{type:'image/png'}),'general-photo.png');
+  generalForm.append('consent','yes');
+  const generalUpload=await req('/api/upload',{method:'POST',headers:{Cookie:visitorCookie},body:generalForm});
+  assert.equal(generalUpload.status,201,await generalUpload.text());
   const first=await upload('user-1234',ids[0]);const firstData=await first.json();
   assert.equal(first.status,201,JSON.stringify(firstData));
   const header={Authorization:'Bearer test-moderator-proof-0123456789abcdef0123456789',
@@ -63,6 +72,9 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
   database=new Database(path.join(dir,'bali-photo-wall.sqlite'),{readonly:true});
   const firstRun=database.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(ids[0]);
   assert.ok(firstRun);
+  const preservedPhoto=database.prepare("SELECT id,filename FROM photos WHERE event_id=? AND photo_area='general'")
+   .get(firstRun.general_event_id);
+  assert.ok(preservedPhoto);
   const firstNomination=database.prepare('SELECT * FROM contest_telegram_entries WHERE event_id=?').get(firstRun.contest_event_id);
   assert.equal(firstNomination.bali_card_number,'000123');
   assert.equal(firstNomination.telegram_username,'@verified_test');
@@ -79,6 +91,9 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
   assert.equal(health.runId,null);
   assert.equal(database.prepare('SELECT COUNT(*) n FROM managed_broadcast_runs WHERE run_id=?').get(ids[0]).n,0);
   assert.equal(database.prepare('SELECT COUNT(*) n FROM contest_telegram_entries WHERE event_id=?').get(firstRun.contest_event_id).n,0);
+  assert.equal(database.prepare("SELECT COUNT(*) n FROM photos WHERE event_id=? AND photo_area='general'")
+   .get(firstRun.general_event_id).n,1,'ordinary BALI photo wall survives contest cancel');
+  assert.equal(existsSync(path.join(dir,'photos',preservedPhoto.filename)),true);
   const late=await upload('user-1234',ids[0]);assert.equal(late.status,409,'cancelled run cannot be revived');
   state.policy.broadcast={runId:ids[1],phase:'running',startsAtMs:Date.now()-2000,active:true,cancelRunId:''};
   state.policy.resultAtMs=Date.now()+3600000;
