@@ -543,6 +543,33 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
    photoUrl:base+'/api/contest/photo/p_'+x.photoId})):[]});
 }));
 
+// Persistent results for Telegram Admin. The public view omits
+// Telegram handles, BALI UIDs, phone numbers, and private image paths.
+function historicalContests(privateDetails=false){
+ const rows=db.prepare(`SELECT e.id,e.name,s.contest_date,s.bali_event_id,s.total_votes,
+  p.target_places,p.winners_json,p.finalized_at FROM contest_podium p
+  JOIN events e ON e.id=p.event_id JOIN contest_settings s ON s.event_id=e.id
+  ORDER BY p.finalized_at DESC,e.id DESC LIMIT 250`).all();
+ return rows.map(r=>{
+  let winners=[];try{winners=JSON.parse(r.winners_json)}catch{}
+  return {id:r.id,partyName:r.name,contestDate:r.contest_date,
+   partyDate:r.bali_event_id||r.contest_date,finalizedAt:r.finalized_at,
+   totalVotes:r.total_votes,configuredPlaces:r.target_places,
+   winners:winners.map(w=>privateDetails?{
+    place:w.place,name:w.name,votes:w.votes,photoId:w.id,
+    telegramUsername:w.telegramUsername||null
+   }:{place:w.place,name:w.name,votes:w.votes})};
+ });
+}
+app.get('/api/contest/history',(_req,res)=>{
+ res.set('Cache-Control','no-store');
+ res.json({ok:true,contests:historicalContests(false)});
+});
+app.get('/api/admin/contest/history',adminAuth,(_req,res)=>{
+ res.set('Cache-Control','private,no-store');
+ res.json({ok:true,contests:historicalContests(true)});
+});
+
 app.get('/qr.svg', asyncRoute(async (_req, res) => {
   const svg = await QRCode.toString(PUBLIC_URL.replace(/\/$/,'') + '/upload', { type: 'svg', margin: 1, width: 320, color: {dark:'#111111',light:'#ffffff'} });
   res.type('image/svg+xml').set('Cache-Control','public,max-age=600').send(svg);
