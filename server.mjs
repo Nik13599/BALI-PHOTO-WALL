@@ -184,6 +184,34 @@ const contestPodium=id=>{
  try{return {places:row.target_places,winners:JSON.parse(row.winners_json),finalizedAt:row.finalized_at}}
  catch{return {places:row.target_places,winners:[],finalizedAt:row.finalized_at}}
 };
+// Upgrade old finalized single-winner events into the new archive without
+// modifying their historic vote counts or inventing other podium places.
+for(const legacy of db.prepare(`SELECT s.event_id AS eventId,s.winner_photo_id AS photoId,
+ s.winner_votes AS votes,s.finalized_at AS finalizedAt
+ FROM contest_settings s WHERE s.finalized_at IS NOT NULL
+ AND NOT EXISTS(SELECT 1 FROM contest_podium p WHERE p.event_id=s.event_id)`).all()){
+ const candidate=legacy.photoId?db.prepare(
+  'SELECT name FROM contest_candidates WHERE event_id=? AND photo_id=?'
+ ).get(legacy.eventId,legacy.photoId):null;
+ const username=legacy.photoId?db.prepare(
+  'SELECT telegram_username AS username FROM contest_telegram_entries WHERE photo_id=?'
+ ).get(legacy.photoId):null;
+ const winners=candidate?[{id:legacy.photoId,name:candidate.name,place:1,
+  votes:Number(legacy.votes)||0,telegramUsername:username?.username||null}]:[];
+ db.prepare('INSERT OR IGNORE INTO contest_podium(event_id,target_places,winners_json,finalized_at) VALUES(?,?,?,?)')
+  .run(legacy.eventId,1,JSON.stringify(winners),legacy.finalizedAt);
+}
+const reservedWinnerPhotoIds=()=>{
+ const result=new Set();
+ for(const row of db.prepare('SELECT winners_json FROM contest_podium').all()){
+  try{
+   for(const w of JSON.parse(row.winners_json)){
+    if(Number.isSafeInteger(w.id)&&w.id>0)result.add(w.id);
+   }
+  }catch{}
+ }
+ return result;
+};
 const telegramContestMatches=(control,event,settings)=>{
  if(!control||!event||!settings)return false;
  if(control.resultContestId)return control.resultContestId==='event_'+event.id;
@@ -1305,7 +1333,11 @@ async function cleanup() {
       if (error.code!=='ENOENT') console.warn('Temporary file cleanup failed',error.message);
     }
   }
-  const old = db.prepare('SELECT id,filename FROM photos WHERE created_at < ?').all(Date.now()-RETENTION_DAYS*86400000);
+  // Only finalists retain their original approved images for the permanent
+  // results archive. Ordinary photos follow configured retention and expire.
+  const protectedIds=reservedWinnerPhotoIds();
+  const old = db.prepare('SELECT id,filename FROM photos WHERE created_at < ?').all(Date.now()-RETENTION_DAYS*86400000)
+   .filter(item=>!protectedIds.has(item.id));
   for (const item of old) {
     db.prepare('DELETE FROM photos WHERE id=?').run(item.id);
     await Promise.all([
