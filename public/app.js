@@ -630,7 +630,7 @@ if(page==='screen'){
   if(profileTitle)profileTitle.textContent=broadcastArea==='contest'?'♛ Пульт конкурса':'◩ Пульт общей фотостены';
   const defaults={
     maxPhotos:500,columns:0,gap:2,fit:'contain',layout:'puzzle',centerGrowth:true,
-    liveInterval:8,liveFocus:40,liveTransition:1400,liveFit:'cover',livePause:false,showcaseInterval:3,
+    liveInterval:8,liveFocus:40,liveTransition:1400,liveFit:'cover',liveShape:'square',liveTiles:'square',livePause:false,showcaseInterval:3,
     carouselStart:10,carouselSpeed:85,carouselOuterSpeed:120,carouselTopHeight:12,carouselBottomHeight:12,carouselCenterSplit:50,carouselPause:false,
     logoPos:'tl',livePos:'tr',eventPos:'bl',hintPos:'bc',qrPos:'br',
     logoX:0,logoY:0,liveX:0,liveY:0,eventX:0,eventY:0,hintX:0,hintY:0,qrX:0,qrY:0,
@@ -789,7 +789,14 @@ if(page==='screen'){
     return tile;
   }
   function layout(){
-    const all=photos.slice(0,settings.maxPhotos);
+    const filter=photo=>{
+      const w=Number(photo.width),h=Number(photo.height);
+      if(!(w>0&&h>0))return settings.liveShape==='any';
+      const shape=Math.abs(w/h-1)<=.03?'square':w>h?'landscape':'portrait';
+      return settings.liveShape==='any'||settings.liveShape===shape||
+        (settings.liveShape==='rectangle'&&shape!=='square');
+    };
+    const all=(settings.layout==='live-mosaic'?photos.filter(filter):photos).slice(0,settings.maxPhotos);
     const n=all.length;
     setShown(empty,n===0);
     if(!n){
