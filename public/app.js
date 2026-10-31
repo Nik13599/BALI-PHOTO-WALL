@@ -784,6 +784,7 @@ if(page==='screen'){
   }
   function clearWall(){
     const result=$('#royalResult');if(result)result.hidden=true;lastRoyalWinner=null;
+    $('#wallGrid').style.removeProperty('display');$('#wallEmpty').style.removeProperty('display');
     photos=[];signature='';eventId=null;
     globalThis.BaliCarouselWall?.reset();
     globalThis.BaliLiveWall?.reset();
@@ -802,19 +803,46 @@ if(page==='screen'){
       $('#screenEvent').textContent=eventName;
       const royal=$('#royalResult');
       if(royal){
-        const winner=data.winner;
-        if(winner?.id){
-          $('#royalResultName').textContent=winner.name||'ПОБЕДИТЕЛЬ BALI';
-          $('#royalResultVotes').textContent=winner.votes+' '+(winner.votes===1?'голос':'голосов');
-          if(lastRoyalWinner!==winner.id){
+        const winners=Array.isArray(data.winners)?data.winners:
+          (data.winner?[{...data.winner,place:1}]:[]);
+        const ready=data.phase==='closed'&&data.finalized===true&&winners.length>0;
+        const key=ready?event+':'+winners.map(w=>w.place+'/'+w.id+'/'+w.votes).join(';'):null;
+        const grid=$('#wallGrid');
+        if(ready){
+          grid.style.display='none';
+          $('#wallEmpty').style.display='none';
+          if(lastRoyalWinner!==key){
+            const podium=$('#royalPodium');
+            const frag=document.createDocumentFragment();
+            for(const w of winners.slice(0,3)){
+              if(![1,2,3].includes(w.place)||!Number.isSafeInteger(Number(w.id)))continue;
+              const item=document.createElement('div');item.className='royal-place';
+              item.dataset.place=String(w.place);
+              const crown=document.createElement('div');crown.className='royal-place-crown';
+              crown.textContent='♛';
+              const image=document.createElement('img');image.className='royal-place-photo';
+              image.alt='Фотография призёра BALI';
+              image.src='/api/screen/thumbnail/'+encodeURIComponent(w.id)+'?feed=contest';
+              const name=document.createElement('strong');name.className='royal-place-name';
+              name.textContent=w.name||'Участник BALI';
+              const medal=document.createElement('div');medal.className='royal-place-medal';
+              medal.textContent=w.place===1?'🥇 ЗОЛОТО · 1 МЕСТО':
+                w.place===2?'🥈 СЕРЕБРО · 2 МЕСТО':'🥉 БРОНЗА · 3 МЕСТО';
+              const votes=document.createElement('span');votes.className='royal-place-votes';
+              votes.textContent=Number(w.votes||0)+' голосов';
+              item.append(crown,image,name,medal,votes);frag.append(item);
+            }
+            podium.replaceChildren(frag);
             royal.hidden=true;
             void royal.offsetWidth;
             royal.hidden=false;
-            lastRoyalWinner=winner.id;
+            lastRoyalWinner=key;
           }
         }else{
           royal.hidden=true;
           lastRoyalWinner=null;
+          grid.style.removeProperty('display');
+          $('#wallEmpty').style.removeProperty('display');
           if(data.phase==='closed'){
             $('#screenEvent').textContent=data.finalized?'КОНКУРС ЗАВЕРШЁН · НЕТ ГОЛОСОВ':'ПОДВОДИМ ИТОГИ · ОЖИДАЕМ BALI';
           }
