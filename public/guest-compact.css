@@ -136,3 +136,6 @@ body[data-page="guest"] .guest-photo-preview:has(+ .guest-edit-photo + .crop-edi
   body[data-page="guest"] .guest-brand img{max-width:132px}
   body[data-page="guest"] .dropzone{padding-inline:8px;font-size:12px}
 }
+
+/* Native two-finger pinch and drag inside the crop viewport. */
+.crop-canvas{touch-action:none;cursor:grab;max-width:100%;display:block}.crop-canvas:active{cursor:grabbing}
