@@ -18,7 +18,7 @@ const ranges={
  logoX:[-250,250],logoY:[-250,250],liveX:[-250,250],liveY:[-250,250],
  eventX:[-250,250],eventY:[-250,250],hintX:[-250,250],hintY:[-250,250],
  qrX:[-250,250],qrY:[-250,250],logoSize:[24,240],liveSize:[10,55],
- eventSize:[12,85],qrSize:[40,250],inset:[0,80]
+ eventSize:[12,85],qrSize:[40,480],inset:[0,80]
 };
 const layouts=new Set(['puzzle','grid','live-mosaic','carousel-quad','carousel-double',
  'carousel-triple','carousel-festival',
