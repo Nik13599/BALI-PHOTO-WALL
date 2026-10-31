@@ -93,7 +93,9 @@ test('moderator can upload several photos at once, approve and assign upper/lowe
     const hidden=await (await fetchApp('/api/screen',{headers:{cookie:scookie}})).json();
     assert.equal(hidden.photos.length,3,'pending moderator imports must remain hidden');
     const all=await (await fetchApp('/api/admin/dashboard',{headers:{cookie}})).json();
-    assert.equal(all.total,5);
+    assert.equal(all.total,2,'default moderator list contains only pending photos');
+    const approved=await (await fetchApp('/api/admin/dashboard?status=approved',{headers:{cookie}})).json();
+    assert.equal(approved.total,3,'approved and pending status filters are independent');
   }finally{
     if(app.exitCode===null){
       const stopped=new Promise(resolve=>app.once('exit',resolve));

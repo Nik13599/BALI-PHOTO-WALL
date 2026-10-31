@@ -16,13 +16,13 @@ test('Only authorized moderator can change competition state and nominations',()
  assert.match(server,/app\.post\('\/api\/admin\/contest\/candidates',adminAuth,requireAction/);
  assert.match(server,/app\.get\('\/api\/admin\/contest\/export',adminAuth/);
  assert.match(server,/p\.status='approved'/);
- assert.match(server,/!input\.enabled\|\|!candidate\.n/);
+ assert.match(server,/if\(control\.buttons\.vote\?\.open===true/,'roster is locked by Telegram voting state');
 });
 test('Vote feed exposes only nominated and approved photos from active contest',()=>{
  assert.match(server,/photoUrl:base\+'\/api\/contest\/photo\/p_'/);
  assert.match(server,/contest_available:enabled/);
  assert.match(server,/voting_open:voting/);
- assert.match(server,/s\.enabled=1 AND s\.voting_open=1/);
+ assert.match(server,/p\.photo_area='contest' AND p\.status='approved' AND s\.enabled=1/,'approved images remain readable outside voting hours');
  assert.doesNotMatch(server,/res\.json\(\{contest_available:enabled[^;]+guest_id/);
 });
 test('Moderator can bulk import, nominate, moderate and export photo roster',()=>{
