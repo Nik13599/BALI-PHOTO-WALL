@@ -283,7 +283,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS managed_broadcast_runs(
 // to retry interrupted disk operations after a Windows restart.
 db.exec(`CREATE TABLE IF NOT EXISTS managed_broadcast_cancellations(
  run_id TEXT PRIMARY KEY,files_json TEXT NOT NULL,
- folder TEXT NOT NULL,requested_at_ms INTEGER NOT NULL,finished_at_ms INTEGER
+ folder TEXT NOT NULL,contest_event_id INTEGER,requested_at_ms INTEGER NOT NULL,finished_at_ms INTEGER
 )`);
 async function deleteCancelledBroadcast(runId){
  if(!/^[a-f0-9-]{36}$/.test(runId||''))return;
@@ -295,8 +295,8 @@ async function deleteCancelledBroadcast(runId){
    if(db.prepare('SELECT 1 FROM managed_broadcast_cancellations WHERE run_id=?').get(runId))return;
    const filenames=run?db.prepare('SELECT filename FROM photos WHERE event_id IN (?,?)')
      .all(run.general_event_id,run.contest_event_id).map(x=>x.filename):[];
-   db.prepare('INSERT INTO managed_broadcast_cancellations(run_id,files_json,folder,requested_at_ms) VALUES(?,?,?,?)')
-    .run(runId,JSON.stringify(filenames),run?.folder||'',Date.now());
+   db.prepare('INSERT INTO managed_broadcast_cancellations(run_id,files_json,folder,contest_event_id,requested_at_ms) VALUES(?,?,?,?,?)')
+    .run(runId,JSON.stringify(filenames),run?.folder||'',run?.contest_event_id||null,Date.now());
    if(!run)return;
    db.prepare('DELETE FROM contest_photo_replacements WHERE event_id=?').run(run.contest_event_id);
    // photos cascade into contest_candidates and contest_telegram_entries.
@@ -683,6 +683,7 @@ app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
  res.set('Cache-Control','no-store').json({ok:true,managedBroadcast:true,
   runId:activeBroadcast?.runId||null,
   cancelledRunId:db.prepare('SELECT run_id FROM managed_broadcast_cancellations WHERE finished_at_ms IS NOT NULL ORDER BY finished_at_ms DESC LIMIT 1').get()?.run_id||null,
+  cancelledContestId:(()=>{const x=db.prepare('SELECT contest_event_id FROM managed_broadcast_cancellations WHERE finished_at_ms IS NOT NULL ORDER BY finished_at_ms DESC LIMIT 1').get();return x?.contest_event_id?'event_'+x.contest_event_id:null})(),
   screen:'/screen',
   contestFinalized:!!final?.finalized_at,
   counts:{pending:Number(counts?.pending)||0,approved:Number(counts?.approved)||0,
