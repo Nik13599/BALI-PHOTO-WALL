@@ -247,9 +247,9 @@ const recentContestEvents=db.prepare(
  'ORDER BY s.updated_at DESC,e.id DESC LIMIT 40'
 );
 const currentContestEvent={get(){
- const items=recentContestEvents.all();
- return items.find(e=>contestClock(contestSettings(e.id)).phase!=='closed')||
-  items[0]||currentEvent.get();
+ // Telegram Admin is the time authority; an OLD Windows clock must never
+ // silently choose a different contest after the moderator saves a new one.
+ return recentContestEvents.all()[0]||currentEvent.get();
 }};
 const selectPhoto = db.prepare('SELECT * FROM photos WHERE id=?');
 const secureEqual = (a, b) => {
