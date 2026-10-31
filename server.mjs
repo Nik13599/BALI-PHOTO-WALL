@@ -636,11 +636,12 @@ app.post('/api/admin/miniapp/buttons',adminAuth,requireAction,(req,res)=>{
    .run(JSON.stringify(next),Date.now());
  res.json({ok:true,...miniappSnapshot()});
 });
-app.get('/api/public', (req,res) => {
+app.get('/api/public', asyncRoute(async(req,res)=>{
+  await synchronizeBroadcast();
   guestIdentity(req,res);
   const event = currentEvent.get();
-  res.json({ event, uploadShape:event?.upload_shape||'any', limit:null });
-});
+  res.json({ event:activeBroadcast?event:null, uploadShape:event?.upload_shape||'any', limit:null });
+}));
 // Public contest feed for Telegram Mini App. Approved nominations only.
 // Never return upload tokens, guest identifiers, source filenames or staff data.
 app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
@@ -774,7 +775,8 @@ app.use('/api/upload', (req,res,next) => {
   next();
 });
 app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo'), asyncRoute(async (req,res) => {
-  const event = currentEvent.get();
+  await synchronizeBroadcast();
+  const event = activeBroadcast?currentEvent.get():null;
   if (!event) return res.status(409).json({error:'Сейчас нет активного мероприятия'});
   if (req.body?.consent !== 'yes') return res.status(400).json({error:'Необходимо согласие на показ фотографии'});
   if (!req.file?.path) return res.status(400).json({error:'Выберите фотографию'});
@@ -1017,7 +1019,8 @@ app.get('/api/photos/:id', screenAuth, (req,res) => {
 // Keep LED transfers bounded. The newest 500 approved photos are enough
 // for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
-  const event = currentEvent.get();
+  await synchronizeBroadcast();
+  const event = activeBroadcast?currentEvent.get():null;
   const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos p WHERE event_id=? AND status='approved' AND photo_area='general' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
   const update=db.prepare('UPDATE photos SET width=?,height=? WHERE id=? AND (width IS NULL OR height IS NULL)');
   // Upgrade photos created before width/height metadata existed, once per photo.
@@ -1374,6 +1377,7 @@ const makeEvent = db.transaction(name => {
   return db.prepare('INSERT INTO events(name,active,created_at) VALUES (?,1,?)').run(name,Date.now()).lastInsertRowid;
 });
 app.post('/api/admin/events', adminAuth, requireAction, (req,res) => {
+  if(telegramSchedule.value?.broadcast)return res.status(403).json({error:'Запуск трансляции только через Telegram Admin'});
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   if (name.length < 3 || name.length > 90) return res.status(400).json({error:'Название мероприятия: 3–90 символов'});
   const id = makeEvent(name);
