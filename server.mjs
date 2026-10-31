@@ -607,6 +607,7 @@ function historicalContests(privateDetails=false){
     if(!privateDetails)return {place:w.place,name:w.name,votes:w.votes};
     const identity=db.prepare('SELECT bali_uid AS uid,telegram_username AS username,telegram_display_name AS telegramName FROM contest_telegram_entries WHERE photo_id=?').get(w.id);
     return {place:w.place,name:w.name,votes:w.votes,photoId:w.id,
+     photoUrl:'https://baliminsk.online/api/contest/photo/p_'+w.id,
      telegramUsername:identity?.username||w.telegramUsername||null,
      telegramName:identity?.telegramName||w.telegramName||null,
      submittedName:w.submittedName||null,
