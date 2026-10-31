@@ -293,8 +293,8 @@ async function deleteCancelledBroadcast(runId){
   const run=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(runId);
   db.transaction(()=>{
    if(db.prepare('SELECT 1 FROM managed_broadcast_cancellations WHERE run_id=?').get(runId))return;
-   const filenames=run?db.prepare('SELECT filename FROM photos WHERE event_id IN (?,?)')
-     .all(run.general_event_id,run.contest_event_id).map(x=>x.filename):[];
+   const filenames=run?db.prepare('SELECT filename FROM photos WHERE event_id=? AND photo_area=\'contest\'')
+     .all(run.contest_event_id).map(x=>x.filename):[];
    db.prepare('INSERT INTO managed_broadcast_cancellations(run_id,files_json,folder,contest_event_id,requested_at_ms) VALUES(?,?,?,?,?)')
     .run(runId,JSON.stringify(filenames),run?.folder||'',run?.contest_event_id||null,Date.now());
    if(!run)return;
@@ -302,9 +302,10 @@ async function deleteCancelledBroadcast(runId){
    // A cancelled result has no permanent podium. Remove its FK first.
    db.prepare('DELETE FROM contest_podium WHERE event_id=?').run(run.contest_event_id);
    // photos cascade into contest_candidates and contest_telegram_entries.
-   db.prepare('DELETE FROM photos WHERE event_id IN (?,?)').run(run.general_event_id,run.contest_event_id);
+   db.prepare("DELETE FROM photos WHERE event_id=? AND photo_area='contest'").run(run.contest_event_id);
    db.prepare('DELETE FROM managed_broadcast_runs WHERE run_id=?').run(runId);
-   db.prepare('DELETE FROM events WHERE id IN (?,?)').run(run.general_event_id,run.contest_event_id);
+   // Ordinary guest photo-wall event and its images remain in the archive.
+   db.prepare('DELETE FROM events WHERE id=?').run(run.contest_event_id);
   })();
   record=db.prepare('SELECT * FROM managed_broadcast_cancellations WHERE run_id=?').get(runId);
  }
@@ -313,10 +314,8 @@ async function deleteCancelledBroadcast(runId){
   for(const root of [PHOTOS,THUMBS])
    await fsp.rm(path.join(root,name),{force:true,recursive:true,maxRetries:12,retryDelay:250});
  }
- if(record.folder&&/^broadcast-[0-9a-z-]+$/.test(record.folder)){
-  for(const root of [PHOTOS,THUMBS])
-   await fsp.rm(path.join(root,'streams',record.folder),{force:true,recursive:true,maxRetries:12,retryDelay:250});
- }
+ // Do not remove the run folder: it also contains ordinary PHOTO WALL photos.
+ // Those images follow their independent retention policy.
  db.prepare('UPDATE managed_broadcast_cancellations SET finished_at_ms=? WHERE run_id=? AND finished_at_ms IS NULL')
   .run(Date.now(),runId);
 }
