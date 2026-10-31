@@ -276,10 +276,54 @@ db.exec(`CREATE TABLE IF NOT EXISTS managed_broadcast_runs(
  general_event_id INTEGER NOT NULL REFERENCES events(id),
  contest_event_id INTEGER NOT NULL REFERENCES events(id),
  event_date TEXT NOT NULL,created_at_ms INTEGER NOT NULL);`);
+// A cancellation is not complete until PHOTO WALL has removed every related
+// nomination, media file and contest event. Keep a durable deletion manifest
+// to retry interrupted disk operations after a Windows restart.
+db.exec(`CREATE TABLE IF NOT EXISTS managed_broadcast_cancellations(
+ run_id TEXT PRIMARY KEY,files_json TEXT NOT NULL,
+ folder TEXT NOT NULL,requested_at_ms INTEGER NOT NULL,finished_at_ms INTEGER
+)`);
+async function deleteCancelledBroadcast(runId){
+ if(!/^[a-f0-9-]{36}$/.test(runId||''))return;
+ let record=db.prepare('SELECT * FROM managed_broadcast_cancellations WHERE run_id=?').get(runId);
+ if(record?.finished_at_ms)return;
+ if(!record){
+  const run=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(runId);
+  db.transaction(()=>{
+   if(db.prepare('SELECT 1 FROM managed_broadcast_cancellations WHERE run_id=?').get(runId))return;
+   const filenames=run?db.prepare('SELECT filename FROM photos WHERE event_id IN (?,?)')
+     .all(run.general_event_id,run.contest_event_id).map(x=>x.filename):[];
+   db.prepare('INSERT INTO managed_broadcast_cancellations(run_id,files_json,folder,requested_at_ms) VALUES(?,?,?,?)')
+    .run(runId,JSON.stringify(filenames),run?.folder||'',Date.now());
+   if(!run)return;
+   db.prepare('DELETE FROM contest_photo_replacements WHERE event_id=?').run(run.contest_event_id);
+   // photos cascade into contest_candidates and contest_telegram_entries.
+   db.prepare('DELETE FROM photos WHERE event_id IN (?,?)').run(run.general_event_id,run.contest_event_id);
+   db.prepare('DELETE FROM managed_broadcast_runs WHERE run_id=?').run(runId);
+   db.prepare('DELETE FROM events WHERE id IN (?,?)').run(run.general_event_id,run.contest_event_id);
+  })();
+  record=db.prepare('SELECT * FROM managed_broadcast_cancellations WHERE run_id=?').get(runId);
+ }
+ const filenames=JSON.parse(record.files_json);
+ for(const name of filenames){
+  for(const root of [PHOTOS,THUMBS])
+   await fsp.unlink(path.join(root,name)).catch(e=>{if(e.code!=='ENOENT')throw e});
+ }
+ if(record.folder&&/^broadcast-[0-9a-z-]+$/.test(record.folder)){
+  for(const root of [PHOTOS,THUMBS])
+   await fsp.rm(path.join(root,'streams',record.folder),{force:true,recursive:true});
+ }
+ db.prepare('UPDATE managed_broadcast_cancellations SET finished_at_ms=? WHERE run_id=? AND finished_at_ms IS NULL')
+  .run(Date.now(),runId);
+}
 async function synchronizeBroadcast(){
  if(broadcastSyncPending)return broadcastSyncPending;
  broadcastSyncPending=(async()=>{
   const policy=await telegramPhotoSchedule(),intent=policy?.broadcast;
+  if(intent?.cancelRunId){
+   activeBroadcast=null;
+   await deleteCancelledBroadcast(intent.cancelRunId);
+  }
   if(!intent?.active||!/^[a-f0-9-]{36}$/.test(intent.runId||'')){activeBroadcast=null;return null}
   if(activeBroadcast?.runId===intent.runId)return activeBroadcast;
   let saved=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(intent.runId);
@@ -635,7 +679,9 @@ app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
   'SELECT COUNT(*) AS n FROM contest_telegram_entries WHERE event_id=?').get(contestId)?.n||0:0;
  const final=contestId?contestSettings(contestId):null;
  res.set('Cache-Control','no-store').json({ok:true,managedBroadcast:true,
-  runId:activeBroadcast?.runId||null,screen:'/screen',
+  runId:activeBroadcast?.runId||null,
+  cancelledRunId:db.prepare('SELECT run_id FROM managed_broadcast_cancellations WHERE finished_at_ms IS NOT NULL ORDER BY finished_at_ms DESC LIMIT 1').get()?.run_id||null,
+  screen:'/screen',
   contestFinalized:!!final?.finalized_at,
   counts:{pending:Number(counts?.pending)||0,approved:Number(counts?.approved)||0,
    rejected:Number(counts?.rejected)||0,registered:Number(registered)||0}});
@@ -971,6 +1017,8 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  await ensureTelegramContest();
  let event=currentContestEvent.get();
  if(proof.broadcastRunId){
+  if(db.prepare('SELECT 1 FROM managed_broadcast_cancellations WHERE run_id=?').get(proof.broadcastRunId))
+   return res.status(409).json({error:'Этот конкурс отменён и удалён. Отправь фото на новый конкурс.'});
   if(!/^[a-f0-9]{8}-[a-f0-9-]{27}$/.test(proof.broadcastRunId))
    return res.status(401).json({error:'Некорректный ID запуска конкурса'});
   const assigned=db.prepare('SELECT e.id,e.name,e.upload_shape FROM managed_broadcast_runs b '+
