@@ -16,6 +16,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
+// Temporary contest pause: ordinary photo uploads remain operational.
+const PHOTO_CONTEST_PAUSED=true;
 const DATA = path.resolve(process.env.DATA_DIR || path.join(ROOT, 'data'));
 const PHOTOS = path.join(DATA, 'photos');
 const UPLOADS = path.join(DATA, 'temporary-uploads');
@@ -327,7 +329,9 @@ async function synchronizeBroadcast(){
    activeBroadcast=null;
    await deleteCancelledBroadcast(intent.cancelRunId);
   }
-  if(!intent?.active||!/^[a-f0-9-]{36}$/.test(intent.runId||'')){activeBroadcast=null;return null}
+  if(PHOTO_CONTEST_PAUSED||!intent?.active||!/^[a-f0-9-]{36}$/.test(intent.runId||'')){
+   activeBroadcast=null;ensureStandaloneGeneralEvent();return null;
+  }
   if(activeBroadcast?.runId===intent.runId)return activeBroadcast;
   let saved=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(intent.runId);
   if(!saved){
@@ -493,6 +497,17 @@ async function finalizeContest(){
  return finalizing;
 }
 const currentEvent = db.prepare('SELECT id,name,upload_shape FROM events WHERE active=1 ORDER BY id DESC LIMIT 1');
+function ensureStandaloneGeneralEvent(){
+ const active=currentEvent.get();
+ if(active)return active;
+ const day=new Date(Date.now()+10800000).toISOString().slice(0,10);
+ const name='BALI PHOTO WALL · '+day;
+ const old=db.prepare('SELECT id FROM events WHERE name=? ORDER BY id DESC LIMIT 1').get(name);
+ if(old)db.prepare('UPDATE events SET active=1 WHERE id=?').run(old.id);
+ else db.prepare("INSERT INTO events(name,active,created_at) VALUES(?,1,?)").run(name,Date.now());
+ return currentEvent.get();
+}
+
 // The royal contest selected by the Windows moderator need not be the
 // current GENERAL photo-wall event. Enabled/saved contest settings win.
 const recentContestEvents=db.prepare(
@@ -842,11 +857,12 @@ app.get('/api/public', asyncRoute(async(req,res)=>{
   await synchronizeBroadcast();
   guestIdentity(req,res);
   const event = currentEvent.get();
-  res.json({ event:activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?event:null, uploadShape:event?.upload_shape||'any', limit:null });
+  res.json({ event:ensureStandaloneGeneralEvent()||event, uploadShape:event?.upload_shape||'any', limit:null });
 }));
 // Public contest feed for Telegram Mini App. Approved nominations only.
 // Never return upload tokens, guest identifiers, source filenames or staff data.
 app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
+ if(PHOTO_CONTEST_PAUSED)return res.json({contest_available:false,registration_open:false,voting_open:false,phase:'paused',candidates:[],winners:[]});
  await ensureTelegramContest();
  await finalizeContest();
  const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;
@@ -979,7 +995,7 @@ app.use('/api/upload', (req,res,next) => {
 });
 app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo'), asyncRoute(async (req,res) => {
   await synchronizeBroadcast();
-  const event = activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?currentEvent.get():null;
+  const event = ensureStandaloneGeneralEvent();
   if (!event) return res.status(409).json({error:'Сейчас нет активного мероприятия'});
   if (req.body?.consent !== 'yes') return res.status(400).json({error:'Необходимо согласие на показ фотографии'});
   if (!req.file?.path) return res.status(400).json({error:'Выберите фотографию'});
@@ -1240,7 +1256,7 @@ app.get('/api/photos/:id', screenAuth, (req,res) => {
 // for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
   await synchronizeBroadcast();
-  const event = activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?currentEvent.get():null;
+  const event = ensureStandaloneGeneralEvent();
   const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos p WHERE event_id=? AND status='approved' AND photo_area='general' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
   const update=db.prepare('UPDATE photos SET width=?,height=? WHERE id=? AND (width IS NULL OR height IS NULL)');
   // Upgrade photos created before width/height metadata existed, once per photo.
