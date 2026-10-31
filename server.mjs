@@ -681,7 +681,7 @@ app.get('/',(req,res)=>res.set('Cache-Control','no-store').redirect(302,'/upload
 app.get('/upload',guestUploadPage);
 app.get('/admin', (_req,res) => res.redirect(302,'/admin/general'));
 app.get('/admin/general', (req,res) => serveBaliPage(req,res,'admin'));
-app.get('/admin/contest', (req,res) => serveBaliPage(req,res,'admin'));
+app.get('/admin/contest', (_req,res) => res.redirect(302,'/admin/general'));
 app.get('/screen', (req,res) => serveBaliPage(req,res,'screen'));
 app.get('/live',(_req,res)=>res.redirect(302,'/screen'));
 app.get('/operator',(_req,res)=>res.redirect(302,'/control/general'));
@@ -689,7 +689,8 @@ app.get('/control',(_req,res)=>res.redirect(302,'/control/general'));
 for(const area of ['general','contest']){
  app.get('/live/'+area,(_req,res)=>res.redirect(302,'/screen'));
  app.get('/control/'+area,(req,res)=>{
-   if(!validSession(req,'bali_admin'))return res.redirect(302,'/admin/'+area);
+   if(area==='contest')return res.redirect(302,'/control/general');
+   if(!validSession(req,'bali_admin'))return res.redirect(302,'/admin/general');
    serveBaliPage(req,res,'screen');
  });
 }
