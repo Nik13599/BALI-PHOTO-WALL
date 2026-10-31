@@ -171,3 +171,23 @@ body[data-page="screen"]{overflow:hidden;background:#050705}
 @keyframes royal-crown-drop{0%{opacity:0;transform:translateY(-130vh) rotate(-14deg) scale(1.6)}65%{opacity:1;transform:translateY(15px) rotate(6deg) scale(1.08)}85%{transform:translateY(-8px) rotate(-2deg)}100%{opacity:1;transform:translateY(0) rotate(0) scale(1)}}
 @keyframes royal-title-reveal{from{opacity:0;transform:translateY(35px)}to{opacity:1;transform:translateY(0)}}
 @media (prefers-reduced-motion:reduce){.royal-result *{animation:none!important}}
+
+/* Royal podium displayed only after the server has committed its final ballot tally. */
+.royal-result{inset:0!important;background:radial-gradient(ellipse at 50% 30%,#30220d 0%,#0c0b0c 66%,#040504 100%)!important;justify-content:center!important;gap:2vh!important;padding:3vh 2.5vw!important}
+.royal-podium-heading{font-size:clamp(22px,3.2vw,58px);font-weight:950;letter-spacing:.12em;color:#fff1c0;text-align:center;text-shadow:0 0 28px #d7a84b7d}
+.royal-podium{display:flex;align-items:flex-end;justify-content:center;gap:clamp(12px,2.1vw,44px);width:min(95vw,1650px);max-height:83vh;margin:auto 0 0}
+.royal-place{position:relative;flex:1 1 0;max-width:480px;min-width:0;text-align:center;display:flex;flex-direction:column;align-items:center;gap:clamp(5px,.75vh,14px);animation:royal-title-reveal .8s both}
+.royal-place[data-place="1"]{order:2;transform:translateY(-3vh)}
+.royal-place[data-place="2"]{order:1}
+.royal-place[data-place="3"]{order:3}
+.royal-place[data-place="1"]:only-child{max-width:min(60vw,580px);transform:none}
+.royal-place-crown{font-size:clamp(58px,9vw,156px);line-height:.85;filter:drop-shadow(0 4px 19px currentColor);animation:royal-crown-drop 1.4s both}
+.royal-place[data-place="1"]{color:#ffd454}
+.royal-place[data-place="2"]{color:#d4e4ee}
+.royal-place[data-place="3"]{color:#d29a64}
+.royal-place-photo{width:min(100%,31vh);height:min(49vh,470px);max-width:100%;object-fit:contain;object-position:center;border:3px solid currentColor;border-radius:18px;background:#161a15;box-shadow:0 0 26px #000b,0 0 22px currentColor}
+.royal-place[data-place="1"] .royal-place-photo{width:min(100%,37vh);height:min(55vh,550px);border-width:4px}
+.royal-place-name{color:#fff;font-size:clamp(16px,2.3vw,37px);line-height:1.15;font-weight:950;overflow-wrap:anywhere;text-shadow:0 3px 14px #000}
+.royal-place-medal{font-size:clamp(12px,1.7vw,24px);font-weight:950;color:inherit}
+.royal-place-votes{color:#eee;font-size:clamp(11px,1.3vw,19px)}
+@media(max-width:680px){.royal-result{padding:12px 7px!important}.royal-podium{gap:5px}.royal-place-photo{height:35vh;border-radius:10px}.royal-place[data-place="1"] .royal-place-photo{height:42vh}.royal-place-name{font-size:14px}.royal-place-crown{font-size:45px}}
