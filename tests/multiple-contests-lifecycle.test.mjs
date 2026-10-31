@@ -104,6 +104,8 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
   const next=database.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(ids[1]);
   assert.ok(next&&next.event_date===firstRun.event_date);
   assert.notEqual(next.contest_event_id,firstRun.contest_event_id);
+  assert.equal(next.general_event_id,firstRun.general_event_id,
+   'the normal wall keeps its gallery while the contest rotates');
   assert.equal(database.prepare('SELECT COUNT(*) n FROM contest_telegram_entries WHERE event_id=?').get(next.contest_event_id).n,1);
   assert.equal(database.prepare('SELECT COUNT(*) n FROM contest_telegram_entries WHERE event_id=?').get(firstRun.contest_event_id).n,0);
   database.close();database=null;
