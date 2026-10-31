@@ -41,7 +41,46 @@ function split(region,items,gap,rnd,out){
     split({x:region.x,y:region.y+sizeA+gap,width:region.width,height:sizeB},second,gap,rnd,out);
   }
 }
+function squareCompute(photos,width,height,options={}){
+  const items=photos.slice(0,500);
+  if(!items.length)return {tiles:[],focusId:null};
+  const W=Math.max(1,Number(width)||1),H=Math.max(1,Number(height)||1);
+  const focus=items.find(p=>p.id===options.focusId)||items[0];
+  if(items.length===1){
+    const side=Math.min(W,H);
+    return {tiles:[tile({x:(W-side)/2,y:(H-side)/2,width:side,height:side},focus)],focusId:focus.id};
+  }
+  const rnd=random(options.seed??1),gap=clamp(Number(options.gap)||0,0,16);
+  const large=items.length>=5,needed=items.length+(large?3:0);
+  let choice=null;
+  for(let cols=1;cols<=Math.min(needed,40);cols++){
+    const rows=Math.ceil(needed/cols);
+    if(large&&cols<2)continue;
+    const cell=Math.min((W-gap*(cols-1))/cols,(H-gap*(rows-1))/rows);
+    if(cell>0&&(!choice||cell>choice.cell))choice={cols,rows,cell};
+  }
+  if(!choice)return {tiles:[],focusId:null};
+  const {cols,rows,cell}=choice,step=cell+gap;
+  const x0=(W-(cols*cell+(cols-1)*gap))/2;
+  const y0=(H-(rows*cell+(rows-1)*gap))/2;
+  const occupied=new Set(),tiles=[];
+  const place=(photo,col,row,span=1)=>{
+    for(let yy=row;yy<row+span;yy++)for(let xx=col;xx<col+span;xx++)occupied.add(yy*cols+xx);
+    tiles.push(tile({x:x0+col*step,y:y0+row*step,width:span*cell+(span-1)*gap,height:span*cell+(span-1)*gap},photo));
+  };
+  if(large){
+    const col=Math.floor(rnd()*(cols-1)),row=Math.floor(rnd()*(rows-1));
+    place(focus,col,row,2);
+  }
+  const remaining=shuffle(large?items.filter(p=>p.id!==focus.id):items,rnd);
+  for(let row=0;row<rows;row++)for(let col=0;col<cols;col++){
+    if(!remaining.length)break;
+    if(!occupied.has(row*cols+col))place(remaining.shift(),col,row);
+  }
+  return {tiles,focusId:focus.id};
+}
 function compute(photos,width,height,options={}){
+  if(options.squareTiles)return squareCompute(photos,width,height,options);
   const items=photos.slice(0,500);
   if(!items.length)return {tiles:[],focusId:null};
   const W=Math.max(1,Number(width)||1),H=Math.max(1,Number(height)||1);
