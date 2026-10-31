@@ -609,6 +609,42 @@ app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
  res.set('Cache-Control','no-store').json({ok:true,managedBroadcast:true,
   runId:activeBroadcast?.runId||null,screen:'/screen',folder:activeBroadcast?.folder||null});
 }));
+/* Local operator can restore already curated WebP photos copied from an
+   earlier broadcast folder. They are indexed only in the CURRENT run. */
+app.get('/api/admin/broadcast-state',adminAuth,asyncRoute(async(_req,res)=>{
+ await synchronizeBroadcast();
+ res.json({ok:true,active:!!activeBroadcast,runId:activeBroadcast?.runId||null,
+  folder:activeBroadcast?'data/photos/streams/'+activeBroadcast.folder:null,
+  telegramAdmin:'https://app.baliminsk.by/telegram-admin.html#tcPhoto',
+  screen:'/screen'});
+}));
+app.post('/api/admin/broadcast-restore',adminAuth,requireAction,asyncRoute(async(_req,res)=>{
+ await synchronizeBroadcast();
+ const run=activeBroadcast;
+ if(!run)return res.status(409).json({error:'Запусти трансляцию через Telegram Admin'});
+ const dir=path.join(PHOTOS,'streams',run.folder);
+ const entries=(await fsp.readdir(dir,{withFileTypes:true})).filter(x=>x.isFile()&&/^[a-f0-9-]{36}\.webp$/i.test(x.name)).slice(0,2000);
+ const exists=db.prepare('SELECT id FROM photos WHERE filename=?');
+ const insert=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,photo_area) VALUES(?,?,?,'approved',?,?,?,'general')");
+ let imported=0,skipped=0,failed=0;
+ for(const file of entries){
+  const filename='streams/'+run.folder+'/'+file.name;
+  if(exists.get(filename)){skipped++;continue}
+  try{
+   const full=path.join(dir,file.name),stat=await fsp.stat(full);
+   if(stat.size<=0||stat.size>8*1024*1024){failed++;continue}
+   const info=await sharp(full,{limitInputPixels:36_000_000,failOn:'error'}).metadata();
+   if(info.format!=='webp'||!info.width||!info.height){failed++;continue}
+   const thumb=path.join(THUMBS,filename);await fsp.mkdir(path.dirname(thumb),{recursive:true});
+   if(!fs.existsSync(thumb))
+    await sharp(full).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
+     .webp({quality:65}).toFile(thumb);
+   insert.run(run.generalEventId,filename,'operator-restored',Date.now(),info.width,info.height);
+   imported++;
+  }catch(error){failed++;console.warn('PHOTO WALL restore skipped:',error.message)}
+ }
+ res.json({ok:true,imported,skipped,failed,folder:'data/photos/streams/'+run.folder});
+}));
 app.get('/healthz', (_req,res) => {
  const required=['style.css','admin-compact.css','areas.css','screen-broadcast.css',
   'app.js','guest.js','crop.js','bali-logo.svg'];
