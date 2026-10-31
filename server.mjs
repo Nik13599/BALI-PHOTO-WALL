@@ -829,6 +829,7 @@ app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
   winners:winners.map(w=>({id:w.id,name:w.name,votes:w.votes,place:w.place})),
   winnerCount:podium?.places||1,
   resultError:phase==='closed'&&!settings?.finalized_at?'Ожидаем подтверждённые голоса BALI':null});
+}));
 // Only approved photos may appear in the LED mosaic, even as thumbnails.
 // Unapproved originals remain accessible to the moderator only.
 app.get('/api/screen/thumbnail/:id', screenAuth, (req,res) => {
