@@ -9,6 +9,10 @@
 <body data-page="screen">
 <main class="screen" id="wallScreen">
   <div class="wall-grid" id="wallGrid" aria-label="Фотостена BALI"></div>
+  <section class="contest-overlay" id="contestOverlay" aria-label="Участники конкурса" hidden>
+    <div class="contest-overlay-title">👑 УЧАСТНИКИ КОНКУРСА <small>ГОЛОСУЙ В BALI TELEGRAM</small></div>
+    <div class="contest-overlay-viewport"><div class="contest-overlay-track" id="contestOverlayTrack"></div></div>
+  </section>
   <div class="royal-result" id="royalResult" hidden aria-live="polite">
     <div class="royal-podium-heading">🏆 ПОБЕДИТЕЛИ BALI</div>
     <div class="royal-podium" id="royalPodium"></div>
@@ -30,9 +34,7 @@
     </form>
   </div>
   <div class="screen-toolbar">
-    <a class="screen-gear" href="/live/general" style="text-decoration:none" aria-label="Общая трансляция">◩ Общая трансляция</a>
-    <a class="screen-gear" href="/live/contest" style="text-decoration:none" aria-label="Конкурсная трансляция">♛ Конкурсная трансляция</a>
-    <button class="screen-gear" id="wallSettingsToggle" type="button" aria-label="Настройки фотостены" aria-expanded="false"><span aria-hidden="true">⚙</span> Настройки</button>
+    <button class="screen-gear" id="wallSettingsToggle" type="button" aria-label="Настройки отображения" aria-expanded="false"><span aria-hidden="true">⚙</span> Настройки</button>
     <button class="screen-gear" id="fullscreenBtn" type="button">⛶ Весь экран</button>
   </div>
   <aside class="wall-settings" id="wallSettings" hidden aria-label="Настройки фотостены">
