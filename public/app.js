@@ -1089,7 +1089,7 @@ if(page==='screen'){
       if(!controller)return;
       const key=input.dataset.wallSetting;
       settings[key]=input.type==='checkbox'?input.checked:
-        key==='fit'||key==='layout'||key==='liveFit'||key.endsWith('Pos')?input.value:Number(input.value);
+        ['fit','layout','liveFit','liveShape','liveTiles'].includes(key)||key.endsWith('Pos')?input.value:Number(input.value);
       applySettings();saveProfileSoon();
     };
     input.addEventListener(input.type==='range'?'input':'change',change);
