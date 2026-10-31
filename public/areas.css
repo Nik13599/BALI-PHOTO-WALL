@@ -64,3 +64,15 @@ body[data-admin-area="contest"] #contestPhase{font-size:12px;color:#d7ff4d}
  body[data-admin-area="contest"] #contestSave{width:100%}
  body[data-admin-area="contest"] #contestPanel[open]{max-height:none;overflow:visible}
 }
+
+/* PHOTO WALL contest is a moderation station, not a second event scheduler. */
+.contest-moderation-banner{display:flex;flex-wrap:wrap;align-items:center;gap:9px 16px;padding:12px 16px;margin:12px 0;background:linear-gradient(110deg,#283317,#121b16);border:1px solid #8bb45155;border-radius:14px;font-size:13px}
+.contest-moderation-banner b{color:#ddf59f;font-size:16px}
+.contest-moderation-banner span{flex:1 1 240px;color:#ecf5df}
+.contest-moderation-banner strong{color:#fff;white-space:nowrap;font-variant-numeric:tabular-nums}
+body[data-admin-area="general"] .contest-moderation-banner{display:none}
+body[data-admin-area="contest"] #restoreBroadcastPhotos{display:none}
+body[data-admin-area="contest"] #contestPanel:not([open]){max-height:54px;overflow:hidden}
+body[data-admin-area="contest"] .admin-quick-actions{margin:8px 0}
+body[data-admin-area="contest"] #photoGrid .approve{font-weight:900}
+@media(max-width:680px){.contest-moderation-banner{display:grid;gap:6px}.contest-moderation-banner strong{white-space:normal}}
