@@ -124,8 +124,7 @@ if(page==='admin') {
   async function refreshLocalBroadcast(){
    try{
     const data=await api('/api/admin/broadcast-state'),status=$('#localBroadcastStatus');
-    if(status)status.textContent=data.active?'● ЭФИР '+data.runId.slice(0,8)+' · '+data.folder:
-     '○ Трансляция не запущена. Включите в Telegram Admin.';
+    if(status)status.textContent='✓ PHOTO WALL готова к показу. Откройте LED-экран: карусели, QR и оформление управляются здесь, без конкурса.';
     const button=$('#restoreBroadcastPhotos');if(button)button.disabled=!data.active;
    }catch(error){const status=$('#localBroadcastStatus');if(status)status.textContent='Сервер недоступен: '+error.message}
   }
