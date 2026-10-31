@@ -667,6 +667,72 @@ for(const area of ['general','contest']){
    serveBaliPage(req,res,'screen');
  });
 }
+// Telegram Admin is the ONLY normal control room. The Windows service
+// handles moderation through a short-lived, action-bound Google-admin proof.
+db.exec(`CREATE TABLE IF NOT EXISTS contest_moderation_nonces(
+ nonce TEXT PRIMARY KEY,used_at_ms INTEGER NOT NULL
+)`);
+app.post('/api/operator/contest-moderation',asyncRoute(async(req,res)=>{
+ const payload=req.body||{},auth=String(req.headers.authorization||'');
+ if(!/^Bearer [A-Za-z0-9_.-]{40,1500}$/.test(auth)||req.get('Content-Type')?.split(';')[0]!=='application/json')
+  return res.status(403).json({error:'Требуется подтверждение Telegram Admin'});
+ const {runId,action,photoId=0,page=1,status='pending'}=payload;
+ if(!/^[a-f0-9-]{36}$/.test(runId||'')||!['list','approve','reject','reset'].includes(action)||
+   !Number.isSafeInteger(photoId)||photoId<0||!Number.isSafeInteger(page)||page<1||page>10000||
+   !['pending','approved','rejected'].includes(status))
+  return res.status(400).json({error:'Неверное действие модерации'});
+ let proof;
+ try{
+  const response=await fetch('https://app.baliminsk.by/api/tg-bali/photo-contest-moderation-proof',{
+   method:'POST',headers:{'Content-Type':'application/json'},redirect:'error',
+   body:JSON.stringify({proof:auth.slice(7),runId,action,photoId,page,status}),
+   signal:AbortSignal.timeout(5000)});
+  proof=response.ok?await response.json():null;
+ }catch{}
+ if(proof?.ok!==true||!/^[a-f0-9-]{36}$/.test(proof.nonce||''))
+  return res.status(403).json({error:'Подтверждение администратора недействительно'});
+ await synchronizeBroadcast();
+ if(!activeBroadcast||activeBroadcast.runId!==runId)
+  return res.status(409).json({error:'Конкурс уже изменён или завершён'});
+ const eventId=activeBroadcast.contestEventId;
+ if(action==='list'){
+  const counts=db.prepare("SELECT status,COUNT(*) AS n FROM photos WHERE event_id=? AND photo_area='contest' GROUP BY status")
+   .all(eventId);
+  const count=Object.fromEntries(['pending','approved','rejected'].map(s=>[s,Number(counts.find(r=>r.status===s)?.n)||0]));
+  const photos=db.prepare("SELECT p.id,p.status,p.filename,t.telegram_username AS username,t.telegram_display_name AS name,"+
+   "t.bali_card_number AS cardNumber,t.telegram_provider_id AS telegramId FROM photos p "+
+   "JOIN contest_telegram_entries t ON t.photo_id=p.id AND t.event_id=p.event_id "+
+   "WHERE p.event_id=? AND p.photo_area='contest' AND p.status=? "+
+   "ORDER BY p.created_at DESC,p.id DESC LIMIT 12 OFFSET ?").all(eventId,status,(page-1)*12);
+  const items=await Promise.all(photos.map(async item=>{
+   let thumbnailData='';
+   try{
+    const file=fs.existsSync(path.join(THUMBS,item.filename))?
+     path.join(THUMBS,item.filename):path.join(PHOTOS,item.filename);
+    const resized=await sharp(file).resize({width:180,height:180,fit:'inside',withoutEnlargement:true})
+     .webp({quality:55}).toBuffer();
+    if(resized.length<45000)thumbnailData='data:image/webp;base64,'+resized.toString('base64');
+   }catch{}
+   return {id:item.id,status:item.status,name:item.name,username:item.username,
+    cardNumber:item.cardNumber,telegramId:item.telegramId,thumbnailData};
+  }));
+  return res.json({ok:true,runId,items,counts:count,page,pages:Math.max(1,Math.ceil(count[status]/12))});
+ }
+ if(!Number.isSafeInteger(photoId)||photoId<=0)return res.status(400).json({error:'Некорректная фотография'});
+ const item=selectPhoto.get(photoId);
+ if(!item||item.event_id!==eventId||item.photo_area!=='contest')
+  return res.status(404).json({error:'Фотография не принадлежит текущему конкурсу'});
+ if(await contestPhotoMutationLocked(item))
+  return res.status(409).json({error:'После начала голосования модерация заблокирована'});
+ const inserted=db.prepare('INSERT OR IGNORE INTO contest_moderation_nonces(nonce,used_at_ms) VALUES(?,?)')
+  .run(proof.nonce,Date.now());
+ if(inserted.changes!==1)return res.status(409).json({error:'Действие уже выполнялось'});
+ const next=action==='approve'?'approved':action==='reject'?'rejected':'pending';
+ const result=db.prepare("UPDATE photos SET status=? WHERE id=? AND event_id=? AND photo_area='contest'")
+  .run(next,photoId,eventId);
+ if(result.changes!==1)return res.status(409).json({error:'Фотография изменилась'});
+ return res.json({ok:true,runId,photoId,status:next});
+}));
 app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
  await synchronizeBroadcast();
  // Anonymous dashboard receives only aggregate counters, never guest photos,
