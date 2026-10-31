@@ -615,7 +615,7 @@ if(page==='screen'){
     eventX:[-250,250],eventY:[-250,250],hintX:[-250,250],hintY:[-250,250],
     qrX:[-250,250],qrY:[-250,250],
     logoSize:[24,240],liveSize:[10,55],eventSize:[12,85],
-    qrSize:[40,250],inset:[0,80]
+    qrSize:[40,480],inset:[0,80]
   };
   let settings={...defaults};
   const embeddedLogo=$('#wallLogo')?.getAttribute('src')||'/bali-logo.svg';
@@ -714,7 +714,7 @@ if(page==='screen'){
     screen.style.setProperty('--wall-logo-size',Math.max(17,Math.round(settings.logoSize*fitScale))+'px');
     screen.style.setProperty('--wall-live-size',Math.max(10,Math.round(settings.liveSize*fitScale))+'px');
     screen.style.setProperty('--wall-event-size',Math.max(10,Math.round(settings.eventSize*fitScale))+'px');
-    screen.style.setProperty('--wall-qr-size',Math.max(36,Math.round(settings.qrSize*fitScale))+'px');
+    screen.style.setProperty('--wall-qr-size',Math.max(36,Math.min(Math.round(settings.qrSize*fitScale),Math.round(screen.clientWidth*.46),Math.round(screen.clientHeight*.58)))+'px');
     screen.style.setProperty('--wall-inset',Math.round(settings.inset*fitScale)+'px');
     setShown($('#wallLogo'),settings.showLogo);
     setShown($('#wallLive'),settings.showLive);
