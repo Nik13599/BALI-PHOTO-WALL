@@ -710,7 +710,10 @@ app.post('/api/operator/contest-moderation',asyncRoute(async(req,res)=>{
    try{
     const file=fs.existsSync(path.join(THUMBS,item.filename))?
      path.join(THUMBS,item.filename):path.join(PHOTOS,item.filename);
-    const resized=await sharp(file).resize({width:180,height:180,fit:'inside',withoutEnlargement:true})
+    // Read and close the Windows file handle before Sharp touches the
+    // pixels; an open image decoder can otherwise block photo deletion.
+    const bytes=await fsp.readFile(file);
+    const resized=await sharp(bytes).resize({width:180,height:180,fit:'inside',withoutEnlargement:true})
      .webp({quality:55}).toBuffer();
     if(resized.length<45000)thumbnailData='data:image/webp;base64,'+resized.toString('base64');
    }catch{}
