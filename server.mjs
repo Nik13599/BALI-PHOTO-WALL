@@ -1,4 +1,5 @@
 import express from 'express';
+import {testContestSession,chooseContestEvent} from './contest-test.mjs';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
@@ -149,6 +150,7 @@ function screenProfileData(area){
 }
 const clockFields=db.pragma('table_info(contest_settings)').map(x=>x.name);
 for(const [name,definition] of [
+ ['test_session_id',"TEXT NOT NULL DEFAULT ''"],
  ['contest_date',"TEXT NOT NULL DEFAULT ''"],
  ['voting_start',"TEXT NOT NULL DEFAULT '03:00'"],
  ['voting_end',"TEXT NOT NULL DEFAULT '04:00'"],
@@ -219,7 +221,8 @@ const reservedWinnerPhotoIds=()=>{
 const telegramContestMatches=(control,event,settings)=>{
  if(!control||!event||!settings)return false;
  if(control.resultContestId)return control.resultContestId==='event_'+event.id;
- const date=control.current?.session?.date||'';
+ const session=control.current?.session||control.session;
+ const date=session?.eventId||session?.date||'';
  return !!date&&(!settings.bali_event_id||settings.bali_event_id===date)&&
   eligiblePartyDay(date,settings.contest_date);
 };
@@ -253,7 +256,19 @@ let syncContestPending=null;
 async function ensureTelegramContest(){
  if(syncContestPending)return syncContestPending;
  syncContestPending=(async()=>{
-  const policy=await telegramPhotoSchedule(),session=policy?.current?.session;
+  const policy=await telegramPhotoSchedule(),session=policy?.current?.session||policy?.session;
+  const testSession=testContestSession(policy);
+  if(testSession){
+   if(!db.prepare('SELECT 1 FROM contest_settings WHERE test_session_id=?').get(testSession.testSessionId)){
+    db.transaction(()=>{
+     const now=Date.now(),date=testSession.date;
+     const id=db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,0,?)').run('ТЕСТ КОНКУРСА BALI',now).lastInsertRowid;
+     db.prepare("INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,test_session_id,updated_at) VALUES(?,1,0,?,'03:00','04:00',?,?,?)")
+      .run(id,date,testSession.eventId,testSession.testSessionId,now);
+    })();
+   }
+   return;
+  }
   if(!session||!/\d{4}-\d{2}-\d{2}$/.test(session.date||'')||
      !String(session.partyName||'').trim()||!String(session.contestName||'').trim())return;
   const partyDate=session.date;
@@ -262,7 +277,7 @@ async function ensureTelegramContest(){
    new Date(policy.resultAtMs+10800000).toISOString().slice(0,10):'';
   const contestDate=[partyDate,nextDay].includes(resultDate)?resultDate:nextDay;
   db.transaction(()=>{
-   if(db.prepare('SELECT 1 FROM contest_settings WHERE bali_event_id=? LIMIT 1').get(partyDate))return;
+   if(db.prepare("SELECT 1 FROM contest_settings WHERE bali_event_id=? AND test_session_id='' LIMIT 1").get(partyDate))return;
    // Adopt a single already configured unbound event instead of silently
    // abandoning its existing contestants when Telegram Admin names are saved.
    const eligible=db.prepare("SELECT event_id,contest_date FROM contest_settings WHERE enabled=1 AND bali_event_id='' AND finalized_at IS NULL")
@@ -346,14 +361,17 @@ const currentEvent = db.prepare('SELECT id,name,upload_shape FROM events WHERE a
 // current GENERAL photo-wall event. Enabled/saved contest settings win.
 const recentContestEvents=db.prepare(
  'SELECT e.id,e.name,e.upload_shape FROM events e '+
- 'JOIN contest_settings s ON s.event_id=e.id WHERE s.enabled=1 '+
+ "JOIN contest_settings s ON s.event_id=e.id WHERE s.enabled=1 AND s.test_session_id='' "+
  'ORDER BY s.updated_at DESC,e.id DESC LIMIT 40'
 );
 const currentContestEvent={get(){
  // Telegram Admin is the time authority; an OLD Windows clock must never
  // silently choose a different contest after the moderator saves a new one.
  const choices=recentContestEvents.all();
- return choices.find(e=>!contestSettings(e.id).finalized_at)||choices[0]||currentEvent.get();
+ const test=testContestSession(telegramSchedule.value);
+ if(test)return db.prepare('SELECT e.id,e.name,e.upload_shape FROM events e JOIN contest_settings s ON s.event_id=e.id WHERE s.test_session_id=? AND s.enabled=1').get(test.testSessionId)||null;
+ return chooseContestEvent(choices,telegramSchedule.value,contestSettings)||
+  (testContestSession(telegramSchedule.value)?null:currentEvent.get());
 }};
 const selectPhoto = db.prepare('SELECT * FROM photos WHERE id=?');
 const secureEqual = (a, b) => {
@@ -571,7 +589,8 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
  const base=PUBLIC_URL.startsWith('https://baliminsk.online')?PUBLIC_URL:'https://baliminsk.online';
  const podium=settings?.finalized_at?contestPodium(event.id):null;
  const winner=settings?.finalized_at&&settings.winner_photo_id?rows.find(x=>x.photoId===settings.winner_photo_id):null;
- res.json({contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
+ res.json({test_supported:true,test_session_id:settings?.test_session_id||null,
+  contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
   phase:actualPhase,contest_date:settings?.contest_date||null,bali_event_id:settings?.bali_event_id||null,
   server_now:Date.now(),registration_open:enabled&&registrationRule?.open===true,
   registration_ends_at:registrationRule?.closesAtMs??null,
@@ -597,6 +616,7 @@ function historicalContests(privateDetails=false){
  const rows=db.prepare(`SELECT e.id,e.name,s.contest_date,s.bali_event_id,s.total_votes,
   p.target_places,p.winners_json,p.finalized_at FROM contest_podium p
   JOIN events e ON e.id=p.event_id JOIN contest_settings s ON s.event_id=e.id
+  WHERE s.test_session_id=''
   ORDER BY p.finalized_at DESC,e.id DESC LIMIT 250`).all();
  return rows.map(r=>{
   let winners=[];try{winners=JSON.parse(r.winners_json)}catch{}
@@ -819,6 +839,7 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  }
  if(!event)return res.status(409).json({error:'Не найдено мероприятие конкурса для этой заявки'});
  const setting=contestSettings(event.id);
+ if((setting.test_session_id||'')!==(proof.testSessionId||''))return res.status(409).json({error:'Тестовая сессия изменилась. Отправь фото в текущий тест заново.'});
  const validQueued=queuedContestTicketAllowed(proof,setting);
  // The signed Cloudflare queue photo was originally submitted and accepted
  // under the THEN-current registration policy. Only live/direct submissions
@@ -871,8 +892,8 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
    if(db.prepare('SELECT 1 FROM contest_telegram_entries WHERE event_id=? AND bali_uid=?').get(event.id,proof.uid))
      throw Error('already-registered');
    const submissionAt=validQueued?proof.queuedAtMs:now;
-   const id=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,photo_area) VALUES(?,?,?,'pending',?,? ,?,'contest')")
-     .run(event.id,filename,'contest:'+crypto.randomUUID(),submissionAt,dimension.width,dimension.height).lastInsertRowid;
+   const id=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,photo_area) VALUES(?,?,?,?,?,? ,?,'contest')")
+     .run(event.id,filename,'contest:'+crypto.randomUUID(),setting.test_session_id?'approved':'pending',submissionAt,dimension.width,dimension.height).lastInsertRowid;
    db.prepare('INSERT INTO contest_telegram_entries(event_id,bali_uid,bali_event_id,photo_id,telegram_username,telegram_display_name,registered_at) VALUES(?,?,?,?,?,?,?)')
      .run(event.id,proof.uid,proof.eventId,id,proof.username,proof.telegramName||proof.name,submissionAt);
    // One royal nomination, legacy DB category uses "king" internally.
@@ -954,7 +975,9 @@ app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
  const visible=phase==='closed'?winners.map(w=>({photoId:w.id})):candidates;
  const photos=visible.slice(0,500).map(c=>
   db.prepare("SELECT id,created_at,width,height,screen_lane FROM photos WHERE id=? AND status='approved' AND photo_area='contest'").get(c.photoId)).filter(Boolean);
- res.json({event,photos,phase,finalized:!!settings?.finalized_at,
+ res.json({event,photos,phase,finalized:!!settings?.finalized_at,serverNowMs:Date.now(),
+  testMode:!!settings?.test_session_id,
+  countdownEndsAtMs:settings?.test_session_id&&policy?.test?.phase==='countdown'?policy.test.deadlineMs:null,
   winner:winners[0]?{id:winners[0].id,name:winners[0].name,votes:winners[0].votes,totalVotes:settings.total_votes}:null,
   winners:winners.map(w=>({id:w.id,name:w.name,votes:w.votes,place:w.place})),
   winnerCount:podium?.places||1,

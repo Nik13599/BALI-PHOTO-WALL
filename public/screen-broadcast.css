@@ -81,3 +81,6 @@ body[data-page="screen"] .wall-event-hint{max-width:75vw;overflow-wrap:anywhere}
 .miniapp-btn-weekdays{display:flex;flex-wrap:wrap;gap:8px;font-size:11px}
 .miniapp-btn-weekdays label{font-size:11px;gap:2px}
 .miniapp-btn-result{font-size:11px;color:#d3b47c;margin:0}
+
+.royal-test-countdown{position:fixed;z-index:90;inset:0;display:grid;place-items:center;padding:6vw;text-align:center;background:radial-gradient(ellipse,#2a1945ed,#040712f5);color:#ffe9a0;font:950 clamp(32px,6vw,100px)/1.12 system-ui,sans-serif;text-shadow:0 0 30px #d7ae4777;letter-spacing:.03em;pointer-events:none}
+.royal-test-countdown[hidden]{display:none!important}

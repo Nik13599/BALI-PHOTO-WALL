@@ -783,13 +783,22 @@ if(page==='screen'){
     }
   }
   function clearWall(){
-    const result=$('#royalResult');if(result)result.hidden=true;lastRoyalWinner=null;
+    const result=$('#royalResult');if(result)result.hidden=true;lastRoyalWinner=null;countdownEnd=null;countdown.hidden=true;
     $('#wallGrid').style.removeProperty('display');$('#wallEmpty').style.removeProperty('display');
     photos=[];signature='';eventId=null;
     globalThis.BaliCarouselWall?.reset();
     globalThis.BaliLiveWall?.reset();
     layout();
   }
+  let countdownEnd=null,countdownClockOffset=0;
+  const countdown=document.createElement('div');countdown.className='royal-test-countdown';countdown.hidden=true;
+  countdown.setAttribute('role','status');document.body.append(countdown);
+  function paintContestCountdown(){
+   const left=countdownEnd?Math.max(0,Math.ceil((countdownEnd-(Date.now()+countdownClockOffset))/1000)):null;
+   countdown.hidden=left===null;
+   if(left!==null)countdown.textContent=left>0?'ПОБЕДИТЕЛЬ ЧЕРЕЗ '+left:'ВЫБИРАЕМ ПОБЕДИТЕЛЯ…';
+  }
+  setInterval(paintContestCountdown,200);
   let lastRoyalWinner=null;
   async function refresh(){
     try{
@@ -801,6 +810,8 @@ if(page==='screen'){
       const event=data.event?.id??null;
       const eventName=data.event?.name||'BALI NIGHT CLUB';
       $('#screenEvent').textContent=eventName;
+      countdownEnd=data.testMode&&Number.isSafeInteger(data.countdownEndsAtMs)&&!data.finalized?data.countdownEndsAtMs:null;
+      countdownClockOffset=Number.isSafeInteger(data.serverNowMs)?data.serverNowMs-Date.now():0;paintContestCountdown();
       const royal=$('#royalResult');
       if(royal){
         const winners=Array.isArray(data.winners)?data.winners:
