@@ -707,6 +707,7 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
  res.json({test_supported:true,test_session_id:settings?.test_session_id||null,
   contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
   phase:actualPhase,contest_date:settings?.contest_date||null,bali_event_id:settings?.bali_event_id||null,
+  broadcast_run_id:activeBroadcast?.runId||null,
   server_now:Date.now(),registration_open:enabled&&registrationRule?.open===true,
   registration_ends_at:registrationRule?.closesAtMs??null,
   voting_starts_at:voteRule?.open?control.serverNowMs:voteRule?.nextOpensAtMs??null,
@@ -938,7 +939,17 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  // The event ID in the ticket is signed by BALI's Telegram backend.
  await ensureTelegramContest();
  let event=currentContestEvent.get();
- if(proof.queued){
+ if(proof.broadcastRunId){
+  if(!/^[a-f0-9]{8}-[a-f0-9-]{27}$/.test(proof.broadcastRunId))
+   return res.status(401).json({error:'Некорректный ID запуска конкурса'});
+  const assigned=db.prepare('SELECT e.id,e.name,e.upload_shape FROM managed_broadcast_runs b '+
+   'JOIN events e ON e.id=b.contest_event_id WHERE b.run_id=?').get(proof.broadcastRunId);
+  if(!assigned)return res.status(409).json({error:'Запуск конкурса ещё не синхронизирован. Фото сохранено в очереди Telegram.'});
+  if(!proof.queued&&activeBroadcast?.runId!==proof.broadcastRunId)
+   return res.status(409).json({error:'Запущена другая трансляция, повторите подачу фотографии'});
+  event=assigned;
+ }
+ if(proof.queued&&!proof.broadcastRunId){
   // Never silently attach yesterday's queued photo to today's current
   // contest. Look up the originally signed BALI Event ID, including a
   // historic contest whose enabled flag was later turned off.
