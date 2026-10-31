@@ -15,10 +15,10 @@ test('general PHOTO WALL remains independent from contest broadcast authority',(
  assert.match(server,/app\.get\('\/api\/contest\/status'[\s\S]{0,150}if\(PHOTO_CONTEST_PAUSED\)/);
  assert.match(server,/res\.redirect\(302,'\/admin\/general'\)/);
 });
-test('LED has three motion layouts with a 3s spotlight, normal collage and safe pause',()=>{
+test('LED has six motion layouts with a 3s spotlight, normal collage and safe pause',()=>{
  const screen=read('public/screen.html'),app=read('public/app.js');
  const showcase=read('public/showcase-wall.js'),css=read('public/showcase-wall.css');
- assert.deepEqual(globalThis.BaliShowcaseWall.modes,['showcase-spotlight','showcase-film','showcase-cascade']);
+ assert.deepEqual(globalThis.BaliShowcaseWall.modes,['showcase-spotlight','showcase-film','showcase-cascade','showcase-orbit','showcase-wall','showcase-ribbon']);
  assert.match(screen,/id="showcaseSettings"/);
  assert.match(screen,/id="setShowcaseInterval"/);
  assert.match(app,/BaliShowcaseWall\.render/);
