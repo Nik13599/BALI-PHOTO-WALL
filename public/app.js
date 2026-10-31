@@ -886,6 +886,8 @@ if(page==='screen'){
         const key=ready?(contestData?.event?.id||event)+':'+winners.map(w=>w.place+'/'+w.id+'/'+w.votes).join(';'):null;
         const grid=$('#wallGrid');
         if(ready){
+          const heading=royal.querySelector('.royal-podium-heading');
+          if(heading)heading.textContent='🏆 '+String(contestData?.contestTitle||'ПОБЕДИТЕЛИ BALI');
           grid.style.display='none';
           $('#wallEmpty').style.display='none';
           if(lastRoyalWinner!==key){
@@ -896,7 +898,9 @@ if(page==='screen'){
               const item=document.createElement('div');item.className='royal-place';
               item.dataset.place=String(w.place);
               const crown=document.createElement('div');crown.className='royal-place-crown';
-              crown.textContent='♛';
+              // A real vector crown, not a font-dependent chess glyph.
+              // The crown overlaps the photo's upper edge; face tracking is not implied.
+              crown.innerHTML='<svg viewBox="0 0 120 92" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Корона"><path d="M9 28 33 46 59 7 87 46 111 28 101 73H19Z" fill="currentColor" stroke="#fff4c9" stroke-width="2.5" stroke-linejoin="round"/><path d="M18 70h84v14H18z" fill="currentColor" stroke="#fff4c9" stroke-width="2.5"/><path d="M25 76h70" stroke="#fff4c9" stroke-width="3" stroke-linecap="round"/><circle cx="9" cy="27" r="6" fill="#fff2bf"/><circle cx="59" cy="7" r="6" fill="#fff2bf"/><circle cx="111" cy="27" r="6" fill="#fff2bf"/></svg>';
               const image=document.createElement('img');image.className='royal-place-photo';
               image.alt='Фотография призёра BALI';
               image.src='/api/screen/thumbnail/'+encodeURIComponent(w.id)+'?feed=contest';
