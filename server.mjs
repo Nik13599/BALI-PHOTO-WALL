@@ -1346,8 +1346,15 @@ async function cleanup() {
   // Only finalists retain their original approved images for the permanent
   // results archive. Ordinary photos follow configured retention and expire.
   const protectedIds=reservedWinnerPhotoIds();
+  // Never expire ballots' contestant images while their competition is
+  // unfinished, including a club PC outage spanning the normal retention
+  // period. Otherwise a delayed result could finalize an empty contest.
+  const inProgressIds=new Set(db.prepare(
+   "SELECT p.id FROM photos p JOIN contest_settings s ON s.event_id=p.event_id "+
+   "WHERE p.photo_area='contest' AND s.enabled=1 AND s.finalized_at IS NULL"
+  ).all().map(row=>row.id));
   const old = db.prepare('SELECT id,filename FROM photos WHERE created_at < ?').all(Date.now()-RETENTION_DAYS*86400000)
-   .filter(item=>!protectedIds.has(item.id));
+   .filter(item=>!protectedIds.has(item.id)&&!inProgressIds.has(item.id));
   for (const item of old) {
     db.prepare('DELETE FROM photos WHERE id=?').run(item.id);
     await Promise.all([
