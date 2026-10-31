@@ -1004,6 +1004,17 @@ const upload = multer({ storage:multer.diskStorage({
 }), limits: {fileSize: 8*1024*1024, files:1, fields:2} });
 // Clean up uploads even when the controller rejects a request.
 app.use('/api/upload', (req,res,next) => {
+  // Only the genuine BALI Telegram Mini App may read cross-origin upload
+  // responses. The QR/guest upload route remains fully independent of Telegram.
+  // Don't enable cookies or arbitrary origins for this public photo endpoint.
+  res.vary('Origin');
+  if(req.get('Origin')==='https://app.baliminsk.by'){
+    res.set('Access-Control-Allow-Origin','https://app.baliminsk.by');
+    res.set('Access-Control-Allow-Methods','POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers','Content-Type');
+  }
+  if(req.method==='OPTIONS')
+    return res.status(req.get('Origin')==='https://app.baliminsk.by'?204:403).end();
   const discard=()=> { if(req.file?.path) fsp.unlink(req.file.path).catch(()=>{}); };
   res.on('finish',discard);
   res.on('close',discard);

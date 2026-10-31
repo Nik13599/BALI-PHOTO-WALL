@@ -51,10 +51,25 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
     const screenCookie = screenLogin.headers.get('set-cookie').split(';')[0];
     const headers = { Cookie:admin, 'X-BALI-Action':'1', 'Content-Type':'application/json' };
     const img = await sharp({create:{width:96,height:96,channels:3,background:'#88ff33'}}).png().toBuffer();
+    // Telegram WebView must be allowed to POST directly if Cloudflare
+    // proxy delivery fails. Other origins must not receive readable results.
+    const preflight=await request('/api/upload',{
+      method:'OPTIONS',headers:{Origin:'https://app.baliminsk.by',
+       'Access-Control-Request-Method':'POST'}
+    });
+    assert.equal(preflight.status,204);
+    assert.equal(preflight.headers.get('access-control-allow-origin'),'https://app.baliminsk.by');
+    const untrusted=await request('/api/upload',{
+      method:'OPTIONS',headers:{Origin:'https://untrusted.example'}
+    });
+    assert.equal(untrusted.status,403);
+    assert.equal(untrusted.headers.get('access-control-allow-origin'),null);
     const form = new FormData();
     form.append('photo',new Blob([img],{type:'image/png'}),'smoke.png');
     form.append('consent','yes');
-    const created = await request('/api/upload',{method:'POST',headers:{Cookie:guest},body:form});
+    const created = await request('/api/upload',{method:'POST',headers:{Cookie:guest,Origin:'https://app.baliminsk.by'},body:form});
+    assert.equal(created.headers.get('access-control-allow-origin'),'https://app.baliminsk.by');
+    assert.equal(created.headers.get('access-control-allow-credentials'),null);
     assert.equal(created.status,201,await created.text().catch(()=>'')); 
     // The response body is consumed above only when status mismatches.
     const { photos } = await (await request('/api/admin/dashboard',{headers:{Cookie:admin}})).json();
