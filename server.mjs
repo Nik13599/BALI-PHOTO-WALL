@@ -1003,18 +1003,33 @@ const upload = multer({ storage:multer.diskStorage({
   filename: (_req,_file,cb) => cb(null, crypto.randomUUID() + '.tmp')
 }), limits: {fileSize: 8*1024*1024, files:1, fields:2} });
 // Clean up uploads even when the controller rejects a request.
-app.use('/api/upload', (req,res,next) => {
-  // Only the genuine BALI Telegram Mini App may read cross-origin upload
-  // responses. The QR/guest upload route remains fully independent of Telegram.
-  // Don't enable cookies or arbitrary origins for this public photo endpoint.
+// The public upload bridge serves the BALI Mini App without navigating away.
+// Keep a fixed allowlist; never enable wildcard CORS or cross-site credentials.
+const MINIAPP_ORIGINS=new Set(['https://app.baliminsk.by','https://baliminsk.by','https://www.baliminsk.by']);
+function miniappCors(req,res){
+  const origin=req.get('Origin');
   res.vary('Origin');
-  if(req.get('Origin')==='https://app.baliminsk.by'){
-    res.set('Access-Control-Allow-Origin','https://app.baliminsk.by');
-    res.set('Access-Control-Allow-Methods','POST, OPTIONS');
+  if(origin&&MINIAPP_ORIGINS.has(origin)){
+    res.set('Access-Control-Allow-Origin',origin);
+    res.set('Access-Control-Allow-Methods','GET, POST, OPTIONS');
     res.set('Access-Control-Allow-Headers','Content-Type');
+    return true;
   }
-  if(req.method==='OPTIONS')
-    return res.status(req.get('Origin')==='https://app.baliminsk.by'?204:403).end();
+  return !origin;
+}
+app.get('/api/bridge/status',(req,res)=>{
+  miniappCors(req,res);
+  res.set('Cache-Control','no-store');
+  res.json({ok:true,service:'BALI PHOTO WALL',uploadAvailable:true,
+    contestAvailable:!PHOTO_CONTEST_PAUSED,uploadPath:'/api/upload',
+    maxUploadBytes:8*1024*1024});
+});
+app.options('/api/bridge/status',(req,res)=>
+  res.status(miniappCors(req,res)?204:403).end());
+app.use('/api/upload', (req,res,next) => {
+  const allowed=miniappCors(req,res);
+  if(req.method==='OPTIONS')return res.status(allowed?204:403).end();
+  if(!allowed)return res.status(403).json({error:'Недопустимый адрес приложения'});
   const discard=()=> { if(req.file?.path) fsp.unlink(req.file.path).catch(()=>{}); };
   res.on('finish',discard);
   res.on('close',discard);
