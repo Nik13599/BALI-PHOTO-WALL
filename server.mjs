@@ -683,7 +683,7 @@ app.get('/api/public', asyncRoute(async(req,res)=>{
   await synchronizeBroadcast();
   guestIdentity(req,res);
   const event = currentEvent.get();
-  res.json({ event:activeBroadcast?event:null, uploadShape:event?.upload_shape||'any', limit:null });
+  res.json({ event:activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?event:null, uploadShape:event?.upload_shape||'any', limit:null });
 }));
 // Public contest feed for Telegram Mini App. Approved nominations only.
 // Never return upload tokens, guest identifiers, source filenames or staff data.
@@ -820,7 +820,7 @@ app.use('/api/upload', (req,res,next) => {
 });
 app.post('/api/upload', uploadLimiter, reserveUploadSlot, upload.single('photo'), asyncRoute(async (req,res) => {
   await synchronizeBroadcast();
-  const event = activeBroadcast?currentEvent.get():null;
+  const event = activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?currentEvent.get():null;
   if (!event) return res.status(409).json({error:'Сейчас нет активного мероприятия'});
   if (req.body?.consent !== 'yes') return res.status(400).json({error:'Необходимо согласие на показ фотографии'});
   if (!req.file?.path) return res.status(400).json({error:'Выберите фотографию'});
@@ -1076,7 +1076,7 @@ app.get('/api/photos/:id', screenAuth, (req,res) => {
 // for a full mosaic, and database size is not an app-level upload quota.
 app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
   await synchronizeBroadcast();
-  const event = activeBroadcast?currentEvent.get():null;
+  const event = activeBroadcast||process.env.ALLOW_LEGACY_EVENT_CONTROL==='1'?currentEvent.get():null;
   const photos = event ? db.prepare("SELECT id,created_at,width,height,filename,screen_lane FROM photos p WHERE event_id=? AND status='approved' AND photo_area='general' ORDER BY created_at DESC,id DESC LIMIT 500").all(event.id) : [];
   const update=db.prepare('UPDATE photos SET width=?,height=? WHERE id=? AND (width IS NULL OR height IS NULL)');
   // Upgrade photos created before width/height metadata existed, once per photo.
