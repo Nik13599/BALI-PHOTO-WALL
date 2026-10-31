@@ -431,15 +431,15 @@ const recentContestEvents=db.prepare(
  'ORDER BY s.updated_at DESC,e.id DESC LIMIT 40'
 );
 const currentContestEvent={get(){
- // Telegram Admin is the time authority; an OLD Windows clock must never
- // silently choose a different contest after the moderator saves a new one.
+ // Telegram Admin's explicit rehearsal works without a public live broadcast.
+ const test=testContestSession(telegramSchedule.value);
+ if(test)return db.prepare('SELECT e.id,e.name,e.upload_shape FROM events e JOIN contest_settings s ON s.event_id=e.id WHERE s.test_session_id=? AND s.enabled=1').get(test.testSessionId)||null;
+ // Telegram Admin is the time authority; old Windows clocks cannot override it.
  if(telegramSchedule.value?.broadcast){
   if(!telegramSchedule.value.broadcast.active||!activeBroadcast)return null;
   return db.prepare('SELECT id,name,upload_shape FROM events WHERE id=?').get(activeBroadcast.contestEventId)||null;
  }
  const choices=recentContestEvents.all();
- const test=testContestSession(telegramSchedule.value);
- if(test)return db.prepare('SELECT e.id,e.name,e.upload_shape FROM events e JOIN contest_settings s ON s.event_id=e.id WHERE s.test_session_id=? AND s.enabled=1').get(test.testSessionId)||null;
  return chooseContestEvent(choices,telegramSchedule.value,contestSettings)||
   (testContestSession(telegramSchedule.value)?null:currentEvent.get());
 }};
