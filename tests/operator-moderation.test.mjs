@@ -28,3 +28,11 @@ test('operator readiness responds only with aggregate numbers for the active con
  for(const term of ['pending','approved','rejected','registered'])assert.match(block,new RegExp(term));
  assert.doesNotMatch(block,/telegram_username|bali_uid|guest_id|filename/);
 });
+
+test('a transient Telegram timeout cannot reset an active Windows broadcast',()=>{
+ const source=file('server.mjs');
+ assert.match(source,/lastGoodAt:0/);
+ assert.match(source,/now-telegramSchedule\.lastGoodAt>120000/);
+ assert.match(source,/telegramSchedule\.expires=now\+5000/);
+ assert.match(source,/telegramSchedule\.lastWarningAt/);
+});
