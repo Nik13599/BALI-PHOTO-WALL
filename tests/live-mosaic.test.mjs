@@ -15,9 +15,10 @@ function checkGeometry(layout,width,height,gap){
     assert.ok(tile.x+tile.width<=width+1e-6,'tile must fit horizontally');
     assert.ok(tile.y+tile.height<=height+1e-6,'tile must fit vertically');
   }
-  // Split tree fully covers the screen except narrow deliberate gaps.
+  // For a single approved photo the stage deliberately leaves breathing room.
   const total=layout.tiles.reduce((acc,t)=>acc+t.width*t.height,0);
-  assert.ok(total>width*height*(1-.25),'mosaic must cover most of LED');
+  if(layout.tiles.length>1)
+    assert.ok(total>width*height*(1-.25),'multi-photo mosaic must cover most of LED');
   for(let i=0;i<layout.tiles.length;i++){
     const a=layout.tiles[i];
     for(let j=i+1;j<layout.tiles.length;j++){
@@ -78,4 +79,24 @@ test('spotlight scale and layouts remain valid on vertical displays',()=>{
 
 test('no photo is reused or drawn when source is empty',()=>{
   assert.deepEqual(engine.compute([],1920,1080),{tiles:[],focusId:null});
+});
+
+test('a single approved photo remains centered, uncropped and modest on LED displays',()=>{
+ const cases=[
+  {w:1920,h:1080,pw:1000,ph:1000},
+  {w:1920,h:1080,pw:750,ph:1000},
+  {w:1920,h:1080,pw:1600,ph:900},
+  {w:1080,h:1920,pw:750,ph:1000}
+ ];
+ for(const {w,h,pw,ph} of cases){
+  const photo={id:17,width:pw,height:ph};
+  const layout=engine.compute([photo],w,h,{focusId:17,focusSize:65,gap:2,seed:3});
+  assert.equal(layout.tiles.length,1);
+  const t=layout.tiles[0];
+  assert.ok(t.width<=w*.65+.001,'no single image should occupy the entire width');
+  assert.ok(t.height<=h*.7+.001,'no single image should occupy the entire height');
+  assert.ok(Math.abs((t.x+t.width/2)-w/2)<.001);
+  assert.ok(Math.abs((t.y+t.height/2)-h/2)<.001);
+  assert.ok(Math.abs(t.width/t.height-pw/ph)<.000001,'keep aspect ratio');
+ }
 });
