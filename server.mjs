@@ -299,6 +299,8 @@ async function deleteCancelledBroadcast(runId){
     .run(runId,JSON.stringify(filenames),run?.folder||'',run?.contest_event_id||null,Date.now());
    if(!run)return;
    db.prepare('DELETE FROM contest_photo_replacements WHERE event_id=?').run(run.contest_event_id);
+   // A cancelled result has no permanent podium. Remove its FK first.
+   db.prepare('DELETE FROM contest_podium WHERE event_id=?').run(run.contest_event_id);
    // photos cascade into contest_candidates and contest_telegram_entries.
    db.prepare('DELETE FROM photos WHERE event_id IN (?,?)').run(run.general_event_id,run.contest_event_id);
    db.prepare('DELETE FROM managed_broadcast_runs WHERE run_id=?').run(runId);
