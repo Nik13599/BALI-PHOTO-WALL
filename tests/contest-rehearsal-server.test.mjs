@@ -31,25 +31,43 @@ test('Real server isolates rehearsal photos, accepts uploads outside hours, coun
   const image=await sharp({create:{width:64,height:64,channels:3,background:'#cda450'}}).png().toBuffer();
   const proof=n=>({uid:'user-'+n,eventId:date+'__3',name:'Test Person '+n,username:'',telegramName:'Test Person '+n,testSessionId:sid});
   async function upload(p){const form=new FormData();form.append('ticket',Buffer.from(JSON.stringify(p)).toString('base64url'));form.append('photo',new Blob([image],{type:'image/png'}),'test.png');return request('/api/contest/entry',{method:'POST',headers:{Origin:'https://app.baliminsk.by'},body:form})}
-  for(let n=1;n<=3;n++){const r=await upload(proof(n));assert.equal(r.status,201,await r.text())}
+  const entered=[];
+  for(let n=1;n<=3;n++){const r=await upload(proof(n)),body=await r.json();assert.equal(r.status,201,JSON.stringify(body));entered.push(body.id)}
   assert.equal((await upload(proof(1))).status,409,'one contestant photo per BALI ID');
   assert.equal((await upload({...proof(4),testSessionId:'test_aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'})).status,409,'a stale proof cannot enter this test');
   const login=await request('/api/screen/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'rehearsal-screen-password'})});
   assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];
   const general=await (await request('/api/screen',{headers:{cookie}})).json();assert.equal(general.photos.length,0,'test photos never enter general gallery');
-  state.policy.test.phase='voting';state.policy.buttons.registration.open=false;state.policy.buttons.vote={open:true,visible:true,mode:'manual-on'};await save();await pause(5200);
-  const ballot=await (await request('/api/contest/status')).json();
-  assert.equal(ballot.voting_open,true);assert.equal(ballot.candidates.length,3,'test photos need no production moderation');
   const adminLogin=await request('/api/admin/login',{method:'POST',
    headers:{'Content-Type':'application/json'},body:JSON.stringify({password:'rehearsal-admin-password'})});
   assert.equal(adminLogin.status,200);
   const adminCookie=adminLogin.headers.get('set-cookie').split(';')[0];
   const mutationHeaders={Cookie:adminCookie,'X-BALI-Action':'1','Content-Type':'application/json'};
-  const firstPhotoId=Number(String(ballot.candidates[0].id).replace(/^p_/,''));
+  const firstPhotoId=Number(entered[0]);
   assert.ok(Number.isSafeInteger(firstPhotoId)&&firstPhotoId>0);
+  const beforePhoto=(await request('/api/admin/photos/'+firstPhotoId,{headers:{Cookie:adminCookie}})).status;
+  assert.equal(beforePhoto,200);
+  const newImage=await sharp({create:{width:92,height:68,channels:3,background:'#287bd8'}}).png().toBuffer();
+  const newForm=new FormData();newForm.append('photo',new Blob([newImage],{type:'image/png'}),'photoshop-export.png');
+  const replaced=await request('/api/admin/photos/'+firstPhotoId+'/replace',{
+   method:'POST',headers:{Cookie:adminCookie,'X-BALI-Action':'1'},body:newForm});
+  assert.equal(replaced.status,200,await replaced.text());
+  const replacementCount=await (await request('/api/admin/contest/history',{headers:{Cookie:adminCookie}})).json();
+  assert.ok(replacementCount.ok,'replace leaves the contest history handler intact');
+  // The same BALI contestant remains registered after a local file replacement.
+  const afterChange=await (await request('/api/contest/status')).json();
+  assert.equal(afterChange.approved_count,3);
+  state.policy.test.phase='voting';state.policy.buttons.registration.open=false;state.policy.buttons.vote={open:true,visible:true,mode:'manual-on'};await save();await pause(5200);
+  const ballot=await (await request('/api/contest/status')).json();
+  assert.equal(ballot.voting_open,true);assert.equal(ballot.candidates.length,3,'test photos need no production moderation');
+  assert.equal(Number(String(ballot.candidates[0].id).replace(/^p_/,'')),firstPhotoId);
   const changedDuringBallot=await request('/api/admin/photos/'+firstPhotoId+'/status',{
    method:'POST',headers:mutationHeaders,body:JSON.stringify({status:'rejected'})});
   assert.equal(changedDuringBallot.status,409,'moderators must not change vote-eligible photographs');
+  const lateForm=new FormData();lateForm.append('photo',new Blob([newImage],{type:'image/png'}),'late.png');
+  const lateReplace=await request('/api/admin/photos/'+firstPhotoId+'/replace',{
+   method:'POST',headers:{Cookie:adminCookie,'X-BALI-Action':'1'},body:lateForm});
+  assert.equal(lateReplace.status,409,'cannot replace a photo when voting is open');
   const removedDuringBallot=await request('/api/admin/photos/'+firstPhotoId,{
    method:'DELETE',headers:mutationHeaders,body:'{}'});
   assert.equal(removedDuringBallot.status,409,'contestants cannot vanish during voting');
