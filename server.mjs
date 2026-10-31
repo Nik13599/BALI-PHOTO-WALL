@@ -320,6 +320,10 @@ async function ensureTelegramContest(){
  syncContestPending=(async()=>{
   const policy=await telegramPhotoSchedule(),session=policy?.current?.session||policy?.session;
   const testSession=testContestSession(policy);
+  if(policy?.broadcast){
+   await synchronizeBroadcast();
+   if(!testSession)return; // Only explicit Telegram Admin runs may create competitions.
+  }
   if(testSession){
    if(!db.prepare('SELECT 1 FROM contest_settings WHERE test_session_id=?').get(testSession.testSessionId)){
     db.transaction(()=>{
@@ -429,6 +433,10 @@ const recentContestEvents=db.prepare(
 const currentContestEvent={get(){
  // Telegram Admin is the time authority; an OLD Windows clock must never
  // silently choose a different contest after the moderator saves a new one.
+ if(telegramSchedule.value?.broadcast){
+  if(!telegramSchedule.value.broadcast.active||!activeBroadcast)return null;
+  return db.prepare('SELECT id,name,upload_shape FROM events WHERE id=?').get(activeBroadcast.contestEventId)||null;
+ }
  const choices=recentContestEvents.all();
  const test=testContestSession(telegramSchedule.value);
  if(test)return db.prepare('SELECT e.id,e.name,e.upload_shape FROM events e JOIN contest_settings s ON s.event_id=e.id WHERE s.test_session_id=? AND s.enabled=1').get(test.testSessionId)||null;
@@ -586,8 +594,9 @@ app.get('/admin', (_req,res) => res.redirect(302,'/admin/general'));
 app.get('/admin/general', (req,res) => serveBaliPage(req,res,'admin'));
 app.get('/admin/contest', (req,res) => serveBaliPage(req,res,'admin'));
 app.get('/screen', (req,res) => serveBaliPage(req,res,'screen'));
+app.get('/live',(_req,res)=>res.redirect(302,'/screen'));
 for(const area of ['general','contest']){
- app.get('/live/'+area,(req,res)=>serveBaliPage(req,res,'screen'));
+ app.get('/live/'+area,(_req,res)=>res.redirect(302,'/screen'));
  app.get('/control/'+area,(req,res)=>{
    if(!validSession(req,'bali_admin'))return res.redirect(302,'/admin/'+area);
    serveBaliPage(req,res,'screen');
@@ -597,7 +606,7 @@ app.get('/healthz', (_req,res) => {
  const required=['style.css','admin-compact.css','areas.css','screen-broadcast.css',
   'app.js','guest.js','crop.js','bali-logo.svg'];
  const missing=required.filter(file=>!fs.existsSync(path.join(pageAssetDir,file)));
- res.json({ok:missing.length===0,assetsOk:missing.length===0,missingAssets:missing});
+ res.json({ok:missing.length===0,assetsOk:missing.length===0,missingAssets:missing,managedBroadcast:true,runId:activeBroadcast?.runId||null});
 });
 
 /* Single Windows authority for Telegram's button clocks and visibility.
