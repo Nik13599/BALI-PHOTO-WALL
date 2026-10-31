@@ -344,7 +344,7 @@ const PAGE_ASSETS=new Map([
  ['guest',{file:'guest.html',css:['style.css','guest-compact.css'],js:['crop.js','guest.js']}],
  ['admin',{file:'admin.html',css:['style.css','admin-compact.css','areas.css'],js:['app.js']}],
  ['screen',{file:'screen.html',css:['style.css','screen-broadcast.css'],
-   js:['mosaic.js','carousel.js','carousel-wall.js','live-mosaic.js','live-wall.js','app.js','miniapp-buttons.js']}]
+   js:['mosaic.js','carousel.js','carousel-wall.js','live-mosaic.js','live-wall.js','app.js']}]
 ]);
 const pageCache=new Map();
 const pageAssetDir=path.join(ROOT,'public');
@@ -1030,7 +1030,7 @@ app.post('/api/admin/contest/settings',adminAuth,requireAction,(req,res)=>{
      timeline.voting_ends_at,timeline.results_at,Date.now());
  res.json({ok:true,phase:contestClock(contestSettings(id)).phase});
 });
-app.post('/api/admin/contest/candidates',adminAuth,requireAction,(req,res)=>{
+app.post('/api/admin/contest/candidates',adminAuth,requireAction,asyncRoute(async(req,res)=>{
  const input=req.body||{},eventId=Number(input.eventId),photoId=Number(input.photoId);
  if(!Number.isSafeInteger(eventId)||eventId<1||!Number.isSafeInteger(photoId)||photoId<1||
    !['add','remove'].includes(input.action)||
@@ -1038,8 +1038,12 @@ app.post('/api/admin/contest/candidates',adminAuth,requireAction,(req,res)=>{
   return res.status(400).json({error:'Некорректные данные участника'});
  const photo=db.prepare('SELECT id,status,photo_area FROM photos WHERE id=? AND event_id=?').get(photoId,eventId);
  if(!photo)return res.status(404).json({error:'Фотография не найдена в мероприятии'});
- if(contestClock(contestSettings(eventId)).phase!=='registration')
-   return res.status(409).json({error:'Список участников закрыт с началом голосования'});
+ const control=await telegramPhotoSchedule();
+ if(!control)return res.status(503).json({error:'Расписание Telegram Admin недоступно. Изменение участников отложено.'});
+ if(control.buttons.vote?.open===true||
+    (control.resultContestId==='event_'+eventId&&
+     Number.isSafeInteger(control.resultAtMs)&&Date.now()>=control.resultAtMs))
+   return res.status(409).json({error:'Список участников закрыт таймером голосования Telegram Admin'});
  if(input.action==='add'){
   const name=typeof input.name==='string'?input.name.trim():'';
   if(name.length<2||name.length>70||/[<>\u0000-\u001f\u007f]/.test(name)||
@@ -1055,7 +1059,7 @@ app.post('/api/admin/contest/candidates',adminAuth,requireAction,(req,res)=>{
   if(!remaining.n)db.prepare('UPDATE contest_settings SET voting_open=0 WHERE event_id=?').run(eventId);
  }
  res.json({ok:true});
-});
+}));
 app.get('/api/admin/contest/export',adminAuth,(req,res)=>{
  const id=Number(req.query.eventId);
  if(!Number.isSafeInteger(id)||id<1||!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))
