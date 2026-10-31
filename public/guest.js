@@ -101,9 +101,9 @@ input.addEventListener('change',async()=>{
   status('Выберите JPG, PNG или WEBP. Формат HEIC пока не поддерживается.',true);
   setState();return;
  }
- if(file.size>8*1024*1024){
+ if(file.size>8*1024*1024 && policy!=='square'){
   input.value='';editButton.hidden=true;
-  status('Файл больше 8 МБ. Уменьшите фотографию перед отправкой.',true);
+  status('Файл больше 8 МБ. Откройте редактор и уменьшите фото перед отправкой.',true);
   setState();return;
  }
  selected=file;
@@ -111,7 +111,7 @@ input.addEventListener('change',async()=>{
  showPreview(file);
  status(policy==='square'?'Для мероприятия требуется квадрат 1:1. Настройте кадр ниже.':'Фото выбрано. При желании его можно обрезать.');
  setState();
- if(policy==='square'&&ready)await openCrop();
+ if(ready && (policy==='square'||file.size>8*1024*1024))await openCrop();
 });
 editButton.addEventListener('click',openCrop);
 $('cropReset')?.addEventListener('click',()=>globalThis.BaliCropEditor?.reset());
@@ -142,7 +142,7 @@ form.addEventListener('submit',async event=>{
    status('Сервер занят, повторяем отправку…');
    await new Promise(resolve=>setTimeout(resolve,1200*(attempt+1)));
   }
-  if(!response.ok)throw Error(result?.error||'Ошибка при отправке');
+  if(!response.ok)throw Error(result?.error||('Сервер отклонил фото (HTTP '+response.status+'). Проверьте формат и настройки мероприятия.'));
   form.reset();selected=null;clearPreview();
   document.body.classList.remove('has-photo');
   fileLabel.textContent='ВЫБРАТЬ ФОТОГРАФИЮ';
