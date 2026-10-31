@@ -81,7 +81,7 @@ test('LED broadcast uses the exact operator profile for all five overlays',()=>{
   assert.doesNotMatch(css,new RegExp('body\\[data-screen-mode="broadcast"\\] #'+id+'[^{}]*\\{[^{}]*display\\s*:\\s*none\\s*!important','s'),id+' must not be force-hidden');
   assert.doesNotMatch(css,new RegExp('body\\[data-screen-mode="broadcast"\\] #'+id+'\\s*\\{[^}]*!important','s'),id+' must not be force-positioned');
  }
- assert.match(style,/\\.screen \\[hidden\\]\\{display:none!important\\}/,'Operator show/hide must be respected');
+ assert.ok(style.includes('.screen [hidden]{display:none!important}'),'Operator show/hide must be respected');
  assert.match(html,/id="wallQR"/);
  assert.match(html,/id="wallQRImage"/);
  assert.match(html,/id="setShowQr"[^>]*checked/);
