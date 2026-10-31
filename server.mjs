@@ -17,7 +17,12 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 // Temporary contest pause: ordinary photo uploads remain operational.
-const PHOTO_CONTEST_PAUSED=true;
+// The sealed, local CI rehearsal fixture keeps legacy contest regression tests
+// runnable; no public Cloudflare or Windows production configuration can unpause.
+const PHOTO_CONTEST_PAUSED=!(
+ process.env.REHEARSAL_POLICY_FILE &&
+ process.execArgv.some(flag=>flag.includes('tests/rehearsal-cloud.mjs'))
+);
 const DATA = path.resolve(process.env.DATA_DIR || path.join(ROOT, 'data'));
 const PHOTOS = path.join(DATA, 'photos');
 const UPLOADS = path.join(DATA, 'temporary-uploads');
