@@ -1005,7 +1005,7 @@ const upload = multer({ storage:multer.diskStorage({
 // Clean up uploads even when the controller rejects a request.
 // The public upload bridge serves the BALI Mini App without navigating away.
 // Keep a fixed allowlist; never enable wildcard CORS or cross-site credentials.
-const MINIAPP_ORIGINS=new Set(['https://app.baliminsk.by','https://baliminsk.by','https://www.baliminsk.by']);
+const MINIAPP_ORIGINS=new Set(['https://app.baliminsk.by','https://baliminsk.by','https://www.baliminsk.by','https://baliminsk.online','https://www.baliminsk.online']);
 function miniappCors(req,res){
   const origin=req.get('Origin');
   res.vary('Origin');
