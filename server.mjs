@@ -115,6 +115,8 @@ db.exec(`
 // Preserve Telegram-signed display names independently of editable nomination labels.
 const entryFields=db.pragma('table_info(contest_telegram_entries)').map(x=>x.name);
 if(!entryFields.includes('telegram_display_name'))db.exec("ALTER TABLE contest_telegram_entries ADD COLUMN telegram_display_name TEXT NOT NULL DEFAULT ''");
+if(!entryFields.includes('bali_card_number'))db.exec("ALTER TABLE contest_telegram_entries ADD COLUMN bali_card_number TEXT NOT NULL DEFAULT ''");
+if(!entryFields.includes('telegram_provider_id'))db.exec("ALTER TABLE contest_telegram_entries ADD COLUMN telegram_provider_id TEXT NOT NULL DEFAULT ''");
 
 // Keep all historic contest photos separate, including pending and rejected.
 db.exec("UPDATE photos SET photo_area='contest' WHERE photo_area='general' AND id IN (SELECT photo_id FROM contest_candidates)");
@@ -276,10 +278,55 @@ db.exec(`CREATE TABLE IF NOT EXISTS managed_broadcast_runs(
  general_event_id INTEGER NOT NULL REFERENCES events(id),
  contest_event_id INTEGER NOT NULL REFERENCES events(id),
  event_date TEXT NOT NULL,created_at_ms INTEGER NOT NULL);`);
+// A cancellation is not complete until PHOTO WALL has removed every related
+// nomination, media file and contest event. Keep a durable deletion manifest
+// to retry interrupted disk operations after a Windows restart.
+db.exec(`CREATE TABLE IF NOT EXISTS managed_broadcast_cancellations(
+ run_id TEXT PRIMARY KEY,files_json TEXT NOT NULL,
+ folder TEXT NOT NULL,contest_event_id INTEGER,requested_at_ms INTEGER NOT NULL,finished_at_ms INTEGER
+)`);
+async function deleteCancelledBroadcast(runId){
+ if(!/^[a-f0-9-]{36}$/.test(runId||''))return;
+ let record=db.prepare('SELECT * FROM managed_broadcast_cancellations WHERE run_id=?').get(runId);
+ if(record?.finished_at_ms)return;
+ if(!record){
+  const run=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(runId);
+  db.transaction(()=>{
+   if(db.prepare('SELECT 1 FROM managed_broadcast_cancellations WHERE run_id=?').get(runId))return;
+   const filenames=run?db.prepare('SELECT filename FROM photos WHERE event_id=? AND photo_area=\'contest\'')
+     .all(run.contest_event_id).map(x=>x.filename):[];
+   db.prepare('INSERT INTO managed_broadcast_cancellations(run_id,files_json,folder,contest_event_id,requested_at_ms) VALUES(?,?,?,?,?)')
+    .run(runId,JSON.stringify(filenames),run?.folder||'',run?.contest_event_id||null,Date.now());
+   if(!run)return;
+   db.prepare('DELETE FROM contest_photo_replacements WHERE event_id=?').run(run.contest_event_id);
+   // A cancelled result has no permanent podium. Remove its FK first.
+   db.prepare('DELETE FROM contest_podium WHERE event_id=?').run(run.contest_event_id);
+   // photos cascade into contest_candidates and contest_telegram_entries.
+   db.prepare("DELETE FROM photos WHERE event_id=? AND photo_area='contest'").run(run.contest_event_id);
+   db.prepare('DELETE FROM managed_broadcast_runs WHERE run_id=?').run(runId);
+   // Ordinary guest photo-wall event and its images remain in the archive.
+   db.prepare('DELETE FROM events WHERE id=?').run(run.contest_event_id);
+  })();
+  record=db.prepare('SELECT * FROM managed_broadcast_cancellations WHERE run_id=?').get(runId);
+ }
+ const filenames=JSON.parse(record.files_json);
+ for(const name of filenames){
+  for(const root of [PHOTOS,THUMBS])
+   await fsp.rm(path.join(root,name),{force:true,recursive:true,maxRetries:12,retryDelay:250});
+ }
+ // Do not remove the run folder: it also contains ordinary PHOTO WALL photos.
+ // Those images follow their independent retention policy.
+ db.prepare('UPDATE managed_broadcast_cancellations SET finished_at_ms=? WHERE run_id=? AND finished_at_ms IS NULL')
+  .run(Date.now(),runId);
+}
 async function synchronizeBroadcast(){
  if(broadcastSyncPending)return broadcastSyncPending;
  broadcastSyncPending=(async()=>{
   const policy=await telegramPhotoSchedule(),intent=policy?.broadcast;
+  if(intent?.cancelRunId){
+   activeBroadcast=null;
+   await deleteCancelledBroadcast(intent.cancelRunId);
+  }
   if(!intent?.active||!/^[a-f0-9-]{36}$/.test(intent.runId||'')){activeBroadcast=null;return null}
   if(activeBroadcast?.runId===intent.runId)return activeBroadcast;
   let saved=db.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(intent.runId);
@@ -298,8 +345,14 @@ async function synchronizeBroadcast(){
     if(existing){saved=existing;return}
     const now=Date.now();
     db.prepare('UPDATE events SET active=0').run();
-    const generalId=Number(db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,1,?)')
-     .run('BALI PHOTO WALL · '+partyDate,now).lastInsertRowid);
+    // A new royal contest in the same club night must NOT reset the
+    // independent ordinary PHOTO WALL mosaic. Reuse the nightly gallery.
+    const generalName='BALI PHOTO WALL · '+partyDate;
+    const existingGeneral=db.prepare('SELECT id FROM events WHERE name=? ORDER BY id DESC LIMIT 1').get(generalName);
+    const generalId=existingGeneral?Number(existingGeneral.id):
+     Number(db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,1,?)')
+      .run(generalName,now).lastInsertRowid);
+    if(existingGeneral)db.prepare('UPDATE events SET active=1 WHERE id=?').run(generalId);
     const contestId=Number(db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,0,?)')
      .run('КОРОЛЬ / КОРОЛЕВА · '+partyDate,now).lastInsertRowid);
     db.prepare("INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,updated_at) VALUES(?,1,0,?,'03:00','04:00',?,?)")
@@ -621,8 +674,80 @@ for(const area of ['general','contest']){
    serveBaliPage(req,res,'screen');
  });
 }
+// Telegram Admin is the ONLY normal control room. The Windows service
+// handles moderation through a short-lived, action-bound Google-admin proof.
+db.exec(`CREATE TABLE IF NOT EXISTS contest_moderation_nonces(
+ nonce TEXT PRIMARY KEY,used_at_ms INTEGER NOT NULL
+)`);
+app.post('/api/operator/contest-moderation',asyncRoute(async(req,res)=>{
+ const payload=req.body||{},auth=String(req.headers.authorization||'');
+ if(!/^Bearer [A-Za-z0-9_.-]{40,1500}$/.test(auth)||req.get('Content-Type')?.split(';')[0]!=='application/json')
+  return res.status(403).json({error:'Требуется подтверждение Telegram Admin'});
+ const {runId,action,photoId=0,page=1,status='pending'}=payload;
+ if(!/^[a-f0-9-]{36}$/.test(runId||'')||!['list','approve','reject','reset'].includes(action)||
+   !Number.isSafeInteger(photoId)||photoId<0||!Number.isSafeInteger(page)||page<1||page>10000||
+   !['pending','approved','rejected'].includes(status))
+  return res.status(400).json({error:'Неверное действие модерации'});
+ let proof;
+ try{
+  const response=await fetch('https://app.baliminsk.by/api/tg-bali/photo-contest-moderation-proof',{
+   method:'POST',headers:{'Content-Type':'application/json'},redirect:'error',
+   body:JSON.stringify({proof:auth.slice(7),runId,action,photoId,page,status}),
+   signal:AbortSignal.timeout(5000)});
+  proof=response.ok?await response.json():null;
+ }catch{}
+ if(proof?.ok!==true||!/^[a-f0-9-]{36}$/.test(proof.nonce||''))
+  return res.status(403).json({error:'Подтверждение администратора недействительно'});
+ await synchronizeBroadcast();
+ if(!activeBroadcast||activeBroadcast.runId!==runId)
+  return res.status(409).json({error:'Конкурс уже изменён или завершён'});
+ const eventId=activeBroadcast.contestEventId;
+ if(action==='list'){
+  const counts=db.prepare("SELECT status,COUNT(*) AS n FROM photos WHERE event_id=? AND photo_area='contest' GROUP BY status")
+   .all(eventId);
+  const count=Object.fromEntries(['pending','approved','rejected'].map(s=>[s,Number(counts.find(r=>r.status===s)?.n)||0]));
+  const photos=db.prepare("SELECT p.id,p.status,p.filename,t.telegram_username AS username,t.telegram_display_name AS name,"+
+   "t.bali_card_number AS cardNumber,t.telegram_provider_id AS telegramId FROM photos p "+
+   "JOIN contest_telegram_entries t ON t.photo_id=p.id AND t.event_id=p.event_id "+
+   "WHERE p.event_id=? AND p.photo_area='contest' AND p.status=? "+
+   "ORDER BY p.created_at DESC,p.id DESC LIMIT 12 OFFSET ?").all(eventId,status,(page-1)*12);
+  const items=await Promise.all(photos.map(async item=>{
+   let thumbnailData='';
+   try{
+    const file=fs.existsSync(path.join(THUMBS,item.filename))?
+     path.join(THUMBS,item.filename):path.join(PHOTOS,item.filename);
+    // Read and close the Windows file handle before Sharp touches the
+    // pixels; an open image decoder can otherwise block photo deletion.
+    const bytes=await fsp.readFile(file);
+    const resized=await sharp(bytes).resize({width:180,height:180,fit:'inside',withoutEnlargement:true})
+     .webp({quality:55}).toBuffer();
+    if(resized.length<45000)thumbnailData='data:image/webp;base64,'+resized.toString('base64');
+   }catch{}
+   return {id:item.id,status:item.status,name:item.name,username:item.username,
+    cardNumber:item.cardNumber,telegramId:item.telegramId,thumbnailData};
+  }));
+  return res.json({ok:true,runId,items,counts:count,page,pages:Math.max(1,Math.ceil(count[status]/12))});
+ }
+ if(!Number.isSafeInteger(photoId)||photoId<=0)return res.status(400).json({error:'Некорректная фотография'});
+ const item=selectPhoto.get(photoId);
+ if(!item||item.event_id!==eventId||item.photo_area!=='contest')
+  return res.status(404).json({error:'Фотография не принадлежит текущему конкурсу'});
+ if(await contestPhotoMutationLocked(item))
+  return res.status(409).json({error:'После начала голосования модерация заблокирована'});
+ const inserted=db.prepare('INSERT OR IGNORE INTO contest_moderation_nonces(nonce,used_at_ms) VALUES(?,?)')
+  .run(proof.nonce,Date.now());
+ if(inserted.changes!==1)return res.status(409).json({error:'Действие уже выполнялось'});
+ const next=action==='approve'?'approved':action==='reject'?'rejected':'pending';
+ const result=db.prepare("UPDATE photos SET status=? WHERE id=? AND event_id=? AND photo_area='contest'")
+  .run(next,photoId,eventId);
+ if(result.changes!==1)return res.status(409).json({error:'Фотография изменилась'});
+ return res.json({ok:true,runId,photoId,status:next});
+}));
 app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
  await synchronizeBroadcast();
+ // Telegram Admin polls this endpoint every few seconds; this guarantees
+ // automatic finalization even if nobody has opened the club LED screen.
+ await finalizeContest();
  // Anonymous dashboard receives only aggregate counters, never guest photos,
  // names, access tokens or BALI IDs. It cannot control a broadcast.
  const contestId=activeBroadcast?.contestEventId;
@@ -635,7 +760,10 @@ app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
   'SELECT COUNT(*) AS n FROM contest_telegram_entries WHERE event_id=?').get(contestId)?.n||0:0;
  const final=contestId?contestSettings(contestId):null;
  res.set('Cache-Control','no-store').json({ok:true,managedBroadcast:true,
-  runId:activeBroadcast?.runId||null,screen:'/screen',
+  runId:activeBroadcast?.runId||null,
+  cancelledRunId:db.prepare('SELECT run_id FROM managed_broadcast_cancellations WHERE finished_at_ms IS NOT NULL ORDER BY finished_at_ms DESC LIMIT 1').get()?.run_id||null,
+  cancelledContestId:(()=>{const x=db.prepare('SELECT contest_event_id FROM managed_broadcast_cancellations WHERE finished_at_ms IS NOT NULL ORDER BY finished_at_ms DESC LIMIT 1').get();return x?.contest_event_id?'event_'+x.contest_event_id:null})(),
+  screen:'/screen',
   contestFinalized:!!final?.finalized_at,
   counts:{pending:Number(counts?.pending)||0,approved:Number(counts?.approved)||0,
    rejected:Number(counts?.rejected)||0,registered:Number(registered)||0}});
@@ -963,7 +1091,9 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
     !/^\d{4}-\d{2}-\d{2}(?:__\d+)?$/.test(proof.eventId||'')||
     typeof proof.name!=='string'||proof.name.length<2||proof.name.length>70||
     !/^(?:|@[A-Za-z0-9_]{5,32})$/.test(proof.username||'')||
-    typeof proof.telegramName!=='string'||proof.telegramName.length>100)
+    typeof proof.telegramName!=='string'||proof.telegramName.length>100||
+    (proof.cardNumber!==undefined&&!/^\d{6}$/.test(proof.cardNumber))||
+    (proof.telegramId!==undefined&&!/^\d{1,25}$/.test(proof.telegramId)))
    return res.status(401).json({error:'Подтверждение истекло. Попробуй отправить фото снова.'});
  // A queued nomination belongs to the event that was open when it was
  // submitted, not necessarily the event currently shown on club screens.
@@ -971,6 +1101,8 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
  await ensureTelegramContest();
  let event=currentContestEvent.get();
  if(proof.broadcastRunId){
+  if(db.prepare('SELECT 1 FROM managed_broadcast_cancellations WHERE run_id=?').get(proof.broadcastRunId))
+   return res.status(409).json({error:'Этот конкурс отменён и удалён. Отправь фото на новый конкурс.'});
   if(!/^[a-f0-9]{8}-[a-f0-9-]{27}$/.test(proof.broadcastRunId))
    return res.status(401).json({error:'Некорректный ID запуска конкурса'});
   const assigned=db.prepare('SELECT e.id,e.name,e.upload_shape FROM managed_broadcast_runs b '+
@@ -1054,8 +1186,9 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
    const submissionAt=validQueued?proof.queuedAtMs:now;
    const id=db.prepare("INSERT INTO photos(event_id,filename,guest_id,status,created_at,width,height,photo_area) VALUES(?,?,?,?,?,? ,?,'contest')")
      .run(event.id,filename,'contest:'+crypto.randomUUID(),setting.test_session_id?'approved':'pending',submissionAt,dimension.width,dimension.height).lastInsertRowid;
-   db.prepare('INSERT INTO contest_telegram_entries(event_id,bali_uid,bali_event_id,photo_id,telegram_username,telegram_display_name,registered_at) VALUES(?,?,?,?,?,?,?)')
-     .run(event.id,proof.uid,proof.eventId,id,proof.username,proof.telegramName||proof.name,submissionAt);
+   db.prepare('INSERT INTO contest_telegram_entries(event_id,bali_uid,bali_event_id,photo_id,telegram_username,telegram_display_name,bali_card_number,telegram_provider_id,registered_at) VALUES(?,?,?,?,?,?,?,?,?)')
+     .run(event.id,proof.uid,proof.eventId,id,proof.username,proof.telegramName||proof.name,
+      proof.cardNumber||'',proof.telegramId||'',submissionAt);
    // One royal nomination, legacy DB category uses "king" internally.
    db.prepare('INSERT INTO contest_candidates(photo_id,event_id,name,category,registered_at) VALUES(?,?,?,?,?)')
      .run(id,event.id,proof.name,'king',submissionAt);
@@ -1462,8 +1595,11 @@ app.get('/api/admin/dashboard', adminAuth, asyncRoute(async(req,res) => {
     FROM photos WHERE event_id=? AND photo_area=?`).get(selected.id,area):{pending:0,approved:0,rejected:0};
   const total=counts[status],pages=Math.max(1,Math.ceil(total/PAGE_SIZE)),page=Math.min(Number(rawPage),pages);
   const photos=selected?db.prepare(`SELECT p.id,p.status,p.created_at,p.screen_lane,p.photo_area,
-    CASE WHEN c.photo_id IS NULL THEN 0 ELSE 1 END AS contest
+    CASE WHEN c.photo_id IS NULL THEN 0 ELSE 1 END AS contest,
+    t.telegram_username AS telegramUsername,t.telegram_display_name AS telegramName,
+    t.bali_card_number AS cardNumber,t.telegram_provider_id AS telegramId
     FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id
+    LEFT JOIN contest_telegram_entries t ON t.photo_id=p.id
     WHERE p.event_id=? AND p.photo_area=? AND p.status=?
     ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`).all(selected.id,area,status,PAGE_SIZE,(page-1)*PAGE_SIZE):[];
   res.json({events,active,selected,photos,status,area,counts,page,pages,total,pageSize:PAGE_SIZE});
