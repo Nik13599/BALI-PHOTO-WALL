@@ -29,6 +29,7 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
    SESSION_SECRET:'multi-contest-session-secret-0123456789abcdef'},
   stdio:['ignore','pipe','pipe']});
  let logs='';app.stdout.on('data',v=>logs+=v);app.stderr.on('data',v=>logs+=v);
+ let database=null;
  const req=(p,opts)=>fetch(base+p,opts);
  const img=await sharp({create:{width:96,height:96,channels:3,background:'#24588b'}}).png().toBuffer();
  const upload=async(uid,runId)=>{
@@ -59,7 +60,7 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
    method:'POST',headers:header,body:JSON.stringify({runId:ids[0],action:'approve',
     photoId:firstData.id,page:1,status:'pending'})});
   assert.equal(approved.status,200,await approved.text());
-  const database=new Database(path.join(dir,'bali-photo-wall.sqlite'),{readonly:true});
+  database=new Database(path.join(dir,'bali-photo-wall.sqlite'),{readonly:true});
   const firstRun=database.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(ids[0]);
   assert.ok(firstRun);
   const firstNomination=database.prepare('SELECT * FROM contest_telegram_entries WHERE event_id=?').get(firstRun.contest_event_id);
@@ -85,9 +86,10 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
   assert.notEqual(next.contest_event_id,firstRun.contest_event_id);
   assert.equal(database.prepare('SELECT COUNT(*) n FROM contest_telegram_entries WHERE event_id=?').get(next.contest_event_id).n,1);
   assert.equal(database.prepare('SELECT COUNT(*) n FROM contest_telegram_entries WHERE event_id=?').get(firstRun.contest_event_id).n,0);
-  database.close();
+  database.close();database=null;
  }finally{
+  if(database)database.close();
   if(app.exitCode===null){const ended=new Promise(r=>app.once('exit',r));app.kill('SIGTERM');await ended}
-  await rm(dir,{recursive:true,force:true});
+  await rm(dir,{recursive:true,force:true,maxRetries:8,retryDelay:300});
  }
 });
