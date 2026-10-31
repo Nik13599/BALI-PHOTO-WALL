@@ -689,6 +689,8 @@ function guestUploadPage(req,res){
 }
 app.get('/',(req,res)=>res.set('Cache-Control','no-store').redirect(302,'/upload'));
 app.get('/upload',guestUploadPage);
+// Dedicated Telegram Web App entry point; remains on PHOTO WALL origin for upload and crop.
+app.get('/telegram-upload',guestUploadPage);
 app.get('/admin', (_req,res) => res.redirect(302,'/admin/general'));
 app.get('/admin/general', (req,res) => serveBaliPage(req,res,'admin'));
 app.get('/admin/contest', (_req,res) => res.redirect(302,'/admin/general'));
