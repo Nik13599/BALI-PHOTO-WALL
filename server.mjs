@@ -171,6 +171,26 @@ const contestSettings=id=>contestRow(id)||{
 };
 const eligibleCandidates=id=>db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,c.registered_at AS registeredAt,p.status FROM contest_candidates c JOIN photos p ON p.id=c.photo_id AND p.event_id=c.event_id WHERE c.event_id=? AND p.photo_area='contest' AND p.status='approved' ORDER BY c.registered_at,c.photo_id LIMIT 300").all(id);
 
+// Preserve immutable top-three snapshots across weekly competition cycles.
+db.exec(`CREATE TABLE IF NOT EXISTS contest_podium (
+ event_id INTEGER PRIMARY KEY REFERENCES events(id),
+ target_places INTEGER NOT NULL,
+ winners_json TEXT NOT NULL,
+ finalized_at INTEGER NOT NULL
+)`);
+const contestPodium=id=>{
+ const row=db.prepare('SELECT target_places,winners_json,finalized_at FROM contest_podium WHERE event_id=?').get(id);
+ if(!row)return null;
+ try{return {places:row.target_places,winners:JSON.parse(row.winners_json),finalizedAt:row.finalized_at}}
+ catch{return {places:row.target_places,winners:[],finalizedAt:row.finalized_at}}
+};
+const telegramContestMatches=(control,event,settings)=>{
+ if(!control||!event||!settings)return false;
+ if(control.resultContestId)return control.resultContestId==='event_'+event.id;
+ const date=control.current?.session?.date||'';
+ return !!date&&(!settings.bali_event_id||settings.bali_event_id===date)&&
+  eligiblePartyDay(date,settings.contest_date);
+};
 /* Read-only Telegram Admin schedule. This supersedes Windows button clocks
    but never changes Windows event/candidate/photo data. */
 let telegramSchedule={expires:0,value:null,pending:null};
@@ -203,7 +223,7 @@ async function finalizeContest(){
  const settings=contestRow(event.id);
  if(!settings||settings.enabled!==1||settings.finalized_at)return;
  const telegram=await telegramPhotoSchedule();
- if(!telegram||telegram.resultContestId!=='event_'+event.id||
+ if(!telegramContestMatches(telegram,event,settings)||
     !Number.isSafeInteger(telegram.resultAtMs)||Date.now()<telegram.resultAtMs)return;
  if(Date.now()-lastTallyAttempt<3000)return;
  lastTallyAttempt=Date.now();
@@ -230,9 +250,18 @@ async function finalizeContest(){
   // A moderator may disqualify/remove an approved photo after ballots.
   // Such votes are excluded from ranking, not silently awarded elsewhere.
   if(tally.total>total)console.warn('Contest ballot exclusions:',tally.total-total);
-  const winner=ranked[0]?.votes>0?ranked[0]:null;
-  db.prepare('UPDATE contest_settings SET winner_photo_id=?,winner_votes=?,total_votes=?,finalized_at=?,voting_open=0,updated_at=? WHERE event_id=? AND finalized_at IS NULL')
-   .run(winner?.photoId||null,winner?.votes||0,total,Date.now(),Date.now(),event.id);
+  const places=telegram.winnerCount===3?3:1;
+  const winners=ranked.filter(c=>c.votes>0).slice(0,places).map((c,index)=>{
+   const nomination=db.prepare('SELECT telegram_username AS username FROM contest_telegram_entries WHERE photo_id=?').get(c.photoId);
+   return {id:c.photoId,name:c.name,votes:c.votes,place:index+1,telegramUsername:nomination?.username||null};
+  });
+  const winner=winners[0]||null,now=Date.now();
+  db.transaction(()=>{
+   db.prepare('INSERT OR IGNORE INTO contest_podium(event_id,target_places,winners_json,finalized_at) VALUES(?,?,?,?)')
+    .run(event.id,places,JSON.stringify(winners),now);
+   db.prepare('UPDATE contest_settings SET winner_photo_id=?,winner_votes=?,total_votes=?,finalized_at=?,voting_open=0,updated_at=? WHERE event_id=? AND finalized_at IS NULL')
+    .run(winner?.id||null,winner?.votes||0,total,now,now,event.id);
+  })();
   lastTallyError='';
  })().catch(error=>{lastTallyError=String(error.message||error);console.error('Contest tally retry:',lastTallyError)})
   .finally(()=>{finalizing=null});
