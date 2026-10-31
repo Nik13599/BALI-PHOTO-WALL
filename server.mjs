@@ -1278,6 +1278,7 @@ app.get('/api/admin/contest',adminAuth,asyncRoute(async(req,res)=>{
    tallyError:lastTallyError},candidates});
 }));
 app.post('/api/admin/contest/settings',adminAuth,requireAction,(req,res)=>{
+  if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Расписание и запуск конкурса доступны только в Telegram Admin'});
  const i=req.body||{},id=Number(i.eventId);
  const fields=['registrationOpensAt','registrationClosesAt','votingStartsLocal','votingEndsLocal','resultsLocal'];
  const advanced=fields.some(key=>Object.hasOwn(i,key));
@@ -1425,6 +1426,7 @@ const makeEvent = db.transaction(name => {
   return db.prepare('INSERT INTO events(name,active,created_at) VALUES (?,1,?)').run(name,Date.now()).lastInsertRowid;
 });
 app.post('/api/admin/events', adminAuth, requireAction, (req,res) => {
+  if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Создание нового эфира доступно только в Telegram Admin'});
   if(telegramSchedule.value?.broadcast)return res.status(403).json({error:'Запуск трансляции только через Telegram Admin'});
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   if (name.length < 3 || name.length > 90) return res.status(400).json({error:'Название мероприятия: 3–90 символов'});
@@ -1448,6 +1450,7 @@ app.post('/api/admin/events/:id/upload-shape', adminAuth, requireAction, (req,re
   res.json({ok:true,uploadShape:shape});
 });
 app.post('/api/admin/events/:id/activate', adminAuth, requireAction, (req,res) => {
+  if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Запуск эфира доступен только в Telegram Admin'});
   if(telegramSchedule.value?.broadcast)return res.status(403).json({error:'Выбор эфира только через Telegram Admin'});
   if (!activateEvent(Number(req.params.id))) return res.status(404).json({error:'Мероприятие не найдено'});
   res.json({ok:true});
