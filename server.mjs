@@ -197,9 +197,10 @@ for(const legacy of db.prepare(`SELECT s.event_id AS eventId,s.winner_photo_id A
   'SELECT name FROM contest_candidates WHERE event_id=? AND photo_id=?'
  ).get(legacy.eventId,legacy.photoId):null;
  const username=legacy.photoId?db.prepare(
-  'SELECT telegram_username AS username FROM contest_telegram_entries WHERE photo_id=?'
+  'SELECT telegram_username AS username,telegram_display_name AS telegramName FROM contest_telegram_entries WHERE photo_id=?'
  ).get(legacy.photoId):null;
- const winners=candidate?[{id:legacy.photoId,name:candidate.name,place:1,
+ const winners=candidate?[{id:legacy.photoId,name:username?.telegramName||candidate.name,place:1,
+  submittedName:candidate.name,telegramName:username?.telegramName||null,
   votes:Number(legacy.votes)||0,telegramUsername:username?.username||null}]:[];
  db.prepare('INSERT OR IGNORE INTO contest_podium(event_id,target_places,winners_json,finalized_at) VALUES(?,?,?,?)')
   .run(legacy.eventId,1,JSON.stringify(winners),legacy.finalizedAt);
@@ -323,8 +324,10 @@ async function finalizeContest(){
   if(tally.total>total)console.warn('Contest ballot exclusions:',tally.total-total);
   const places=telegram.winnerCount===3?3:1;
   const winners=ranked.filter(c=>c.votes>0).slice(0,places).map((c,index)=>{
-   const nomination=db.prepare('SELECT telegram_username AS username FROM contest_telegram_entries WHERE photo_id=?').get(c.photoId);
-   return {id:c.photoId,name:c.name,votes:c.votes,place:index+1,telegramUsername:nomination?.username||null};
+   const nomination=db.prepare('SELECT telegram_username AS username,telegram_display_name AS telegramName FROM contest_telegram_entries WHERE photo_id=?').get(c.photoId);
+   return {id:c.photoId,name:nomination?.telegramName||c.name,submittedName:c.name,
+    votes:c.votes,place:index+1,telegramUsername:nomination?.username||null,
+    telegramName:nomination?.telegramName||null};
   });
   const winner=winners[0]||null,now=Date.now();
   db.transaction(()=>{
@@ -602,9 +605,11 @@ function historicalContests(privateDetails=false){
    totalVotes:r.total_votes,configuredPlaces:r.target_places,
    winners:winners.map(w=>{
     if(!privateDetails)return {place:w.place,name:w.name,votes:w.votes};
-    const identity=db.prepare('SELECT bali_uid AS uid,telegram_username AS username FROM contest_telegram_entries WHERE photo_id=?').get(w.id);
+    const identity=db.prepare('SELECT bali_uid AS uid,telegram_username AS username,telegram_display_name AS telegramName FROM contest_telegram_entries WHERE photo_id=?').get(w.id);
     return {place:w.place,name:w.name,votes:w.votes,photoId:w.id,
      telegramUsername:identity?.username||w.telegramUsername||null,
+     telegramName:identity?.telegramName||w.telegramName||null,
+     submittedName:w.submittedName||null,
      baliUid:identity?.uid||null};
    })};
  });
