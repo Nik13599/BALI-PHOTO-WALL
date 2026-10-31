@@ -49,6 +49,16 @@ function compute(photos,width,height,options={}){
   const rnd=random(options.seed??1);
   const chosen=items.find(p=>p.id===options.focusId)||items[0];
   const focusSize=clamp(Number(options.focusSize)||40,25,65)/100;
+  // With a single photo there is no mosaic to rearrange. Display the entire
+  // image at a restrained, centred size instead of expanding one tile to 100%
+  // of the LED panel (which heavily crops portrait and square photos).
+  if(items.length===1){
+    const aspect=clamp((Number(chosen.width)||1)/Math.max(1,Number(chosen.height)||1),.25,4);
+    const maxWidth=W*.65,maxHeight=H*.7;
+    const w=Math.min(maxWidth,maxHeight*aspect);
+    const h=w/aspect;
+    return {tiles:[tile({x:(W-w)/2,y:(H-h)/2,width:w,height:h},chosen)],focusId:chosen.id};
+  }
   const others=shuffle(items.filter(p=>p.id!==chosen.id),rnd)
     .map(p=>({...p,_weight:.72+rnd()*.75}));
   if(items.length<5){
