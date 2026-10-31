@@ -112,6 +112,7 @@ if(page==='guest') {
 if(page==='admin') {
   const adminArea=location.pathname.endsWith('/contest')?'contest':'general';
   document.body.dataset.adminArea=adminArea;
+  let replacingContestPhotoId=null;
   let busy=false;
   let previousDashboard=null;
   let selectedEventId=null;
@@ -210,6 +211,7 @@ if(page==='admin') {
 </nav>
 <section class="admin-photo-section" aria-live="off">
   <div class="admin-section-head"><div><h2 id="photoSectionTitle">Ожидают проверки</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div>
+  <input type="file" id="contestReplaceFile" accept="image/jpeg,image/png,image/webp" hidden aria-label="Заменить фото конкурсанта">
   <div id="photoGrid" class="photo-grid"></div>
   <div class="page-controls" id="pageControls"></div>
 </section>
@@ -257,7 +259,7 @@ if(page==='admin') {
       $('#photoGrid').innerHTML=data.photos.length ? data.photos.map(p=>
         '<article class="photo-card '+(p.contest?'contest-photo':'')+'"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото #'+p.id+'" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+(p.contest?' · ♛':'')+'</span><span class="status '+p.status+'">'+({pending:'ОЖИДАЕТ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div>'+
         (adminArea==='general'&&p.status==='approved'?'<label class="photo-lane-label">Поток <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Авто</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верх</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Низ</option></select></label>':'')+
-        '<div class="photo-actions">'+actions(p)+'<button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
+        '<div class="photo-actions">'+actions(p)+(adminArea==='contest'?'<button class="button small secondary" type="button" data-replace-photo="'+p.id+'">↥ ЗАМЕНИТЬ С ПК</button>':'')+'<button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
       ).join('') : '<div class="empty">'+({pending:'Новых фотографий пока нет. Как только гости загрузят снимки, они появятся здесь.',approved:'На обычной фотостене пока нет опубликованных фотографий.',contest:'В конкурсе пока нет одобренных фотографий.',rejected:'Отклонённых фотографий нет.'}[activePhotoStatus]||'Фотографий нет.')+'</div>';
       $('#pageControls').innerHTML = data.pages>1
         ? '<button class="button secondary" type="button" data-page="prev" '+(data.page<=1?'disabled':'')+'>← НАЗАД</button><span>Страница '+data.page+' из '+data.pages+'</span><button class="button secondary" type="button" data-page="next" '+(data.page>=data.pages?'disabled':'')+'>ВПЕРЁД →</button>'
@@ -477,6 +479,24 @@ if(page==='admin') {
     }
   });
   root.addEventListener('change',async event=>{
+    if(event.target.id==='contestReplaceFile'){
+      const file=event.target.files?.[0],id=replacingContestPhotoId;
+      replacingContestPhotoId=null;
+      if(!file||!Number.isSafeInteger(id)||id<1)return;
+      if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size===0||file.size>8*1024*1024){
+        notice('#adminMessage','Нужен JPG, PNG или WebP до 8 МБ.',true);event.target.value='';return;
+      }
+      try{
+        const form=new FormData();form.append('photo',file,file.name);
+        await api('/api/admin/photos/'+id+'/replace',{method:'POST',
+          headers:{'X-BALI-Action':'1'},body:form});
+        previousDashboard=null;
+        await loadDashboard();
+        notice('#adminMessage','Фото #'+id+' заменено. Номер участника и голоса не изменились.');
+      }catch(error){notice('#adminMessage',error.message,true)}
+      finally{event.target.value=''}
+      return;
+    }
     const input=event.target.closest('[data-lane-photo]');
     if(!input)return;
     const id=Number(input.dataset.lanePhoto);
@@ -505,6 +525,15 @@ if(page==='admin') {
          setTimeout(()=>void refreshCloudQueue(),1500);
         }catch(error){if(label)label.textContent='Ошибка: '+error.message}
         finally{el.disabled=false}
+      }else if(el.dataset.replacePhoto){
+        if(adminArea!=='contest')throw Error('Замена доступна только для конкурса');
+        const id=Number(el.dataset.replacePhoto);
+        if(!Number.isSafeInteger(id)||id<1)return;
+        const input=$('#contestReplaceFile');
+        if(!input)return;
+        replacingContestPhotoId=id;
+        input.value='';
+        input.click();
       }else if(el.dataset.openPanel){
         const panel=$('#'+el.dataset.openPanel);
         if(panel){panel.open=!panel.open;if(panel.open&&panel.id==='contestPanel')await loadContest();}
