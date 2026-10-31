@@ -4,7 +4,7 @@
  * Off-screen rail images are capped for modest Windows LED computers. */
 (function(root){
 'use strict';
-const MODES=new Set(['showcase-spotlight','showcase-film','showcase-cascade']);
+const MODES=new Set(['showcase-spotlight','showcase-film','showcase-cascade','showcase-orbit','showcase-wall','showcase-ribbon']);
 const reduced=()=>root.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches===true;
 let stage=null,grid=null,eventId=null,mode='',settings=null,getUrl=null;
 let all=[],ids='',order=[],cursor=0,timer=null,timerMs=0,token='',currentId=null,layerIndex=0;
@@ -48,7 +48,7 @@ function ensureStage(){
  focus.append(caption);
  stage.append(ambient,focus);
  railHosts=[];
- for(let i=0;i<(mode==='showcase-cascade'?4:mode==='showcase-film'?3:2);i++){
+ for(let i=0;i<(mode==='showcase-cascade'?4:mode==='showcase-wall'?6:mode==='showcase-orbit'||mode==='showcase-ribbon'?4:mode==='showcase-film'?3:2);i++){
   const band=document.createElement('div');
   band.className='showcase-rail showcase-rail-'+(i+1);
   band.setAttribute('aria-hidden','true');
@@ -62,7 +62,7 @@ function fillRails(){
  const railToken=mode+'|'+ids+'|'+settings.gap+'|'+settings.carouselSpeed+'|'+settings.carouselOuterSpeed;
  if(token===railToken)return;
  token=railToken;
- const limit=mode==='showcase-cascade'?48:mode==='showcase-film'?60:56;
+ const limit=mode==='showcase-cascade'?48:mode==='showcase-wall'?90:mode==='showcase-orbit'?64:mode==='showcase-ribbon'?72:mode==='showcase-film'?60:56;
  const source=all.slice(0,Math.min(all.length,limit));
  railHosts.forEach((host,index)=>{
   host.replaceChildren();
