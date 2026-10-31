@@ -702,10 +702,11 @@ app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.sing
    const now=Date.now();
    if(proof.queued&&!queuedContestTicketAllowed(proof,contestSettings(event.id),now))
      throw Error('event-changed');
+   // Telegram Admin validates the time when it issues a signed entry ticket.
+   // The old Windows-only registration clock may disagree and must not veto it.
    if((!proof.queued&&currentContestEvent.get()?.id!==event.id)||
-      (!validQueued&&!(contestSettings(event.id).enabled===1&&
-       Date.now()<contestClock(contestSettings(event.id)).votingStartsAt&&
-       buttonWindow(miniappSnapshot().settings.registration).open)))throw Error('event-changed');
+      (!proof.queued&&(!insideRegistration||contestSettings(event.id).enabled!==1)))
+    throw Error('event-changed');
    if(db.prepare('SELECT 1 FROM contest_telegram_entries WHERE event_id=? AND bali_uid=?').get(event.id,proof.uid))
      throw Error('already-registered');
    const submissionAt=validQueued?proof.queuedAtMs:now;
