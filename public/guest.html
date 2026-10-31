@@ -4,7 +4,7 @@
 <meta name="theme-color" content="#0b0e0b"><title>BALI PHOTO WALL · Загрузка фото</title>
 <link rel="stylesheet" href="/style.css?v=20261031-guest-fast-v1">
 <link rel="stylesheet" href="/guest-compact.css?v=20261031-guest-fast-v1">
-<script defer src="/guest.js?v=20261031-guest-fast-v1"></script>
+<script defer src="/guest.js?v=20261031-square-pinch-v2"></script>
 </head><body data-page="guest">
 <div class="noise"></div><div class="shell guest-shell">
 <header class="header guest-header"><a href="/upload" class="guest-brand" aria-label="BALI PHOTO WALL"><img src="/bali-logo.svg" alt="BALI" width="180" height="26"></a><span class="header-note"><span class="pulse"></span> PHOTO WALL</span></header>
@@ -19,7 +19,7 @@
     </div>
     <button type="button" class="guest-edit-photo" id="editPhoto" hidden>✂ ОБРЕЗАТЬ</button>
     <div id="cropEditor" class="crop-editor" hidden>
-      <div class="crop-head"><strong>ОБРЕЗКА</strong><span id="cropPolicyLabel">Выбери область кадра</span></div>
+      <div class="crop-head"><strong>НАСТРОЙКА КАДРА</strong><span id="cropPolicyLabel">Выбери область кадра</span></div>
       <div id="cropChoices" class="crop-choices" role="group" aria-label="Формат публикации">
         <button type="button" class="crop-choice selected" data-ratio="original">Исходный</button>
         <button type="button" class="crop-choice" data-ratio="square">1:1</button>
@@ -28,7 +28,8 @@
       </div>
       <canvas tabindex="0" id="cropCanvas" class="crop-canvas" aria-label="Предпросмотр обрезки"></canvas>
       <label class="crop-zoom">Масштаб <input id="cropZoom" type="range" min="1" max="3" step=".02" value="1"><output id="cropZoomValue">100%</output></label>
-      <p class="crop-help">Перемещай фото пальцем, чтобы выбрать кадр.</p>
+      <p class="crop-help">Двигай фотографию пальцем. Своди или разводи два пальца для масштаба либо используй ползунок. На отправку пойдёт только выбранный кадр.</p>
+      <button type="button" id="cropReset" class="guest-edit-photo">↺ СБРОСИТЬ КАДР</button>
     </div>
     <label class="consent"><input type="checkbox" id="consent" required><span>Разрешаю показ этой фотографии на экранах BALI и подтверждаю право на её публикацию.</span></label>
     <button class="button primary" id="uploadBtn" type="submit">ОТПРАВИТЬ ФОТО <span>↗</span></button>
