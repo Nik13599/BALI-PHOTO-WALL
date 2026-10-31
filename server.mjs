@@ -737,6 +737,9 @@ app.post('/api/operator/contest-moderation',asyncRoute(async(req,res)=>{
 }));
 app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
  await synchronizeBroadcast();
+ // Telegram Admin polls this endpoint every few seconds; this guarantees
+ // automatic finalization even if nobody has opened the club LED screen.
+ await finalizeContest();
  // Anonymous dashboard receives only aggregate counters, never guest photos,
  // names, access tokens or BALI IDs. It cannot control a broadcast.
  const contestId=activeBroadcast?.contestEventId;
