@@ -616,8 +616,10 @@ app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
   FROM photos WHERE event_id=? AND photo_area='contest'`).get(contestId):null;
  const registered=contestId?db.prepare(
   'SELECT COUNT(*) AS n FROM contest_telegram_entries WHERE event_id=?').get(contestId)?.n||0:0;
+ const final=contestId?contestSettings(contestId):null;
  res.set('Cache-Control','no-store').json({ok:true,managedBroadcast:true,
   runId:activeBroadcast?.runId||null,screen:'/screen',
+  contestFinalized:!!final?.finalized_at,
   counts:{pending:Number(counts?.pending)||0,approved:Number(counts?.approved)||0,
    rejected:Number(counts?.rejected)||0,registered:Number(registered)||0}});
 }));
