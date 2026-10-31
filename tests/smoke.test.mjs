@@ -14,7 +14,7 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env, DATA_DIR: tempData,
-      NODE_ENV: 'development', HOST: '127.0.0.1', PORT: String(port),
+      ALLOW_LEGACY_EVENT_CONTROL:'1', NODE_ENV: 'development', HOST: '127.0.0.1', PORT: String(port),
       PUBLIC_URL: url, ADMIN_PASSWORD: 'smoketest-only-secret-pass',
       SCREEN_PASSWORD: 'smoketest-screen-access',
       SESSION_SECRET: '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGH'
