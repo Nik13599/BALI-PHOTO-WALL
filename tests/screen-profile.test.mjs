@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {SCREEN_DEFAULTS,screenArea,screenProfile} from '../screen-profile.mjs';
 
 test('only the two independent broadcast profiles exist',()=>{
@@ -33,4 +34,36 @@ test('three cinematic mass-photo modes default to a three-second feature turn',(
  assert.throws(()=>screenProfile({...SCREEN_DEFAULTS,showcaseInterval:60}));
  const legacy={...SCREEN_DEFAULTS};delete legacy.showcaseInterval;
  assert.equal(screenProfile(legacy).showcaseInterval,3,'existing club profiles stay compatible');
+});
+
+test('ordinary LED overlays save QR size/position and all independent visibility flags',()=>{
+ const active={...SCREEN_DEFAULTS,layout:'showcase-wall',qrSize:480,qrPos:'br',
+  qrX:-40,qrY:25,showQr:true,showLive:false,showLogo:false,
+  showEvent:true,showHint:false};
+ assert.deepEqual(screenProfile(active),active);
+ assert.equal(screenProfile({...active,showQr:false}).showQr,false);
+ assert.equal(screenProfile({...active,showLogo:true}).showLogo,true);
+ assert.throws(()=>screenProfile({...active,qrSize:481}),/Invalid screen setting: qrSize/);
+ assert.throws(()=>screenProfile({...active,qrSize:39}),/Invalid screen setting: qrSize/);
+});
+
+test('ordinary QR and overlay visibility are shared by operator preview and LED broadcast',()=>{
+ const get=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
+ const css=get('public/style.css');
+ const broadcast=get('public/screen-broadcast.css');
+ const app=get('public/app.js');
+ const html=get('public/screen.html');
+ const server=get('server.mjs');
+ assert.ok(css.includes('.screen{position:relative;'));
+ assert.ok(broadcast.includes('body[data-page="screen"] .wall-qr{max-width:min(46%,'));
+ assert.ok(app.includes("setShown($('#wallQR'),broadcastArea==='general'&&settings.showQr)"));
+ for(const [id,setting] of [
+  ['wallLogo','showLogo'],['wallLive','showLive'],
+  ['screenEvent','showEvent'],['eventHint','showHint']
+ ])assert.ok(app.includes("setShown($('#"+id+"'),settings."+setting+")"),id+' must follow control');
+ assert.ok(app.includes('qrSize:[40,480]'));
+ assert.match(html,/id="setQrSize"[^>]*max="480"/);
+ assert.match(html,/id="setShowQr"[^>]*checked/);
+ assert.ok(server.includes("QRCode.toString(PUBLIC_URL.replace(/\\/$/,'')+'/upload'"));
+ assert.ok(html.includes('id="wallQRImage"'));
 });
