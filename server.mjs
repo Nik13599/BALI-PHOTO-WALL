@@ -309,11 +309,11 @@ async function deleteCancelledBroadcast(runId){
  const filenames=JSON.parse(record.files_json);
  for(const name of filenames){
   for(const root of [PHOTOS,THUMBS])
-   await fsp.unlink(path.join(root,name)).catch(e=>{if(e.code!=='ENOENT')throw e});
+   await fsp.rm(path.join(root,name),{force:true,maxRetries:12,retryDelay:250});
  }
  if(record.folder&&/^broadcast-[0-9a-z-]+$/.test(record.folder)){
   for(const root of [PHOTOS,THUMBS])
-   await fsp.rm(path.join(root,'streams',record.folder),{force:true,recursive:true});
+   await fsp.rm(path.join(root,'streams',record.folder),{force:true,recursive:true,maxRetries:12,retryDelay:250});
  }
  db.prepare('UPDATE managed_broadcast_cancellations SET finished_at_ms=? WHERE run_id=? AND finished_at_ms IS NULL')
   .run(Date.now(),runId);
