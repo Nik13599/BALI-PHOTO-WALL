@@ -488,12 +488,13 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
  const registrationRule=control?.buttons.registration;
  const clock=contestClock(settings),enabled=!!event&&settings.enabled===1;
  const rows=enabled?eligibleCandidates(event.id):[];
- const resultDue=!!settings?.finalized_at||(control?.resultContestId==='event_'+event.id&&
+ const resultDue=!!settings?.finalized_at||(telegramContestMatches(control,event,settings)&&
   Number.isSafeInteger(control?.resultAtMs)&&Date.now()>=control.resultAtMs);
  const voting=enabled&&!resultDue&&voteRule?.open===true&&rows.length>0;
  const actualPhase=resultDue?'closed':voteRule?.open?'voting':
   registrationRule?.open?'registration':'waiting';
  const base=PUBLIC_URL.startsWith('https://baliminsk.online')?PUBLIC_URL:'https://baliminsk.online';
+ const podium=settings?.finalized_at?contestPodium(event.id):null;
  const winner=settings?.finalized_at&&settings.winner_photo_id?rows.find(x=>x.photoId===settings.winner_photo_id):null;
  res.json({contest_available:enabled,contest_id:enabled?'event_'+event.id:null,
   phase:actualPhase,contest_date:settings?.contest_date||null,bali_event_id:settings?.bali_event_id||null,
@@ -509,6 +510,8 @@ app.get('/api/contest/status',asyncRoute(async(_req,res)=>{
   result_pending:resultDue&&!settings.finalized_at,
   winner:winner?{id:'p_'+winner.photoId,name:winner.name,
    photoUrl:base+'/api/contest/photo/p_'+winner.photoId,votes:settings.winner_votes}:null,
+  winners:(podium?.winners||[]).map(w=>({id:'p_'+w.id,place:w.place,name:w.name,votes:w.votes,
+   photoUrl:base+'/api/contest/photo/p_'+w.id})),
   candidates:voting?rows.map(x=>({id:'p_'+x.photoId,name:x.name,category:'king',
    photoUrl:base+'/api/contest/photo/p_'+x.photoId})):[]});
 }));
@@ -811,21 +814,21 @@ app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
  await finalizeContest();
  const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;
  const policy=await telegramPhotoSchedule();
- const resultDue=policy?.resultContestId==='event_'+event?.id&&
+ const resultDue=telegramContestMatches(policy,event,settings)&&
   Number.isSafeInteger(policy?.resultAtMs)&&Date.now()>=policy.resultAtMs;
  const phase=settings?.finalized_at||resultDue?'closed':
   policy?.buttons.vote?.open?'voting':policy?.buttons.registration?.open?'registration':'waiting';
  const candidates=event?eligibleCandidates(event.id):[];
- const winner=phase==='closed'&&settings?.finalized_at?
-  candidates.find(c=>c.photoId===settings.winner_photo_id):null;
- const visible=phase==='closed'?(winner?[winner]:[]):candidates;
+ const podium=phase==='closed'&&settings?.finalized_at?contestPodium(event.id):null;
+ const winners=podium?.winners||[];
+ const visible=phase==='closed'?winners.map(w=>({photoId:w.id})):candidates;
  const photos=visible.slice(0,500).map(c=>
-  db.prepare('SELECT id,created_at,width,height,screen_lane FROM photos WHERE id=?').get(c.photoId)).filter(Boolean);
+  db.prepare("SELECT id,created_at,width,height,screen_lane FROM photos WHERE id=? AND status='approved' AND photo_area='contest'").get(c.photoId)).filter(Boolean);
  res.json({event,photos,phase,finalized:!!settings?.finalized_at,
-  winner:winner?{id:winner.photoId,name:winner.name,votes:settings.winner_votes,
-   totalVotes:settings.total_votes}:null,
+  winner:winners[0]?{id:winners[0].id,name:winners[0].name,votes:winners[0].votes,totalVotes:settings.total_votes}:null,
+  winners:winners.map(w=>({id:w.id,name:w.name,votes:w.votes,place:w.place})),
+  winnerCount:podium?.places||1,
   resultError:phase==='closed'&&!settings?.finalized_at?'Ожидаем подтверждённые голоса BALI':null});
-}));
 // Only approved photos may appear in the LED mosaic, even as thumbnails.
 // Unapproved originals remain accessible to the moderator only.
 app.get('/api/screen/thumbnail/:id', screenAuth, (req,res) => {
