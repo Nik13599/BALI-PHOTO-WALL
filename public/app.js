@@ -147,6 +147,7 @@ if(page==='admin') {
 </div>
 <nav class="admin-area-links" aria-label="Рабочие зоны PHOTO WALL"><a href="/admin/general" class="admin-area-link ${adminArea==='general'?'selected':''}">◩ ОБЩИЕ ФОТО</a></nav>
 <div class="admin-quick-actions" aria-label="Управление PHOTO WALL">
+  ${adminArea==='general'?'<button class="button primary" type="button" data-open-panel="eventPanel" data-focus-input="newEvent">＋ СОЗДАТЬ НОВЫЙ ЭФИР</button>':''}
   <button class="button secondary" type="button" data-open-panel="bulkPanel">＋ ЗАГРУЗИТЬ ФОТО</button>
   ${adminArea==='contest'?'<button class="button secondary" type="button" data-open-panel="contestPanel">⚙ ДОПОЛНИТЕЛЬНО</button>':''}
   <button class="button secondary" type="button" data-open-panel="eventPanel">📁 АРХИВ</button>
@@ -229,7 +230,7 @@ if(page==='admin') {
       $('#selectedEvent').textContent=data.selected?.name||'Нет выбранного мероприятия';
       displayedEventId=data.selected?.id||null;
       void refreshLocalBroadcast();
-      if($('#eventForm'))$('#eventForm').hidden=true;
+      if($('#eventForm'))$('#eventForm').hidden=adminArea!=='general';
       if($('#contestSettings'))$('#contestSettings').hidden=true;
       if(document.activeElement!==$('#eventUploadShape'))
         $('#eventUploadShape').value=data.selected?.upload_shape==='square'?'square':'any';
@@ -477,7 +478,12 @@ if(page==='admin') {
       event.preventDefault();
       const name=$('#newEvent').value.trim();
       if(!name) return;
-      try{await action('/api/admin/events',{name});selectedEventId=null;pageNumber=1;$('#newEvent').value='';await loadDashboard();}
+      try{
+        await action('/api/admin/events',{name});
+        selectedEventId=null;pageNumber=1;previousDashboard=null;
+        $('#newEvent').value='';await loadDashboard();
+        notice('#adminMessage','✓ Новый эфир «'+name+'» создан. Экран и загрузка фотографий переключены на него.');
+      }
       catch(error){notice('#adminMessage',error.message,true);}
     }
   });
@@ -539,7 +545,14 @@ if(page==='admin') {
         input.click();
       }else if(el.dataset.openPanel){
         const panel=$('#'+el.dataset.openPanel);
-        if(panel){panel.open=!panel.open;if(panel.open&&panel.id==='contestPanel')await loadContest();}
+        if(panel){
+          panel.open=el.dataset.focusInput?true:!panel.open;
+          if(panel.open&&el.dataset.focusInput){
+            const control=$('#'+el.dataset.focusInput);
+            control?.focus();
+          }
+          if(panel.open&&panel.id==='contestPanel')await loadContest();
+        }
       }else if(el.dataset.adminTab){
         if(activePhotoStatus===el.dataset.adminTab)return;
         activePhotoStatus=el.dataset.adminTab;pageNumber=1;previousDashboard=null;
