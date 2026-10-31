@@ -27,7 +27,9 @@ const anchors=new Set(['tl','tc','tr','ml','mc','mr','bl','bc','br']);
 export function screenArea(value){return SCREEN_AREAS.includes(value)?value:null;}
 export function screenProfile(raw){
  if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Invalid screen profile');
- if(Object.keys(raw).some(k=>!Object.hasOwn(SCREEN_DEFAULTS,k)))throw Error('Unknown screen profile setting');
+ if(Object.keys(raw).some(k=>!Object.hasOwn(SCREEN_DEFAULTS,k))||
+    Object.keys(SCREEN_DEFAULTS).some(k=>k!=='showcaseInterval'&&!Object.hasOwn(raw,k)))
+  throw Error('Incomplete or unknown screen profile');
  const result={};
  for(const [key,defaultValue] of Object.entries(SCREEN_DEFAULTS)){
   const value=Object.hasOwn(raw,key)?raw[key]:defaultValue,range=ranges[key];
