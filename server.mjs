@@ -390,6 +390,8 @@ async function ensurePhotoFolders(filename){
 // Never reuse or alter the general photo wall event, and never duplicate a day.
 let syncContestPending=null;
 async function ensureTelegramContest(){
+ if(PHOTO_CONTEST_PAUSED)return;
+
  if(syncContestPending)return syncContestPending;
  syncContestPending=(async()=>{
   const policy=await telegramPhotoSchedule(),session=policy?.current?.session||policy?.session;
@@ -444,6 +446,8 @@ async function ensureTelegramContest(){
 }
 let finalizing=null,lastTallyError='',lastTallyAttempt=0;
 async function finalizeContest(){
+ if(PHOTO_CONTEST_PAUSED)return;
+
  if(finalizing)return finalizing;
  const event=currentContestEvent.get();
  if(!event)return;
@@ -695,6 +699,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS contest_moderation_nonces(
  nonce TEXT PRIMARY KEY,used_at_ms INTEGER NOT NULL
 )`);
 app.post('/api/operator/contest-moderation',asyncRoute(async(req,res)=>{
+ if(PHOTO_CONTEST_PAUSED)return res.status(410).json({error:'Фотоконкурсы временно отключены'});
  const payload=req.body||{},auth=String(req.headers.authorization||'');
  if(!/^Bearer [A-Za-z0-9_.-]{40,1500}$/.test(auth)||req.get('Content-Type')?.split(';')[0]!=='application/json')
   return res.status(403).json({error:'Требуется подтверждение Telegram Admin'});
@@ -1091,6 +1096,7 @@ app.use('/api/contest/entry',(req,res,next)=>{
  res.on('finish',discard);res.on('close',discard);next();
 });
 app.post('/api/contest/entry',uploadLimiter,reserveUploadSlot,contestUpload.single('photo'),asyncRoute(async(req,res)=>{
+ if(PHOTO_CONTEST_PAUSED)return res.status(410).json({error:'Фотоконкурс временно отключён. Отправь фото через общую фотостену.'});
  if(req.headers.origin!==contestOrigin)return res.status(403).json({error:'Отправляй фото из приложения BALI'});
  if(!req.file?.path)return res.status(400).json({error:'Выбери фото'});
  const ticket=String(req.body?.ticket||'');
@@ -1272,6 +1278,7 @@ app.get('/api/screen', screenAuth, asyncRoute(async (_req,res) => {
 }));
 /* Contest media is a separate LED feed, not mixed into the guests' wall. */
 app.get('/api/screen/contest',screenAuth,asyncRoute(async(_req,res)=>{
+ if(PHOTO_CONTEST_PAUSED)return res.json({event:null,photos:[],participants:[],phase:'paused',finalized:false,winners:[]});
  await ensureTelegramContest();
  await finalizeContest();
  const event=currentContestEvent.get(),settings=event?contestSettings(event.id):null;
