@@ -142,15 +142,18 @@ if(page==='admin') {
       if(!$('#dashboard')) {
         root.innerHTML=`<section id="dashboard" class="bali-admin-v2">
 <div class="admin-heading">
-  <div class="admin-identity"><div class="eyebrow">PHOTO WALL · ${adminArea==='contest'?'ROYAL CONTEST':'GENERAL CONTROL'}</div><h1>${adminArea==='contest'?'♛ УПРАВЛЕНИЕ КОНКУРСОМ':'ОБЩАЯ ФОТОСТЕНА'}</h1><span class="muted" id="activeEvent"></span></div>
-  <div class="admin-links"><a class="button secondary" href="/live/${adminArea}" target="_blank" rel="noopener">◩ ТРАНСЛЯЦИЯ</a><a class="button secondary" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">📲 ТАЙМЕРЫ · TELEGRAM ADMIN</a><a class="button secondary" href="/control/${adminArea}" target="_blank" rel="noopener">⚙ НАСТРОЙКА ЭКРАНА</a><button type="button" class="button secondary" id="logoutBtn">ВЫЙТИ</button></div>
+  <div class="admin-identity"><div class="eyebrow">PHOTO WALL · ${adminArea==='contest'?'ROYAL CONTEST':'GENERAL CONTROL'}</div><h1>${adminArea==='contest'?'♛ МОДЕРАЦИЯ КОНКУРСА':'ОБЩАЯ ФОТОСТЕНА'}</h1><span class="muted" id="activeEvent"></span></div>
+  <div class="admin-links"><a class="button secondary" href="/live/${adminArea}" target="_blank" rel="noopener">◩ ТРАНСЛЯЦИЯ</a><a class="button secondary" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">📲 ЗАПУСК · TELEGRAM ADMIN</a><a class="button secondary" href="/control/${adminArea}" target="_blank" rel="noopener">⚙ НАСТРОЙКА ЭКРАНА</a><button type="button" class="button secondary" id="logoutBtn">ВЫЙТИ</button></div>
 </div>
 <nav class="admin-area-links" aria-label="Рабочие зоны PHOTO WALL"><a href="/admin/general" class="admin-area-link ${adminArea==='general'?'selected':''}">◩ ОБЩИЕ ФОТО</a><a href="/admin/contest" class="admin-area-link ${adminArea==='contest'?'selected':''}">♛ КОНКУРС</a></nav>
 <div class="admin-quick-actions" aria-label="Управление PHOTO WALL">
   <button class="button secondary" type="button" data-open-panel="bulkPanel">＋ ЗАГРУЗИТЬ ФОТО</button>
-  ${adminArea==='contest'?'<button class="button secondary" type="button" data-open-panel="contestPanel">♛ УЧАСТНИКИ</button>':''}
+  ${adminArea==='contest'?'<button class="button secondary" type="button" data-open-panel="contestPanel">⚙ ДОПОЛНИТЕЛЬНО</button>':''}
   <button class="button secondary" type="button" data-open-panel="eventPanel">📁 АРХИВ</button>
 </div>
+<div class="contest-moderation-banner"><b>Модерация конкурса</b>
+ <span>1. Проверь фото. 2. Одобри или отклони. 3. Одобренные попадут в голосование.</span>
+ <strong id="contestModeratorCounter" aria-live="polite">Проверяем новые фото…</strong></div>
 <section class="panel" id="localBroadcastPanel" style="margin:10px 0;padding:13px">
  <h3>📡 ЕДИНЫЙ ЭФИР BALI</h3><p id="localBroadcastStatus" class="muted">Проверяем трансляцию…</p>
  <div style="display:flex;flex-wrap:wrap;gap:8px">
@@ -176,7 +179,7 @@ if(page==='admin') {
     <div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div>
   </form>
 </details>
-<details class="panel admin-contest-panel admin-drawer" id="contestPanel" ${adminArea==='contest'?'open':''}><summary>♛ Король / Королева · расписание и участники</summary>
+<details class="panel admin-contest-panel admin-drawer" id="contestPanel"><summary>⚙ Технические настройки · редко нужны</summary>
   <form id="contestSettings" class="contest-settings-grid">
     <label class="contest-switch"><input type="checkbox" id="contestEnabled"> Конкурс включён</label>
     <label>Дата голосования (Минск)<input class="field" type="date" id="contestDate" required></label>
@@ -219,6 +222,9 @@ if(page==='admin') {
       }
       $('#activeEvent').textContent=data.active?.name || 'Не выбрано';
       $('#photoCount').textContent=data.total+' фото · '+data.page+' / '+data.pages+' стр.';
+      const counter=$('#contestModeratorCounter');
+      if(counter)counter.textContent='Новые: '+(Number(data.counts?.pending)||0)+
+       ' · одобренные: '+(Number(data.counts?.approved)||0);
       $('#selectedEvent').textContent=data.selected?.name||'Нет выбранного мероприятия';
       displayedEventId=data.selected?.id||null;
       void refreshLocalBroadcast();
@@ -243,7 +249,7 @@ if(page==='admin') {
       ).join('');
       const actions=p=>{
         const photo=String(p.id);
-        if(activePhotoStatus==='pending')return '<button class="button small approve" data-photo="'+photo+'" data-status="approved">✓ НА ЭКРАН</button><button class="button small reject" data-photo="'+photo+'" data-status="rejected">× ОТКЛОНИТЬ</button>';
+        if(activePhotoStatus==='pending')return '<button class="button small approve" data-photo="'+photo+'" data-status="approved">✓ '+(adminArea==='contest'?'ДОПУСТИТЬ':'НА ЭКРАН')+'</button><button class="button small reject" data-photo="'+photo+'" data-status="rejected">× ОТКЛОНИТЬ</button>';
         if(activePhotoStatus==='approved')return '<button class="button small" data-photo="'+photo+'" data-status="pending">↩ НА ПРОВЕРКУ</button>'+(adminArea==='contest'&&!p.contest?'<button class="button small" data-contest-photo="'+photo+'">♛ ДОБАВИТЬ УЧАСТНИКА</button>':'');
         
         return '<button class="button small approve" data-photo="'+photo+'" data-status="approved">✓ ОДОБРИТЬ</button><button class="button small" data-photo="'+photo+'" data-status="pending">↩ НА ПРОВЕРКУ</button>';
@@ -506,7 +512,7 @@ if(page==='admin') {
         if(activePhotoStatus===el.dataset.adminTab)return;
         activePhotoStatus=el.dataset.adminTab;pageNumber=1;previousDashboard=null;
         await loadDashboard();
-        if(adminArea==='contest'&&activePhotoStatus==='approved'){$('#contestPanel').open=true;await loadContest();}
+        
       }else if(el.dataset.contestPhoto){
         $('#contestPanel').open=true;$('#contestPhotoId').value=el.dataset.contestPhoto;
         $('#contestPanel').scrollIntoView({behavior:'smooth',block:'start'});
