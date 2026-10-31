@@ -17,7 +17,7 @@
     <div class="royal-podium-heading">🏆 ПОБЕДИТЕЛИ BALI</div>
     <div class="royal-podium" id="royalPodium"></div>
   </div>
-  <div class="wall-empty" id="wallEmpty"><div class="wall-empty-title">ТВОЙ МОМЕНТ <span class="glow">НА ЭКРАНЕ</span></div><p>Отсканируй QR-код и загрузи фотографию</p></div>
+  <div class="wall-empty" id="wallEmpty"><div class="wall-empty-title">ТВОЙ МОМЕНТ <span class="glow">НА ЭКРАНЕ</span></div><p>Фотографии появятся здесь после одобрения модератором</p></div>
   <img class="wall-logo wall-floating" id="wallLogo" src="/bali-logo.svg" alt="BALI Night Club">
   <div class="wall-live wall-floating" id="wallLive"><span class="pulse"></span><span>PHOTO LIVE</span></div>
   <div class="wall-event-name wall-floating" id="screenEvent">BALI NIGHT CLUB</div>
@@ -27,13 +27,14 @@
     <form id="screenLoginForm" class="screen-login-card">
       <img class="login-logo" src="/bali-logo.svg" alt="Логотип BALI">
       <h2>ПОДКЛЮЧЕНИЕ LED-ЭКРАНА</h2>
-      <p>Введите пароль оператора экрана. Одобренные фотографии появятся живой сеткой.</p>
+      <p>Введите пароль просмотра экрана. Сам эфир запускается исключительно через Telegram Admin.</p>
       <input class="field" id="screenPassword" type="password" autocomplete="current-password" placeholder="Пароль экрана" required>
-      <button class="button primary" type="submit">ЗАПУСТИТЬ ФОТОСТЕНУ</button>
+      <button class="button primary" type="submit">ОТКРЫТЬ LED-ЭКРАН</button>
       <div class="alert" role="status" id="screenLoginMessage"></div>
     </form>
   </div>
   <div class="screen-toolbar">
+    <a class="screen-gear" id="unifiedTelegramAdmin" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener" style="text-decoration:none">🎛 Telegram Admin</a>
     <button class="screen-gear" id="wallSettingsToggle" type="button" aria-label="Настройки отображения" aria-expanded="false"><span aria-hidden="true">⚙</span> Настройки</button>
     <button class="screen-gear" id="fullscreenBtn" type="button">⛶ Весь экран</button>
   </div>
