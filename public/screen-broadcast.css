@@ -128,13 +128,11 @@ body[data-page="screen"] .royal-result:not([hidden]){z-index:30}
 @media(prefers-reduced-motion:reduce){.contest-overlay-track{animation:none;width:100%;overflow:visible;justify-content:center;gap:6px}
  .contest-overlay-card{flex-basis:9.5vw}}
 
-/* On the live LED, no extra title, QR or overlapping controls. */
-body[data-screen-mode="broadcast"] #wallQR,
-body[data-screen-mode="broadcast"] #wallLive,
-body[data-screen-mode="broadcast"] #screenEvent,
-body[data-screen-mode="broadcast"] #eventHint,
+/* Operator profile controls the real LED overlays too.
+   QR, logo, PHOTO LIVE, event title and hint use [hidden], sizes, anchor
+   and X/Y offsets from the same saved screen profile as /control/general.
+   Only actual admin buttons remain hidden in the read-only broadcast. */
 body[data-screen-mode="broadcast"] #wallSettingsToggle,
 body[data-screen-mode="broadcast"] #unifiedTelegramAdmin{display:none!important}
-body[data-screen-mode="broadcast"] #wallLogo{position:absolute!important;top:auto!important;bottom:12px!important;left:16px!important;right:auto!important;transform:none!important;max-height:32px!important;opacity:.8}
 body[data-screen-mode="broadcast"] .screen-toolbar{top:auto;bottom:5px;left:auto;right:5px;transform:none;opacity:.05}
 body[data-screen-mode="broadcast"] .screen-toolbar:hover{opacity:1}
