@@ -345,8 +345,14 @@ async function synchronizeBroadcast(){
     if(existing){saved=existing;return}
     const now=Date.now();
     db.prepare('UPDATE events SET active=0').run();
-    const generalId=Number(db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,1,?)')
-     .run('BALI PHOTO WALL · '+partyDate,now).lastInsertRowid);
+    // A new royal contest in the same club night must NOT reset the
+    // independent ordinary PHOTO WALL mosaic. Reuse the nightly gallery.
+    const generalName='BALI PHOTO WALL · '+partyDate;
+    const existingGeneral=db.prepare('SELECT id FROM events WHERE name=? ORDER BY id DESC LIMIT 1').get(generalName);
+    const generalId=existingGeneral?Number(existingGeneral.id):
+     Number(db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,1,?)')
+      .run(generalName,now).lastInsertRowid);
+    if(existingGeneral)db.prepare('UPDATE events SET active=1 WHERE id=?').run(generalId);
     const contestId=Number(db.prepare('INSERT INTO events(name,active,created_at) VALUES(?,0,?)')
      .run('КОРОЛЬ / КОРОЛЕВА · '+partyDate,now).lastInsertRowid);
     db.prepare("INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,updated_at) VALUES(?,1,0,?,'03:00','04:00',?,?)")
