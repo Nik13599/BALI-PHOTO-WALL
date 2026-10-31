@@ -1411,7 +1411,10 @@ app.get('/api/admin/contest/export',adminAuth,(req,res)=>{
   .set('Content-Disposition','attachment; filename="bali-photo-contest-'+id+'.csv"')
   .send('\uFEFF'+lines.join('\n'));
 });
-app.get('/api/admin/dashboard', adminAuth, (req,res) => {
+app.get('/api/admin/dashboard', adminAuth, asyncRoute(async(req,res) => {
+  // After Windows restart restore the Telegram-selected run before choosing
+  // the moderation queue. Never fall back to the GENERAL photo event.
+  await synchronizeBroadcast();
   const events = db.prepare('SELECT id,name,active,created_at,upload_shape FROM events ORDER BY id DESC').all();
   const active = currentEvent.get();
   const requested = req.query.eventId;
@@ -1443,7 +1446,7 @@ app.get('/api/admin/dashboard', adminAuth, (req,res) => {
     WHERE p.event_id=? AND p.photo_area=? AND p.status=?
     ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`).all(selected.id,area,status,PAGE_SIZE,(page-1)*PAGE_SIZE):[];
   res.json({events,active,selected,photos,status,area,counts,page,pages,total,pageSize:PAGE_SIZE});
-});
+}));
 const makeEvent = db.transaction(name => {
   db.prepare('UPDATE events SET active=0').run();
   return db.prepare('INSERT INTO events(name,active,created_at) VALUES (?,1,?)').run(name,Date.now()).lastInsertRowid;
