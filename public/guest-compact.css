@@ -139,3 +139,12 @@ body[data-page="guest"] .guest-photo-preview:has(+ .guest-edit-photo + .crop-edi
 
 /* Native two-finger pinch and drag inside the crop viewport. */
 .crop-canvas{touch-action:none;cursor:grab;max-width:100%;display:block}.crop-canvas:active{cursor:grabbing}
+
+/* Guest photo upload notice: aligned to the form above, with optional timer. */
+body[data-page="guest"] .guest-upload-window{box-sizing:border-box;width:100%;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;margin:0;border:1px solid rgba(215,255,77,.25);border-radius:12px;background:rgba(15,25,13,.88)}
+body[data-page="guest"] .guest-upload-window-label{display:flex;align-items:center;gap:12px;min-width:0;color:#ecf6e9}
+body[data-page="guest"] .guest-upload-window-label svg{flex:none;color:#d7ff4d}
+body[data-page="guest"] .guest-upload-window-label strong{font-size:clamp(13px,1.5vw,17px);line-height:1.35;font-weight:750}
+body[data-page="guest"] .guest-upload-countdown:not([hidden]){flex:none;display:block;font-variant-numeric:tabular-nums;font-size:clamp(14px,1.65vw,19px);font-weight:850;letter-spacing:.04em;color:#d7ff4d}
+body[data-page="guest"] .guest-upload-countdown[hidden]{display:none!important}
+@media(max-width:450px){body[data-page="guest"] .guest-upload-window{gap:9px;padding:11px 12px}body[data-page="guest"] .guest-upload-window-label{gap:8px}body[data-page="guest"] .guest-upload-window-label svg{width:19px;height:19px}body[data-page="guest"] .guest-upload-window-label strong{font-size:12px}body[data-page="guest"] .guest-upload-countdown:not([hidden]){font-size:13px}}
