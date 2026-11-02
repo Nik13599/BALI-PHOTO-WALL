@@ -46,16 +46,35 @@ async function getSettings(){
   policy=data.uploadShape==='square'?'square':'any';
   eventAvailable=!!data.event?.id;
   eventName.textContent=data.event?.name||'Сейчас нет активного мероприятия';
-  limit.textContent=eventAvailable?(policy==='square'?'Для этого мероприятия обязателен квадрат 1:1. Выберите область кадра перед отправкой.':'Фото появится на фотостене после одобрения.'):'Загрузка откроется после запуска мероприятия.';
+  // Keep the schedule notice consistent regardless of event/moderation status.
+  limit.textContent='Загрузка фото только во время работы клуба';
+  setUploadCountdown(data.uploadOpensAt ?? data.event?.upload_opens_at ?? null);
   ready=true;
   $('reloadStatus').hidden=true;
   if(selected&&policy==='square'&&!cropped)await openCrop();
  }catch(error){
   eventName.textContent='Нет связи с PHOTO WALL';
-  limit.textContent='Проверьте соединение и повторите запрос.';
+  limit.textContent='Загрузка фото только во время работы клуба';
+  setUploadCountdown(null);
   $('reloadStatus').hidden=false;
   status('Не удалось проверить мероприятие. Повторите подключение.',true);
  }finally{clearTimeout(timer);setState();}
+}
+let uploadCountdownInterval=null;
+function setUploadCountdown(deadline){
+ const el=$('guestUploadCountdown');
+ if(!el)return;
+ if(uploadCountdownInterval){clearInterval(uploadCountdownInterval);uploadCountdownInterval=null;}
+ const timestamp=typeof deadline==='number'?deadline:typeof deadline==='string'?Date.parse(deadline):NaN;
+ if(!Number.isFinite(timestamp)||timestamp<=Date.now()){el.hidden=true;el.textContent='';return;}
+ function paint(){
+  const seconds=Math.max(0,Math.ceil((timestamp-Date.now())/1000));
+  if(!seconds){el.hidden=true;el.textContent='';clearInterval(uploadCountdownInterval);uploadCountdownInterval=null;return;}
+  const h=Math.floor(seconds/3600),m=Math.floor(seconds%3600/60),s=seconds%60;
+  el.textContent=[h,m,s].map(v=>String(v).padStart(2,'0')).join(':');
+  el.hidden=false;
+ }
+ paint();uploadCountdownInterval=setInterval(paint,1000);
 }
 function loadCropScript(){
  if(globalThis.BaliCropEditor)return Promise.resolve(globalThis.BaliCropEditor);
