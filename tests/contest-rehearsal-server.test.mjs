@@ -46,14 +46,14 @@ test('Real server isolates rehearsal photos, accepts uploads outside hours, coun
   const firstPhotoId=Number(entered[0]);
   assert.ok(Number.isSafeInteger(firstPhotoId)&&firstPhotoId>0);
   const beforePhoto=(await request('/api/admin/photos/'+firstPhotoId,{headers:{Cookie:adminCookie}})).status;
-  assert.equal(beforePhoto,200);
+  assert.equal(beforePhoto,404,'Contest files are not visible to general moderators');
   const newImage=await sharp({create:{width:92,height:68,channels:3,background:'#287bd8'}}).png().toBuffer();
   const newForm=new FormData();newForm.append('photo',new Blob([newImage],{type:'image/png'}),'photoshop-export.png');
   const replaced=await request('/api/admin/photos/'+firstPhotoId+'/replace',{
    method:'POST',headers:{Cookie:adminCookie,'X-BALI-Action':'1'},body:newForm});
-  assert.equal(replaced.status,200,await replaced.text());
-  const replacementCount=await (await request('/api/admin/contest/history',{headers:{Cookie:adminCookie}})).json();
-  assert.ok(replacementCount.ok,'replace leaves the contest history handler intact');
+  assert.equal(replaced.status,404,'Contest-photo replacement endpoint was removed');
+  const replacementCount=await request('/api/admin/contest/history',{headers:{Cookie:adminCookie}});
+  assert.equal(replacementCount.status,410,'Contest history admin endpoint was removed');
   // The same BALI contestant remains registered after a local file replacement.
   const afterChange=await (await request('/api/contest/status')).json();
   assert.equal(afterChange.approved_count,3);
@@ -63,14 +63,14 @@ test('Real server isolates rehearsal photos, accepts uploads outside hours, coun
   assert.equal(Number(String(ballot.candidates[0].id).replace(/^p_/,'')),firstPhotoId);
   const changedDuringBallot=await request('/api/admin/photos/'+firstPhotoId+'/status',{
    method:'POST',headers:mutationHeaders,body:JSON.stringify({status:'rejected'})});
-  assert.equal(changedDuringBallot.status,409,'moderators must not change vote-eligible photographs');
+  assert.equal(changedDuringBallot.status,404,'Only ordinary photos can be moderated');
   const lateForm=new FormData();lateForm.append('photo',new Blob([newImage],{type:'image/png'}),'late.png');
   const lateReplace=await request('/api/admin/photos/'+firstPhotoId+'/replace',{
    method:'POST',headers:{Cookie:adminCookie,'X-BALI-Action':'1'},body:lateForm});
-  assert.equal(lateReplace.status,409,'cannot replace a photo when voting is open');
+  assert.equal(lateReplace.status,404,'No admin contest replacement route');
   const removedDuringBallot=await request('/api/admin/photos/'+firstPhotoId,{
    method:'DELETE',headers:mutationHeaders,body:'{}'});
-  assert.equal(removedDuringBallot.status,409,'contestants cannot vanish during voting');
+  assert.equal(removedDuringBallot.status,404,'Contest photos cannot be deleted by general moderators');
   state.tally=ballot.candidates.map((c,i)=>({id:c.id,votes:3-i}));
   const deadline=Date.now()+7300;state.policy.test.phase='countdown';state.policy.test.deadlineMs=deadline;
   state.policy.resultAtMs=deadline;state.policy.buttons.vote.open=false;await save();await pause(5200);
@@ -83,7 +83,7 @@ test('Real server isolates rehearsal photos, accepts uploads outside hours, coun
   assert.equal(winners.photos.length,3);
   const removedAfterResult=await request('/api/admin/photos/'+firstPhotoId,{
    method:'DELETE',headers:mutationHeaders,body:'{}'});
-  assert.equal(removedAfterResult.status,409,'the permanent winner archive must not be deleted by moderation');
+  assert.equal(removedAfterResult.status,404,'Winner archive cannot be modified in general admin');
   const history=await (await request('/api/contest/history')).json();assert.equal(history.contests.length,0,'rehearsal awards never enter real history');
   state.policy.test={enabled:false};state.policy.current.session=null;state.policy.resultAtMs=null;await save();await pause(5200);
   const stopped=await (await request('/api/contest/status')).json();assert.equal(stopped.test_session_id,null);assert.equal(stopped.contest_available,false);
