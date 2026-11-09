@@ -145,7 +145,8 @@ test('BALI PHOTO WALL: upload, moderation, screen and events', { timeout: 55000 
 
     const client=await (await request('/admin/general')).text();
     assert.match(client,/＋ СОЗДАТЬ НОВЫЙ ЭФИР/,'Admin must offer a clear creation control');
-    assert.match(client,/\$\('#eventForm'\)\.hidden=adminArea!=='general'/,'Normal event form must not be hidden');
+    assert.match(client,/id="eventForm"/,'Normal event form must remain in the admin interface');
+    assert.doesNotMatch(client,/id="contestPanel"/,'Contest panel must not be in the admin interface');
   } finally {
     if (app.exitCode===null) {
       const exit = new Promise(resolve=>app.once('exit',resolve));
