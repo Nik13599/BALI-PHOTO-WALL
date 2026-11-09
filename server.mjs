@@ -1281,6 +1281,10 @@ app.get('/api/screen/thumbnail/:id', screenAuth, (req,res) => {
 
 // Live displays read a persistent profile. Only a signed-in PHOTO WALL
 // moderator can edit the corresponding visual controller.
+app.use('/api/admin/screen',adminAuth,(req,res,next)=>{
+  if(req.query.feed==='contest')return res.status(410).json({error:'Конкурсный экран удалён из админки'});
+  next();
+});
 app.get('/api/screen/profile',screenAuth,(req,res)=>{
  const area=screenArea(req.query.feed);
  if(!area)return res.status(400).json({error:'Выбери экран фотостены или конкурса'});
@@ -1348,10 +1352,6 @@ app.post('/api/admin/logout', requireAction, (_req,res) => {
 app.get('/api/admin/me', adminAuth, (_req,res) => res.json({ok:true}));
 // Legacy competition entry points are deliberately inaccessible.
 app.use('/api/admin/contest',adminAuth,(_req,res)=>res.status(410).json({error:'Конкурс удалён из панели управления'}));
-app.use('/api/admin/screen',adminAuth,(req,res,next)=>{
-  if(req.query.feed==='contest')return res.status(410).json({error:'Конкурсный экран удалён из админки'});
-  next();
-});
 app.get('/api/admin/photos/:id', adminAuth, (req,res) => {
   const photo=selectPhoto.get(Number(req.params.id));
   if(!photo||photo.photo_area!=='general')return res.status(404).end();
