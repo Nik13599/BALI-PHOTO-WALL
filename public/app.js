@@ -381,7 +381,7 @@ if(page==='admin') {
 if(page==='screen'){
   const MAX_WALL_PHOTOS=500;
   const screenPath=location.pathname;
-  const broadcastArea=screenPath.endsWith('/contest')||new URLSearchParams(location.search).get('feed')==='contest'?'contest':'general';
+  const broadcastArea=screenPath.startsWith('/control/')?'general':(screenPath.endsWith('/contest')||new URLSearchParams(location.search).get('feed')==='contest'?'contest':'general');
   const controller=screenPath.startsWith('/control/');
   document.body.dataset.screenArea=broadcastArea;
   document.body.dataset.screenMode=controller?'control':'broadcast';
