@@ -58,17 +58,9 @@ test('same-night contests are isolated and cancellation deletes the old Windows 
   assert.equal(first.status,201,JSON.stringify(firstData));
   const header={Authorization:'Bearer test-moderator-proof-0123456789abcdef0123456789',
    'Content-Type':'application/json'};
-  const list=await req('/api/operator/contest-moderation',{
+  const disabled=await req('/api/operator/contest-moderation',{
    method:'POST',headers:header,body:JSON.stringify({runId:ids[0],action:'list',photoId:0,page:1,status:'pending'})});
-  const inbox=await list.json();assert.equal(list.status,200,JSON.stringify(inbox));
-  assert.equal(inbox.counts.pending,1);
-  assert.equal(inbox.items[0].cardNumber,'000123');
-  assert.equal(inbox.items[0].username,'@verified_test');
-  assert.match(inbox.items[0].thumbnailData,/^data:image\/webp;base64,/);
-  const approved=await req('/api/operator/contest-moderation',{
-   method:'POST',headers:header,body:JSON.stringify({runId:ids[0],action:'approve',
-    photoId:firstData.id,page:1,status:'pending'})});
-  assert.equal(approved.status,200,await approved.text());
+  assert.equal(disabled.status,404,'Contest moderator API no longer exists');
   database=new Database(path.join(dir,'bali-photo-wall.sqlite'),{readonly:true});
   const firstRun=database.prepare('SELECT * FROM managed_broadcast_runs WHERE run_id=?').get(ids[0]);
   assert.ok(firstRun);
