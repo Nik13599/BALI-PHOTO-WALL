@@ -2,22 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 const file=path=>readFileSync(new URL('../'+path,import.meta.url),'utf8');
-test('contest moderator sees only current Telegram run and does not edit second visible scheduler',()=>{
- const js=file('public/app.js');
- assert.match(js,/id="contestPanel"><summary>⚙ Технические настройки/);
- assert.match(js,/contest-moderation-banner/);
- assert.match(js,/id="contestModeratorCounter"/);
- assert.doesNotMatch(js,/adminArea==='contest'\?'open':''/);
- const source=file('server.mjs');
- const start=source.indexOf("app.get('/api/admin/dashboard'");
- const end=source.indexOf("const makeEvent",start);
+
+test('PHOTO WALL moderator has only general photos, not a parallel contest dashboard',()=>{
+ const ui=file('public/app.js');
+ const admin=ui.slice(ui.indexOf("if(page==='admin')"),ui.indexOf("if(page==='screen')"));
+ assert.match(admin,/const adminArea='general'/);
+ assert.doesNotMatch(admin,/contestPanel|contest-moderation-banner|contestModeratorCounter|loadContest/);
+ const server=file('server.mjs');
+ const start=server.indexOf("app.get('/api/admin/dashboard'");
+ const end=server.indexOf("const makeEvent",start);
  assert.ok(start>=0&&end>start);
- const dashboard=source.slice(start,end);
- assert.match(dashboard,/await synchronizeBroadcast\(\)/);
- assert.match(dashboard,/activeBroadcast\.contestEventId/);
+ const dashboard=server.slice(start,end);
+ assert.match(dashboard,/area!=='general'/);
+ assert.match(dashboard,/WHERE id NOT IN \(SELECT event_id FROM contest_settings\)/);
  assert.match(dashboard,/p\.photo_area=\?/);
 });
-test('operator readiness responds only with aggregate numbers for the active contest',()=>{
+test('operator readiness contains aggregate metrics only',()=>{
  const source=file('server.mjs');
  const start=source.indexOf("app.get('/api/operator/ready'");
  const end=source.indexOf("app.get('/api/admin/broadcast-state'",start);
@@ -28,7 +28,6 @@ test('operator readiness responds only with aggregate numbers for the active con
  for(const term of ['pending','approved','rejected','registered'])assert.match(block,new RegExp(term));
  assert.doesNotMatch(block,/telegram_username|bali_uid|guest_id|filename/);
 });
-
 test('a transient Telegram timeout cannot reset an active Windows broadcast',()=>{
  const source=file('server.mjs');
  assert.match(source,/lastGoodAt:0/);
