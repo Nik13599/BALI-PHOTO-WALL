@@ -103,17 +103,15 @@ try {
   assert.equal(r.status,200);
   assert.equal((await data(r)).settings.layout,'puzzle');
   const generalSettings={...SCREEN_DEFAULTS,layout:'carousel-double',logoPos:'tr',maxPhotos:33};
-  const contestSettings={...SCREEN_DEFAULTS,layout:'live-mosaic',maxPhotos:25};
-  for(const [feed,settings] of [['general',generalSettings],['contest',contestSettings]]){
-    r=await call('/api/admin/screen/profile?feed='+feed,{
-      method:'POST',headers:authHeaders,body:JSON.stringify({settings})});
-    assert.equal(r.status,200,'Staff must be able to save the '+feed+' screen profile');
-  }
-  for(const [feed,layout] of [['general','carousel-double'],['contest','live-mosaic']]){
-    r=await call('/api/screen/profile?feed='+feed,{headers:{Cookie:screenCookie}});
-    assert.equal(r.status,200);
-    assert.equal((await data(r)).settings.layout,layout,'Profiles cannot overwrite each other');
-  }
+  r=await call('/api/admin/screen/profile?feed=general',{
+    method:'POST',headers:authHeaders,body:JSON.stringify({settings:generalSettings})});
+  assert.equal(r.status,200);
+  r=await call('/api/admin/screen/profile?feed=contest',{
+    method:'POST',headers:authHeaders,body:JSON.stringify({settings:SCREEN_DEFAULTS})});
+  assert.equal(r.status,410,'Contest screen editing must be disabled');
+  r=await call('/api/screen/profile?feed=general',{headers:{Cookie:screenCookie}});
+  assert.equal(r.status,200);
+  assert.equal((await data(r)).settings.layout,'carousel-double');
   r=await call('/api/admin/screen/profile?feed=general',{
     method:'POST',headers:{Cookie:screenCookie,'X-BALI-Action':'1','Content-Type':'application/json'},
     body:JSON.stringify({settings:SCREEN_DEFAULTS})});
@@ -142,68 +140,21 @@ try {
   assert(queue.photos.some(p=>p.id===photo.id),'Approved photo must be shown only in published photos tab');
   r=await call('/api/admin/dashboard?status=unknown',{headers:{Cookie:auth}});
   assert.equal(r.status,400,'Unrecognized moderation queues must be rejected');
-  // All five clock times are chosen manually, not frozen at 22:00 / 03:00.
-  const selectedSchedule={
-    eventId:ev.id,enabled:false,contestDate:'2030-10-31',baliEventId:'',
-    registrationOpensAt:'2030-10-30T19:25',
-    registrationClosesAt:'2030-10-31T00:40',
-    votingStartsLocal:'2030-10-31T01:15',
-    votingEndsLocal:'2030-10-31T02:55',
-    resultsLocal:'2030-10-31T04:20'
-  };
-  r=await call('/api/admin/contest/settings',{
-    method:'POST',headers:authHeaders,body:JSON.stringify(selectedSchedule)
-  });
-  assert.equal(r.status,200,'Staff must be allowed to save all FIVE custom timestamps');
+  // Contest management has been removed from the administrator interface.
+  r=await call('/api/admin/contest/settings',{method:'POST',headers:authHeaders,body:'{}'});
+  assert.equal(r.status,410);
   r=await call('/api/admin/contest?eventId='+ev.id,{headers:{Cookie:auth}});
-  assert.equal(r.status,200);
-  const savedContest=await data(r);
-  for(const field of ['registrationOpensAt','registrationClosesAt','votingStartsLocal',
-    'votingEndsLocal','resultsLocal']){
-    assert.equal(savedContest.settings[field],selectedSchedule[field],
-      'Saved manual date and time should be returned without reverting: '+field);
-  }
-  r=await call('/api/admin/contest/settings',{
-    method:'POST',headers:authHeaders,
-    body:JSON.stringify({...selectedSchedule,registrationClosesAt:'2030-10-31T01:16'})
-  });
-  assert.equal(r.status,400,'Overlapping registration and voting must be rejected');
-  r=await call('/api/admin/contest/settings',{
-    method:'POST',headers:authHeaders,
-    body:JSON.stringify({...selectedSchedule,contestDate:'2030-11-01'})
-  });
-  assert.equal(r.status,400,'Voting date must match the contest date in Minsk');
-
-  // A moderator can also load contest photos without sending them to the guest wall.
+  assert.equal(r.status,410);
+  r=await call('/api/admin/dashboard?area=contest',{headers:{Cookie:auth}});
+  assert.equal(r.status,410);
   const contestForm=new FormData();
   contestForm.append('eventId',String(ev.id));
   contestForm.append('area','contest');
   contestForm.append('status','pending');
   contestForm.append('lane','auto');
   contestForm.append('photos',new Blob([png],{type:'image/png'}),'contest-test.png');
-  r=await call('/api/admin/photos/bulk',{
-    method:'POST',headers:{Cookie:auth,'X-BALI-Action':'1'},body:contestForm});
-  assert.equal(r.status,200,'Moderator contest upload should work');
-  const imported=await data(r);
-  assert.equal(imported.imported,1);
-  const contestPhotoId=imported.results[0].id;
-  r=await call('/api/admin/dashboard?area=contest&status=pending',{headers:{Cookie:auth}});
-  assert.equal(r.status,200);
-  assert((await data(r)).photos.some(p=>p.id===contestPhotoId));
-  r=await call('/api/admin/dashboard?area=general&status=pending',{headers:{Cookie:auth}});
-  assert(!(await data(r)).photos.some(p=>p.id===contestPhotoId),
-    'Contest pending photo must not appear in ordinary moderation');
-  r=await call('/api/admin/photos/'+contestPhotoId+'/status',{
-    method:'POST',headers:authHeaders,body:JSON.stringify({status:'approved'})});
-  assert.equal(r.status,200);
-  r=await call('/api/screen',{headers:{Cookie:screenCookie}});
-  assert(!(await data(r)).photos.some(p=>p.id===contestPhotoId),
-    'Approved contest photo must never appear on the general wall');
-  r=await call('/api/photos/'+contestPhotoId,{headers:{Cookie:screenCookie}});
-  assert.equal(r.status,404,'Contest photo may not be fetched through the general photo endpoint');
-  r=await call('/api/photos/'+contestPhotoId+'?feed=contest',{headers:{Cookie:screenCookie}});
-  assert.equal(r.status,200,'Contest channel can fetch its own approved photo');
-
+  r=await call('/api/admin/photos/bulk',{method:'POST',headers:{Cookie:auth,'X-BALI-Action':'1'},body:contestForm});
+  assert.equal(r.status,410,'Contest imports must be rejected');
 
   r=await call('/api/screen',{headers:{Cookie:screenCookie}});
   assert((await data(r)).photos.some(p=>p.id===photo.id));
@@ -213,7 +164,7 @@ try {
   const active=await data(r);
   assert.equal(active.event.name,'Тестовая вечеринка');
   assert.equal(active.photos.length,0,'New event must have its own slideshow');
-  console.log('PASS: independently editable contest schedule,  guest / and /upload page, guest/contest uploads, isolated queues and feeds, server-saved profiles, permissions, events');
+  console.log('PASS: general photo-wall moderation, guest upload, contestant admin access denied, server-saved profiles, permissions, events');
 }finally{
   if (server.exitCode===null) {
     const exited=new Promise(resolve=>server.once('exit',resolve));
