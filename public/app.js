@@ -110,21 +110,19 @@ if(page==='guest') {
   });
 }
 if(page==='admin') {
-  const adminArea=location.pathname.endsWith('/contest')?'contest':'general';
+  const adminArea='general';
   document.body.dataset.adminArea=adminArea;
-  let replacingContestPhotoId=null;
   let busy=false;
   let previousDashboard=null;
   let selectedEventId=null;
   let displayedEventId=null;
   let pageNumber=1;
   let activePhotoStatus='pending';
-  let contestFormDirty=false;
   const root=$('#adminRoot');
   async function refreshLocalBroadcast(){
    try{
     const data=await api('/api/admin/broadcast-state'),status=$('#localBroadcastStatus');
-    if(status)status.textContent='✓ PHOTO WALL готова к показу. Откройте LED-экран: карусели, QR и оформление управляются здесь, без конкурса.';
+    if(status)status.textContent='✓ PHOTO WALL готова к показу. Карусели, QR и оформление настраиваются здесь.';
     const button=$('#restoreBroadcastPhotos');if(button)button.disabled=!data.active;
    }catch(error){const status=$('#localBroadcastStatus');if(status)status.textContent='Сервер недоступен: '+error.message}
   }
@@ -142,19 +140,16 @@ if(page==='admin') {
       if(!$('#dashboard')) {
         root.innerHTML=`<section id="dashboard" class="bali-admin-v2">
 <div class="admin-heading">
-  <div class="admin-identity"><div class="eyebrow">PHOTO WALL · ${adminArea==='contest'?'ROYAL CONTEST':'GENERAL CONTROL'}</div><h1>${adminArea==='contest'?'♛ МОДЕРАЦИЯ КОНКУРСА':'ОБЩАЯ ФОТОСТЕНА'}</h1><span class="muted" id="activeEvent"></span></div>
+  <div class="admin-identity"><div class="eyebrow">PHOTO WALL · GENERAL CONTROL</div><h1>ОБЩАЯ ФОТОСТЕНА</h1><span class="muted" id="activeEvent"></span></div>
   <div class="admin-links"><a class="button secondary" href="/live/${adminArea}" target="_blank" rel="noopener">◩ ТРАНСЛЯЦИЯ</a><a class="button secondary" href="https://app.baliminsk.by/telegram-admin.html#tcPhoto" target="_blank" rel="noopener noreferrer">📲 КНОПКА В TELEGRAM</a><a class="button secondary" href="/control/${adminArea}" target="_blank" rel="noopener">⚙ НАСТРОЙКА ЭКРАНА</a><button type="button" class="button secondary" id="logoutBtn">ВЫЙТИ</button></div>
 </div>
 <nav class="admin-area-links" aria-label="Рабочие зоны PHOTO WALL"><a href="/admin/general" class="admin-area-link ${adminArea==='general'?'selected':''}">◩ ОБЩИЕ ФОТО</a></nav>
 <div class="admin-quick-actions" aria-label="Управление PHOTO WALL">
-  ${adminArea==='general'?'<button class="button primary" type="button" data-open-panel="eventPanel" data-focus-input="newEvent">＋ СОЗДАТЬ НОВЫЙ ЭФИР</button>':''}
+  <button class="button primary" type="button" data-open-panel="eventPanel" data-focus-input="newEvent">＋ СОЗДАТЬ НОВЫЙ ЭФИР</button>
   <button class="button secondary" type="button" data-open-panel="bulkPanel">＋ ЗАГРУЗИТЬ ФОТО</button>
-  ${adminArea==='contest'?'<button class="button secondary" type="button" data-open-panel="contestPanel">⚙ ДОПОЛНИТЕЛЬНО</button>':''}
+  
   <button class="button secondary" type="button" data-open-panel="eventPanel">📁 АРХИВ</button>
 </div>
-<div class="contest-moderation-banner"><b>Модерация конкурса</b>
- <span>1. Проверь фото. 2. Одобри или отклони. 3. Одобренные попадут в голосование.</span>
- <strong id="contestModeratorCounter" aria-live="polite">Проверяем новые фото…</strong></div>
 <section class="panel" id="localBroadcastPanel" style="margin:10px 0;padding:13px">
  <h3>📺 ТРАНСЛЯЦИЯ ФОТОСТЕНЫ</h3><p id="localBroadcastStatus" class="muted">Проверяем трансляцию…</p>
  <div style="display:flex;flex-wrap:wrap;gap:8px">
@@ -163,7 +158,7 @@ if(page==='admin') {
  <button type="button" class="button secondary" id="restoreBroadcastPhotos">ВОССТАНОВИТЬ ФОТО</button>
  </div><p id="restoreBroadcastStatus" class="muted"></p>
  <small class="muted">Трансляция и оформление настраиваются здесь, в PHOTO WALL. Telegram Admin управляет только кнопкой «Покажи себя на экране» и её расписанием.</small>
- </section><details class="panel admin-drawer" id="eventPanel"><summary>${adminArea==='contest'?'Выбрать мероприятие конкурса':'Мероприятие и формат загрузки'}</summary>
+ </section><details class="panel admin-drawer" id="eventPanel"><summary>Мероприятие и формат загрузки</summary>
   <div class="event-panel">
     <form id="eventForm" class="event-form"><input class="field" id="newEvent" maxlength="90" placeholder="Название новой вечеринки" required aria-label="Название новой вечеринки"><button class="button primary" type="submit">СОЗДАТЬ</button></form>
     <div id="eventList" class="event-list"></div>
@@ -180,62 +175,32 @@ if(page==='admin') {
     <div class="bulk-progress" id="bulkProgress" role="status" aria-live="polite"></div>
   </form>
 </details>
-<details class="panel admin-contest-panel admin-drawer" id="contestPanel"><summary>⚙ Технические настройки · редко нужны</summary>
-  <form id="contestSettings" class="contest-settings-grid">
-    <label class="contest-switch"><input type="checkbox" id="contestEnabled"> Конкурс включён</label>
-    <label>Дата голосования (Минск)<input class="field" type="date" id="contestDate" required></label>
-    <label>Открытие регистрации<input class="field" type="datetime-local" step="60" id="registrationOpensAt" required></label>
-    <label>Закрытие регистрации<input class="field" type="datetime-local" step="60" id="registrationClosesAt" required></label>
-    <label>Начало голосования<input class="field" type="datetime-local" step="60" id="votingStartsLocal" required></label>
-    <label>Конец голосования<input class="field" type="datetime-local" step="60" id="votingEndsLocal" required></label>
-    <label>Объявление победителя<input class="field" type="datetime-local" step="60" id="resultsLocal" required></label>
-    <label>BALI Event ID (необязательно)<input class="field" id="contestBaliEvent" maxlength="16" placeholder="2026-10-30"></label>
-    <button class="button primary" type="submit" id="contestSave">СОХРАНИТЬ РАСПИСАНИЕ</button>
-  </form>
-  <p class="muted" id="contestPhase">Загружаем расписание конкурса…</p>
-  <p class="muted admin-hint">Все даты и часы устанавливаются вручную с точностью до минуты, по Минску (UTC+3). Регистрация заканчивается до голосования, итоги не раньше окончания. После начала голосования прошедшие этапы нельзя изменять.</p>
-  <div class="panel" id="contestCloudQueuePanel" style="margin:12px 0;padding:12px;">
-    <b>☁ Передача фото из Telegram</b>
-    <p class="muted" id="contestCloudQueueStatus">Проверяем состояние облачной очереди…</p>
-    <button id="contestCloudQueueRetry" type="button" class="button secondary">↻ ПРОВЕРИТЬ И ПЕРЕДАТЬ ФОТО ИЗ ОБЛАКА</button>
-  </div>
-  <div class="contest-candidates-head"><h3>Участники конкурса</h3><a id="contestExport" class="button secondary" href="#" download>↓ CSV</a></div>
-  <form id="contestCandidateForm" class="event-form"><label>№ фото<input class="field" id="contestPhotoId" type="number" inputmode="numeric" min="1" required placeholder="ID"></label><label>Имя участника<input class="field" id="contestName" minlength="2" maxlength="70" required placeholder="Имя"></label><input type="hidden" id="contestCategory" value="king"><button class="button secondary" type="submit">＋ ДОБАВИТЬ</button></form>
-  <div id="contestCandidates" class="event-list"></div><p class="muted" id="contestMessage" role="status"></p>
-</details>
 <nav class="admin-tabs" role="tablist" aria-label="Разделы фотографий">
   <button class="admin-tab" type="button" role="tab" data-admin-tab="pending">⏳ НОВЫЕ <b data-count="pending">0</b></button>
-  <button class="admin-tab" type="button" role="tab" data-admin-tab="approved">✓ ${adminArea==='contest'?'ОДОБРЕНЫ':'НА ЭКРАНЕ'} <b data-count="approved">0</b></button>
+  <button class="admin-tab" type="button" role="tab" data-admin-tab="approved">✓ НА ЭКРАНЕ <b data-count="approved">0</b></button>
   
   <button class="admin-tab" type="button" role="tab" data-admin-tab="rejected">× ОТКЛОНЕНЫ <b data-count="rejected">0</b></button>
 </nav>
 <section class="admin-photo-section" aria-live="off">
   <div class="admin-section-head"><div><h2 id="photoSectionTitle">Ожидают проверки</h2><p class="muted" id="selectedEvent"></p></div><span class="muted" id="photoCount"></span></div>
-  <input type="file" id="contestReplaceFile" accept="image/jpeg,image/png,image/webp" hidden aria-label="Заменить фото конкурсанта">
+  
   <div id="photoGrid" class="photo-grid"></div>
   <div class="page-controls" id="pageControls"></div>
 </section>
 <div class="alert" id="adminMessage" role="status" aria-live="polite"></div>
 </section>`;
       }
-      if(adminArea==='contest' && $('#bulkPhotoStatus')){
-        $('#bulkPhotoStatus').value='pending';
-        $('#bulkPhotoStatus').querySelector('option[value="approved"]').disabled=true;
-      }
       $('#activeEvent').textContent=data.active?.name || 'Не выбрано';
       $('#photoCount').textContent=data.total+' фото · '+data.page+' / '+data.pages+' стр.';
-      const counter=$('#contestModeratorCounter');
-      if(counter)counter.textContent='Новые: '+(Number(data.counts?.pending)||0)+
-       ' · одобренные: '+(Number(data.counts?.approved)||0);
       $('#selectedEvent').textContent=data.selected?.name||'Нет выбранного мероприятия';
       displayedEventId=data.selected?.id||null;
       void refreshLocalBroadcast();
-      if($('#eventForm'))$('#eventForm').hidden=adminArea!=='general';
-      if($('#contestSettings'))$('#contestSettings').hidden=true;
+      
+      
       if(document.activeElement!==$('#eventUploadShape'))
         $('#eventUploadShape').value=data.selected?.upload_shape==='square'?'square':'any';
       $('#saveUploadShape').disabled=!displayedEventId;
-      const sectionNames={pending:adminArea==='contest'?'Конкурс · ждут одобрения':'Ожидают проверки',approved:adminArea==='contest'?'Конкурс · одобренные':'Фотографии на экране',rejected:'Отклонённые фотографии'};
+      const sectionNames={pending:'Ожидают проверки',approved:'Фотографии на экране',rejected:'Отклонённые фотографии'};
       $('#photoSectionTitle').textContent=sectionNames[activePhotoStatus]||'Фотографии';
       root.querySelectorAll('[data-admin-tab]').forEach(button=>{
         const current=button.dataset.adminTab===activePhotoStatus;
@@ -251,149 +216,28 @@ if(page==='admin') {
       ).join('');
       const actions=p=>{
         const photo=String(p.id);
-        if(activePhotoStatus==='pending')return '<button class="button small approve" data-photo="'+photo+'" data-status="approved">✓ '+(adminArea==='contest'?'ДОПУСТИТЬ':'НА ЭКРАН')+'</button><button class="button small reject" data-photo="'+photo+'" data-status="rejected">× ОТКЛОНИТЬ</button>';
-        if(activePhotoStatus==='approved')return '<button class="button small" data-photo="'+photo+'" data-status="pending">↩ НА ПРОВЕРКУ</button>'+(adminArea==='contest'&&!p.contest?'<button class="button small" data-contest-photo="'+photo+'">♛ ДОБАВИТЬ УЧАСТНИКА</button>':'');
+        if(activePhotoStatus==='pending')return '<button class="button small approve" data-photo="'+photo+'" data-status="approved">✓ НА ЭКРАН</button><button class="button small reject" data-photo="'+photo+'" data-status="rejected">× ОТКЛОНИТЬ</button>';
+        if(activePhotoStatus==='approved')return '<button class="button small" data-photo="'+photo+'" data-status="pending">↩ НА ПРОВЕРКУ</button>';
         
         return '<button class="button small approve" data-photo="'+photo+'" data-status="approved">✓ ОДОБРИТЬ</button><button class="button small" data-photo="'+photo+'" data-status="pending">↩ НА ПРОВЕРКУ</button>';
       };
       $('#photoGrid').innerHTML=data.photos.length ? data.photos.map(p=>
-        '<article class="photo-card '+(p.contest?'contest-photo':'')+'"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото #'+p.id+'" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+(p.contest?' · ♛':'')+'</span><span class="status '+p.status+'">'+({pending:'ОЖИДАЕТ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div>'+
-        (adminArea==='contest'&&p.telegramName?'<div class="photo-meta" style="display:block;overflow-wrap:anywhere">'+
-          '<strong>'+esc(p.telegramName)+'</strong> · BALI Card '+esc(p.cardNumber||'не указан')+
-          (p.telegramUsername?' · '+esc(p.telegramUsername):' · Telegram без @username')+
-          '</div>':'')+
-        (adminArea==='general'&&p.status==='approved'?'<label class="photo-lane-label">Поток <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Авто</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верх</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Низ</option></select></label>':'')+
-        '<div class="photo-actions">'+actions(p)+(adminArea==='contest'?'<button class="button small secondary" type="button" data-replace-photo="'+p.id+'">↥ ЗАМЕНИТЬ С ПК</button>':'')+'<button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
-      ).join('') : '<div class="empty">'+({pending:'Новых фотографий пока нет. Как только гости загрузят снимки, они появятся здесь.',approved:'На обычной фотостене пока нет опубликованных фотографий.',contest:'В конкурсе пока нет одобренных фотографий.',rejected:'Отклонённых фотографий нет.'}[activePhotoStatus]||'Фотографий нет.')+'</div>';
+        '<article class="photo-card"><a href="/api/admin/photos/'+p.id+'?full=1" target="_blank" rel="noopener" title="Открыть полное фото"><img loading="lazy" alt="Фото #'+p.id+'" src="/api/admin/photos/'+p.id+'"></a><div class="photo-meta"><span>#'+p.id+'</span><span class="status '+p.status+'">'+({pending:'ОЖИДАЕТ',approved:'ОДОБРЕНО',rejected:'ОТКЛОНЕНО'}[p.status])+'</span></div>'+
+        (p.status==='approved'?'<label class="photo-lane-label">Поток <select class="photo-lane-select" data-lane-photo="'+p.id+'" aria-label="Направление фотографии #'+p.id+'"><option value="auto" '+((p.screen_lane||'auto')==='auto'?'selected':'')+'>Авто</option><option value="top" '+(p.screen_lane==='top'?'selected':'')+'>↑ Верх</option><option value="bottom" '+(p.screen_lane==='bottom'?'selected':'')+'>↓ Низ</option></select></label>':'')+
+        '<div class="photo-actions">'+actions(p) +'<button class="button small delete" data-photo="'+p.id+'" data-delete="true">Удалить</button></div></article>'
+      ).join('') : '<div class="empty">'+({pending:'Новых фотографий пока нет. Как только гости загрузят снимки, они появятся здесь.',approved:'На обычной фотостене пока нет опубликованных фотографий.',rejected:'Отклонённых фотографий нет.'}[activePhotoStatus]||'Фотографий нет.')+'</div>';
       $('#pageControls').innerHTML = data.pages>1
         ? '<button class="button secondary" type="button" data-page="prev" '+(data.page<=1?'disabled':'')+'>← НАЗАД</button><span>Страница '+data.page+' из '+data.pages+'</span><button class="button secondary" type="button" data-page="next" '+(data.page>=data.pages?'disabled':'')+'>ВПЕРЁД →</button>'
         : '';
-      if(adminArea==='contest'&&$('#contestPanel')?.open)void loadContest();
+      
     } catch(error){
       if(error.code===401){if($('#dashboard')) {location.reload();return;}}
       notice('#adminMessage',error.message,true);
     } finally {busy=false;}
   }
-  async function refreshCloudQueue(){
-   const node=$('#contestCloudQueueStatus');if(!node)return;
-   try{
-    const state=await api('/api/admin/contest/cloud-queue');
-    if(!node.isConnected)return;
-    const at=state.checkedAtMs?new Date(state.checkedAtMs).toLocaleTimeString('ru-RU',{timeZone:'Europe/Minsk'}):null;
-    const cloud=state.cloud,parts=[];
-    if(cloud){
-     parts.push('В облаке ожидают: '+cloud.waiting+' фото');
-     if(cloud.events?.length)
-      parts.push('Мероприятия: '+cloud.events.map(e=>e.eventId+' ('+e.count+')').join(', '));
-     const selected=$('#contestBaliEvent')?.value?.trim();
-     if(selected&&cloud.events?.some(e=>e.eventId!==selected)&&
-       !cloud.events?.some(e=>e.eventId===selected))
-      parts.push('Внимание: BALI Event ID выбранного конкурса ('+selected+
-       ') не совпадает с мероприятием фото в облаке.');
-    }else parts.push('Не удалось получить количество ожидающих фото из Cloudflare.');
-    parts.push(state.running?'Передача выполняется…':
-     at?'Последняя проверка '+at+' · принято '+state.delivered+' · ошибок '+state.failed+
-      (state.reason?' · '+state.reason:''):
-     'Пока не проверено. Нажмите кнопку, чтобы запросить доставку.');
-    node.textContent=parts.join(' | ');
-   }catch(error){node.textContent='Состояние очереди: '+error.message}
-  }
-  async function loadContest(){
-    if(adminArea!=='contest'||!displayedEventId||!$('#contestPanel')?.open)return;
-    const label=$('#contestMessage');
-    try{
-      const data=await api('/api/admin/contest?eventId='+displayedEventId);
-      const settings=data.settings;
-      const date=settings.contestDate||'';
-      const previousDate=date?new Date(Date.parse(date+'T12:00:00+03:00')-86400000).toISOString().slice(0,10):'';
-      const startLocal=date?date+'T03:00':'';
-      const endLocal=settings.votingEndsLocal&&settings.votingEndsLocal>startLocal?
-        settings.votingEndsLocal:(date?date+'T04:00':'');
-      const values={
-        contestEnabled:!!settings.enabled,
-        contestDate:date,
-        registrationOpensAt:settings.registrationOpensAt||(previousDate?previousDate+'T22:00':''),
-        registrationClosesAt:settings.registrationClosesAt||startLocal,
-        votingStartsLocal:settings.votingStartsLocal||startLocal,
-        votingEndsLocal:settings.votingEndsLocal||endLocal,
-        resultsLocal:settings.resultsLocal||endLocal,
-        contestBaliEvent:settings.baliEventId||''
-      };
-      if(!contestFormDirty){
-        for(const [id,value] of Object.entries(values)){
-          const control=$('#'+id);if(!control)continue;
-          if(control.type==='checkbox')control.checked=value;
-          else control.value=value;
-        }
-      }
-      const phase={disabled:'выключен',waiting:'ожидание начала',registration:'идёт регистрация',
-        awaiting_voting:'ожидание голосования',voting:'идёт голосование',awaiting_results:'ожидание результатов',
-        closed:'конкурс завершён'}[settings.phase]||settings.phase;
-      $('#contestPhase').textContent=(data.liveContestEventId===displayedEventId?'● ЭТОТ КОНКУРС ТРАНСЛИРУЕТСЯ В TELEGRAM. ':'В TELEGRAM СЕЙЧАС: '+(data.liveContestName||'нет активного конкурса')+'. ')+'Этап: '+phase+
-        (settings.finalizedAt?' · победитель: фото #'+(settings.winnerPhotoId||'нет')+
-         ' · голосов победителя: '+settings.winnerVotes+' · всего: '+settings.totalVotes:
-         settings.phase==='closed'?' · ожидается итог подсчёта':'')+
-        (settings.tallyError?' · ошибка подсчёта: '+settings.tallyError:'');
-      const locked=!!settings.finalizedAt||settings.phase==='closed';
-      const started=!!settings.enabled&&['voting','awaiting_results','closed'].includes(settings.phase);
-      const ended=!!settings.enabled&&['awaiting_results','closed'].includes(settings.phase);
-      for(const id of ['contestEnabled','contestDate','contestBaliEvent',
-        'registrationOpensAt','registrationClosesAt','votingStartsLocal']){
-        const control=$('#'+id);
-        control.disabled=locked||started;
-        control.readOnly=false;
-      }
-      $('#votingEndsLocal').disabled=locked||ended;
-      $('#resultsLocal').disabled=locked;
-      $('#contestSave').disabled=locked;
-      $('#contestSave').textContent=locked?'РЕЗУЛЬТАТ ЗАФИКСИРОВАН':'СОХРАНИТЬ ДАТЫ И ВРЕМЯ';
-      $('#contestExport').href='/api/admin/contest/export?eventId='+displayedEventId;
-      $('#contestCandidates').replaceChildren(...data.candidates.map(c=>{
-        const row=document.createElement('div');row.className='event-choice';
-        const title=document.createElement('span');
-        title.textContent='#'+c.photoId+' · '+c.name+' · '+'КОРОЛЬ/КОРОЛЕВА'+
-          (c.status==='approved'?'':' · Фото не одобрено');
-        const remove=document.createElement('button');remove.type='button';remove.className='button small delete';
-        remove.dataset.contestRemove=String(c.photoId);remove.textContent='Убрать из конкурса';
-        row.append(title,remove);return row;
-      }));
-      label.textContent='Участников: '+data.candidates.length+' · конкурс '+
-       (data.settings.enabled?'включён':'выключен')+' · этап: '+phase;
-    }catch(error){label.textContent='Ошибка настроек конкурса: '+error.message}
-  }
-  root.addEventListener('click',event=>{
-    if(event.target.closest('#contestPanel>summary'))setTimeout(()=>void loadContest(),0);
-  });
-  root.addEventListener('input',event=>{
-    if(event.target.closest('#contestSettings'))contestFormDirty=true;
-  });
-  root.addEventListener('change',event=>{
-    if(!event.target.closest('#contestSettings'))return;
-    contestFormDirty=true;
-    if(event.target.id==='contestDate'){
-      // Move all five local timestamps by the same number of calendar days.
-      // Keep each manually chosen clock hour and minute unchanged.
-      const selected=event.target.value;
-      const previous=$('#votingStartsLocal').value.slice(0,10);
-      const delta=Date.parse(selected+'T12:00:00Z')-Date.parse(previous+'T12:00:00Z');
-      if(Number.isFinite(delta)&&selected!==previous){
-        for(const id of ['registrationOpensAt','registrationClosesAt','votingStartsLocal',
-          'votingEndsLocal','resultsLocal']){
-          const element=$('#'+id),raw=element.value;
-          if(!raw||element.disabled)continue;
-          const shifted=new Date(Date.parse(raw+':00Z')+delta);
-          if(Number.isFinite(shifted.getTime()))element.value=shifted.toISOString().slice(0,16);
-        }
-      }
-    }else if(event.target.id==='votingStartsLocal'){
-      // Contest ID/date is the Minsk-local date of the vote start.
-      const date=event.target.value.slice(0,10);
-      if(date)$('#contestDate').value=date;
-    }
-  });
   api('/api/admin/me').then(loadDashboard).catch(()=>{});
-  setInterval(()=>{if(adminArea==='contest'&&$('#contestPanel')?.open){void loadContest();void refreshCloudQueue()}},5000);
-  if(adminArea==='contest')void refreshCloudQueue();
+  
+  
   $('#restoreBroadcastPhotos')?.addEventListener('click',async()=>{
    const status=$('#restoreBroadcastStatus'),button=$('#restoreBroadcastPhotos');
    if(!confirm('Индексировать вручную скопированные WebP-фотографии текущего эфира?'))return;
@@ -411,31 +255,6 @@ if(page==='admin') {
         await api('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:$('#password').value})});
         root.innerHTML='<div class="panel"><p class="muted">Загружаем панель модерации…</p><div id="adminMessage" class="alert" role="status"></div></div>';await loadDashboard();
       } catch(error){notice('#adminMessage',error.message,true);}
-    }
-    if(event.target.id==='contestSettings'){
-      event.preventDefault();if(!displayedEventId)return;
-      try{
-        await action('/api/admin/contest/settings',{eventId:displayedEventId,
-          enabled:$('#contestEnabled').checked,contestDate:$('#contestDate').value,
-          registrationOpensAt:$('#registrationOpensAt').value,
-          registrationClosesAt:$('#registrationClosesAt').value,
-          votingStartsLocal:$('#votingStartsLocal').value,
-          votingEndsLocal:$('#votingEndsLocal').value,
-          resultsLocal:$('#resultsLocal').value,
-          baliEventId:$('#contestBaliEvent').value.trim()});
-        contestFormDirty=false;
-        await loadContest();notice('#adminMessage','Расписание конкурса сохранено.');
-      }catch(error){notice('#adminMessage',error.message,true)}
-    }
-    if(event.target.id==='contestCandidateForm'){
-      event.preventDefault();if(!displayedEventId)return;
-      try{
-        await action('/api/admin/contest/candidates',{action:'add',eventId:displayedEventId,
-         photoId:Number($('#contestPhotoId').value),name:$('#contestName').value.trim(),
-         category:$('#contestCategory').value});
-        $('#contestPhotoId').value='';$('#contestName').value='';
-        previousDashboard=null;await loadDashboard();await loadContest();notice('#adminMessage','Участник конкурса сохранён.');
-      }catch(error){notice('#adminMessage',error.message,true)}
     }
     if(event.target.id==='bulkPhotoForm'){
       event.preventDefault();
@@ -506,24 +325,6 @@ if(page==='admin') {
     }
   });
   root.addEventListener('change',async event=>{
-    if(event.target.id==='contestReplaceFile'){
-      const file=event.target.files?.[0],id=replacingContestPhotoId;
-      replacingContestPhotoId=null;
-      if(!file||!Number.isSafeInteger(id)||id<1)return;
-      if(!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size===0||file.size>8*1024*1024){
-        notice('#adminMessage','Нужен JPG, PNG или WebP до 8 МБ.',true);event.target.value='';return;
-      }
-      try{
-        const form=new FormData();form.append('photo',file,file.name);
-        await api('/api/admin/photos/'+id+'/replace',{method:'POST',
-          headers:{'X-BALI-Action':'1'},body:form});
-        previousDashboard=null;
-        await loadDashboard();
-        notice('#adminMessage','Фото #'+id+' заменено. Номер участника и голоса не изменились.');
-      }catch(error){notice('#adminMessage',error.message,true)}
-      finally{event.target.value=''}
-      return;
-    }
     const input=event.target.closest('[data-lane-photo]');
     if(!input)return;
     const id=Number(input.dataset.lanePhoto);
@@ -541,27 +342,7 @@ if(page==='admin') {
   root.addEventListener('click',async event=>{
     const el=event.target.closest('button');if(!el)return;
     try{
-      if(el.id==='contestCloudQueueRetry'){
-        el.disabled=true;
-        const label=$('#contestCloudQueueStatus');
-        if(label)label.textContent='Запускаем повторную передачу из Cloudflare…';
-        try{
-         const result=await action('/api/admin/contest/cloud-queue/retry',{});
-         if(label)label.textContent=result.started?'Запрос принят. Фото проверяются и передаются…':
-          'Предыдущая синхронизация ещё выполняется.';
-         setTimeout(()=>void refreshCloudQueue(),1500);
-        }catch(error){if(label)label.textContent='Ошибка: '+error.message}
-        finally{el.disabled=false}
-      }else if(el.dataset.replacePhoto){
-        if(adminArea!=='contest')throw Error('Замена доступна только для конкурса');
-        const id=Number(el.dataset.replacePhoto);
-        if(!Number.isSafeInteger(id)||id<1)return;
-        const input=$('#contestReplaceFile');
-        if(!input)return;
-        replacingContestPhotoId=id;
-        input.value='';
-        input.click();
-      }else if(el.dataset.openPanel){
+      if(el.dataset.openPanel){
         const panel=$('#'+el.dataset.openPanel);
         if(panel){
           panel.open=el.dataset.focusInput?true:!panel.open;
@@ -569,22 +350,13 @@ if(page==='admin') {
             const control=$('#'+el.dataset.focusInput);
             control?.focus();
           }
-          if(panel.open&&panel.id==='contestPanel')await loadContest();
+          
         }
       }else if(el.dataset.adminTab){
         if(activePhotoStatus===el.dataset.adminTab)return;
         activePhotoStatus=el.dataset.adminTab;pageNumber=1;previousDashboard=null;
         await loadDashboard();
         
-      }else if(el.dataset.contestPhoto){
-        $('#contestPanel').open=true;$('#contestPhotoId').value=el.dataset.contestPhoto;
-        $('#contestPanel').scrollIntoView({behavior:'smooth',block:'start'});
-        await loadContest();$('#contestName').focus();
-      }else if(el.dataset.contestRemove){
-        if(!displayedEventId||!confirm('Убрать фотографию из конкурса? Само фото останется.'))return;
-        await action('/api/admin/contest/candidates',{action:'remove',
-         eventId:displayedEventId,photoId:Number(el.dataset.contestRemove)});
-        await loadContest();
       }else if(el.id==='logoutBtn'){await action('/api/admin/logout',{});location.reload();}
       else if(el.id==='saveUploadShape'){
         if(!displayedEventId)return;
@@ -592,12 +364,12 @@ if(page==='admin') {
         previousDashboard=null;await loadDashboard();
         notice('#adminMessage','✓ Формат загрузки сохранён.');
       }
-      else if(el.dataset.view){selectedEventId=Number(el.dataset.view);pageNumber=1;contestFormDirty=false;previousDashboard=null;await loadDashboard();if($('#contestPanel')?.open)await loadContest();}
+      else if(el.dataset.view){selectedEventId=Number(el.dataset.view);pageNumber=1;previousDashboard=null;await loadDashboard();}
       else if(el.dataset.page){pageNumber=Math.max(1,pageNumber+(el.dataset.page==='next'?1:-1));await loadDashboard();}
       else if(el.dataset.activate){
         if(!confirm('Сделать это мероприятие текущим? Показ на LED-экране переключится.'))return;
         await action('/api/admin/events/'+el.dataset.activate+'/activate',{});
-        selectedEventId=null;pageNumber=1;contestFormDirty=false;previousDashboard=null;await loadDashboard();
+        selectedEventId=null;pageNumber=1;previousDashboard=null;await loadDashboard();
       }
       else if(el.dataset.status){await action('/api/admin/photos/'+el.dataset.photo+'/status',{status:el.dataset.status});await loadDashboard();}
       else if(el.dataset.delete){if(!confirm('Удалить фотографию без возможности восстановления?'))return;
