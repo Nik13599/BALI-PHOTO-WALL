@@ -19,9 +19,8 @@ test('winner images carry visible gold, silver and bronze vector crowns',()=>{
  assert.match(css,/\.royal-place\[data-place="3"\]\{color:#d29a64\}/);
  assert.match(css,/margin-bottom:clamp\(-46px,-3vw,-15px\)/);
 });
-test('only Telegram registration phase permits contest photo edits, and archives remain protected',()=>{
- assert.match(server,/async function contestPhotoMutationLocked\(photo\)/);
- assert.match(server,/control\?\.contestPhase==='registration'/);
- assert.match(server,/if\(await contestPhotoMutationLocked\(photo\)\)return res\.status\(409\)/);
- assert.match(server,/if\(await contestPhotoMutationLocked\(item\)\)return res\.status\(409\)/);
+test('contest files cannot be modified by ordinary PHOTO WALL administrators',()=>{
+ assert.match(server,/photo\.photo_area!=='general'/);
+ assert.match(server,/item\.photo_area!=='general'/);
+ assert.doesNotMatch(server,/app\.post\('\/api\/admin\/photos\/:id\/replace'/);
 });
