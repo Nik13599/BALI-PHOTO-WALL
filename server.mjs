@@ -706,76 +706,6 @@ for(const area of ['general','contest']){
    serveBaliPage(req,res,'screen');
  });
 }
-// Telegram Admin is the ONLY normal control room. The Windows service
-// handles moderation through a short-lived, action-bound Google-admin proof.
-db.exec(`CREATE TABLE IF NOT EXISTS contest_moderation_nonces(
- nonce TEXT PRIMARY KEY,used_at_ms INTEGER NOT NULL
-)`);
-app.post('/api/operator/contest-moderation',asyncRoute(async(req,res)=>{
- if(PHOTO_CONTEST_PAUSED)return res.status(410).json({error:'Фотоконкурсы временно отключены'});
- const payload=req.body||{},auth=String(req.headers.authorization||'');
- if(!/^Bearer [A-Za-z0-9_.-]{40,1500}$/.test(auth)||req.get('Content-Type')?.split(';')[0]!=='application/json')
-  return res.status(403).json({error:'Требуется подтверждение Telegram Admin'});
- const {runId,action,photoId=0,page=1,status='pending'}=payload;
- if(!/^[a-f0-9-]{36}$/.test(runId||'')||!['list','approve','reject','reset'].includes(action)||
-   !Number.isSafeInteger(photoId)||photoId<0||!Number.isSafeInteger(page)||page<1||page>10000||
-   !['pending','approved','rejected'].includes(status))
-  return res.status(400).json({error:'Неверное действие модерации'});
- let proof;
- try{
-  const response=await fetch('https://app.baliminsk.by/api/tg-bali/photo-contest-moderation-proof',{
-   method:'POST',headers:{'Content-Type':'application/json'},redirect:'error',
-   body:JSON.stringify({proof:auth.slice(7),runId,action,photoId,page,status}),
-   signal:AbortSignal.timeout(5000)});
-  proof=response.ok?await response.json():null;
- }catch{}
- if(proof?.ok!==true||!/^[a-f0-9-]{36}$/.test(proof.nonce||''))
-  return res.status(403).json({error:'Подтверждение администратора недействительно'});
- await synchronizeBroadcast();
- if(!activeBroadcast||activeBroadcast.runId!==runId)
-  return res.status(409).json({error:'Конкурс уже изменён или завершён'});
- const eventId=activeBroadcast.contestEventId;
- if(action==='list'){
-  const counts=db.prepare("SELECT status,COUNT(*) AS n FROM photos WHERE event_id=? AND photo_area='contest' GROUP BY status")
-   .all(eventId);
-  const count=Object.fromEntries(['pending','approved','rejected'].map(s=>[s,Number(counts.find(r=>r.status===s)?.n)||0]));
-  const photos=db.prepare("SELECT p.id,p.status,p.filename,t.telegram_username AS username,t.telegram_display_name AS name,"+
-   "t.bali_card_number AS cardNumber,t.telegram_provider_id AS telegramId FROM photos p "+
-   "JOIN contest_telegram_entries t ON t.photo_id=p.id AND t.event_id=p.event_id "+
-   "WHERE p.event_id=? AND p.photo_area='contest' AND p.status=? "+
-   "ORDER BY p.created_at DESC,p.id DESC LIMIT 12 OFFSET ?").all(eventId,status,(page-1)*12);
-  const items=await Promise.all(photos.map(async item=>{
-   let thumbnailData='';
-   try{
-    const file=fs.existsSync(path.join(THUMBS,item.filename))?
-     path.join(THUMBS,item.filename):path.join(PHOTOS,item.filename);
-    // Read and close the Windows file handle before Sharp touches the
-    // pixels; an open image decoder can otherwise block photo deletion.
-    const bytes=await fsp.readFile(file);
-    const resized=await sharp(bytes).resize({width:180,height:180,fit:'inside',withoutEnlargement:true})
-     .webp({quality:55}).toBuffer();
-    if(resized.length<45000)thumbnailData='data:image/webp;base64,'+resized.toString('base64');
-   }catch{}
-   return {id:item.id,status:item.status,name:item.name,username:item.username,
-    cardNumber:item.cardNumber,telegramId:item.telegramId,thumbnailData};
-  }));
-  return res.json({ok:true,runId,items,counts:count,page,pages:Math.max(1,Math.ceil(count[status]/12))});
- }
- if(!Number.isSafeInteger(photoId)||photoId<=0)return res.status(400).json({error:'Некорректная фотография'});
- const item=selectPhoto.get(photoId);
- if(!item||item.event_id!==eventId||item.photo_area!=='contest')
-  return res.status(404).json({error:'Фотография не принадлежит текущему конкурсу'});
- if(await contestPhotoMutationLocked(item))
-  return res.status(409).json({error:'После начала голосования модерация заблокирована'});
- const inserted=db.prepare('INSERT OR IGNORE INTO contest_moderation_nonces(nonce,used_at_ms) VALUES(?,?)')
-  .run(proof.nonce,Date.now());
- if(inserted.changes!==1)return res.status(409).json({error:'Действие уже выполнялось'});
- const next=action==='approve'?'approved':action==='reject'?'rejected':'pending';
- const result=db.prepare("UPDATE photos SET status=? WHERE id=? AND event_id=? AND photo_area='contest'")
-  .run(next,photoId,eventId);
- if(result.changes!==1)return res.status(409).json({error:'Фотография изменилась'});
- return res.json({ok:true,runId,photoId,status:next});
-}));
 app.get('/api/operator/ready',asyncRoute(async(_req,res)=>{
  await synchronizeBroadcast();
  // Telegram Admin polls this endpoint every few seconds; this guarantees
@@ -948,11 +878,6 @@ app.get('/api/contest/history',(_req,res)=>{
  res.set('Cache-Control','no-store');
  res.json({ok:true,contests:historicalContests(false)});
 });
-app.get('/api/admin/contest/history',adminAuth,(_req,res)=>{
- res.set('Cache-Control','private,no-store');
- res.json({ok:true,contests:historicalContests(true)});
-});
-
 // Telegram Admin retrieves a more detailed archive only with its own
 // short-lived HMAC proof. Never publish BALI UID or Telegram handles openly.
 app.get('/api/contest/history-private',asyncRoute(async(req,res)=>{
@@ -1421,7 +1346,17 @@ app.post('/api/admin/logout', requireAction, (_req,res) => {
   res.json({ok:true});
 });
 app.get('/api/admin/me', adminAuth, (_req,res) => res.json({ok:true}));
-app.get('/api/admin/photos/:id', adminAuth, (req,res) => servePhoto(selectPhoto.get(Number(req.params.id)),res,true,req.query.full==='1'));
+// Legacy competition entry points are deliberately inaccessible.
+app.use('/api/admin/contest',adminAuth,(_req,res)=>res.status(410).json({error:'Конкурс удалён из панели управления'}));
+app.use('/api/admin/screen',adminAuth,(req,res,next)=>{
+  if(req.query.feed==='contest')return res.status(410).json({error:'Конкурсный экран удалён из админки'});
+  next();
+});
+app.get('/api/admin/photos/:id', adminAuth, (req,res) => {
+  const photo=selectPhoto.get(Number(req.params.id));
+  if(!photo||photo.photo_area!=='general')return res.status(404).end();
+  servePhoto(photo,res,true,req.query.full==='1');
+});
 // Moderator bulk import: bounded 8-file batches to avoid exhausting club hardware.
 // Auth and CSRF-action checks happen BEFORE parsing multipart uploads.
 const adminBatchUpload=multer({
@@ -1442,7 +1377,7 @@ app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
       db.prepare('SELECT id,upload_shape FROM events WHERE id=?').get(id):null;
     if(!event)return res.status(404).json({error:'Мероприятие не найдено'});
     const area=req.body?.area||'general';
-    if(!['general','contest'].includes(area))return res.status(400).json({error:'Неизвестный раздел загрузки'});
+    if(area!=='general')return res.status(410).json({error:'Доступна только общая фотостена'});
     const status=req.body?.status==='pending'?'pending':'approved';
     const lane=['top','bottom'].includes(req.body?.lane)?req.body.lane:'auto';
     const results=[];
@@ -1488,156 +1423,16 @@ app.post('/api/admin/photos/bulk',adminAuth,requireAction,reserveUploadSlot,
     res.json({ok:imported===files.length,imported,failed:files.length-imported,results});
   }finally{await clean();}
 }));
-// Independent moderator-only competition control. These routes can never
-// credit BALI COIN or mutate the Firebase/TG user directory.
-app.get('/api/admin/contest',adminAuth,asyncRoute(async(req,res)=>{
- const raw=String(req.query.eventId||'');
- if(!/^[1-9][0-9]{0,9}$/.test(raw))return res.status(400).json({error:'Выберите мероприятие'});
- const id=Number(raw),event=db.prepare('SELECT id,name FROM events WHERE id=?').get(id);
- if(!event)return res.status(404).json({error:'Мероприятие не найдено'});
- await finalizeContest();
- const settings=contestSettings(id),clock=contestClock(settings);
- const candidates=db.prepare("SELECT c.photo_id AS photoId,c.name,c.category,p.status FROM contest_candidates c JOIN photos p ON p.id=c.photo_id WHERE c.event_id=? ORDER BY c.registered_at DESC LIMIT 300").all(id);
- const liveEvent=currentContestEvent.get();
- res.json({ok:true,event,liveContestEventId:liveEvent?.id||null,
-  liveContestName:liveEvent?.name||null,
-  settings:{enabled:!!settings.enabled,contestDate:settings.contest_date,
-   votingStart:settings.voting_start,votingEnd:settings.voting_end,
-   baliEventId:settings.bali_event_id,phase:clock.phase,
-   votingOpen:clock.phase==='voting',finalizedAt:settings.finalized_at,
-   winnerPhotoId:settings.winner_photo_id,winnerVotes:settings.winner_votes,
-   totalVotes:settings.total_votes,registrationStartsAt:clock.registrationStartsAt,
-   registrationEndsAt:clock.registrationEndsAt,votingStartsAt:clock.votingStartsAt,
-   votingEndsAt:clock.votingEndsAt,resultsAt:clock.resultsAt,
-   registrationOpensAt:settings.registration_opens_at||'',
-   registrationClosesAt:settings.registration_ends_at||'',
-   votingStartsLocal:settings.voting_starts_at||'',
-   votingEndsLocal:settings.voting_ends_at||'',
-   resultsLocal:settings.results_at||'',
-   tallyError:lastTallyError},candidates});
-}));
-app.post('/api/admin/contest/settings',adminAuth,requireAction,(req,res)=>{
-  if(process.env.ALLOW_LEGACY_EVENT_CONTROL!=='1')return res.status(403).json({error:'Расписание и запуск конкурса доступны только в Telegram Admin'});
- const i=req.body||{},id=Number(i.eventId);
- const fields=['registrationOpensAt','registrationClosesAt','votingStartsLocal','votingEndsLocal','resultsLocal'];
- const advanced=fields.some(key=>Object.hasOwn(i,key));
- const allowed=['eventId','enabled','contestDate','baliEventId',...(advanced?fields:['votingStart','votingEnd'])];
- if(!Number.isSafeInteger(id)||id<1||typeof i.enabled!=='boolean'||
-   !isContestDate(i.contestDate)||typeof i.baliEventId!=='string'||
-   (i.baliEventId!==''&&!/^\d{4}-\d{2}-\d{2}(?:__(?:2|3))?$/.test(i.baliEventId))||
-   Object.keys(i).sort().join(',')!==allowed.sort().join(','))
-   return res.status(400).json({error:'Заполни расписание конкурса и мероприятие'});
- if(!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))
-   return res.status(404).json({error:'Мероприятие не найдено'});
- if(i.baliEventId&&!eligiblePartyDay(i.baliEventId,i.contestDate))
-   return res.status(400).json({error:'BALI Event ID должен относиться к дате конкурса или предыдущему дню'});
- let timeline;
- if(advanced){
-   timeline={contest_date:i.contestDate,registration_opens_at:i.registrationOpensAt,
-     registration_ends_at:i.registrationClosesAt,voting_starts_at:i.votingStartsLocal,
-     voting_ends_at:i.votingEndsLocal,results_at:i.resultsLocal};
-   if(!validContestTimeline(timeline))
-     return res.status(400).json({error:'Неверный порядок времени: открытие регистрации < закрытие регистрации ≤ начало голосования < конец голосования ≤ итоги. Дата конкурса должна совпадать с днём начала голосования по Минску.'});
- }else{
-   // Legacy clients retain the original fixed times, but manual schedules
-   // saved by the updated moderator may use ANY valid hour and minute.
-   if(i.votingStart!=='03:00'||
-     !/^([01]\d|2[0-3]):[0-5]\d$/.test(i.votingEnd)||i.votingEnd<='03:00')
-     return res.status(400).json({error:'Проверь время голосования'});
-   timeline={registration_opens_at:'',registration_ends_at:'',voting_starts_at:'',
-     voting_ends_at:'',results_at:''};
- }
- const start=advanced?i.votingStartsLocal.slice(11):'03:00';
- const end=advanced?i.votingEndsLocal.slice(11):i.votingEnd;
- const prev=contestRow(id),prevClock=contestClock(prev),now=Date.now();
- if(prev?.finalized_at)
-   return res.status(409).json({error:'Результат уже зафиксирован. Для следующего конкурса создай другое мероприятие.'});
- if(prev?.enabled===1&&prevClock.votingStartsAt!==null&&now>=prevClock.votingStartsAt){
-   if(prevClock.phase==='closed')
-     return res.status(409).json({error:'Конкурс завершён по расписанию. Для нового конкурса создай другое мероприятие.'});
-   const unmodified=prev.contest_date===i.contestDate&&prev.enabled===Number(i.enabled)&&
-     prev.bali_event_id===i.baliEventId&&prev.voting_start===start&&
-     (prev.registration_opens_at||'')===timeline.registration_opens_at&&
-     (prev.registration_ends_at||'')===timeline.registration_ends_at&&
-     (prev.voting_starts_at||'')===timeline.voting_starts_at;
-   if(!unmodified)
-     return res.status(409).json({error:'После начала голосования нельзя менять прошедшие этапы и дату конкурса. Окончание голосования и результаты можно перенести.'});
-   if(prevClock.phase==='awaiting_results'&&(prev.voting_ends_at||'')!==timeline.voting_ends_at)
-     return res.status(409).json({error:'Голосование уже завершено: разрешено менять только время результатов.'});
-   if(prevClock.phase==='voting'&&advanced&&Date.parse(i.votingEndsLocal+':00+03:00')<=now)
-     return res.status(409).json({error:'Окончание действующего голосования должно быть в будущем.'});
-   if(prevClock.phase==='awaiting_results'&&advanced&&Date.parse(i.resultsLocal+':00+03:00')<=now)
-     return res.status(409).json({error:'Новое время результатов должно быть в будущем.'});
- }
- db.prepare(`INSERT INTO contest_settings(event_id,enabled,voting_open,contest_date,voting_start,voting_end,bali_event_id,
-   registration_opens_at,registration_ends_at,voting_starts_at,voting_ends_at,results_at,updated_at)
-   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
-   ON CONFLICT(event_id) DO UPDATE SET enabled=excluded.enabled,voting_open=0,
-     contest_date=excluded.contest_date,voting_start=excluded.voting_start,
-     voting_end=excluded.voting_end,bali_event_id=excluded.bali_event_id,
-     registration_opens_at=excluded.registration_opens_at,registration_ends_at=excluded.registration_ends_at,
-     voting_starts_at=excluded.voting_starts_at,voting_ends_at=excluded.voting_ends_at,
-     results_at=excluded.results_at,updated_at=excluded.updated_at`)
-   .run(id,Number(i.enabled),0,i.contestDate,start,end,i.baliEventId,
-     timeline.registration_opens_at,timeline.registration_ends_at,timeline.voting_starts_at,
-     timeline.voting_ends_at,timeline.results_at,Date.now());
- res.json({ok:true,phase:contestClock(contestSettings(id)).phase});
-});
-app.post('/api/admin/contest/candidates',adminAuth,requireAction,asyncRoute(async(req,res)=>{
- const input=req.body||{},eventId=Number(input.eventId),photoId=Number(input.photoId);
- if(!Number.isSafeInteger(eventId)||eventId<1||!Number.isSafeInteger(photoId)||photoId<1||
-   !['add','remove'].includes(input.action)||
-   Object.keys(input).some(k=>!['eventId','photoId','name','category','action'].includes(k)))
-  return res.status(400).json({error:'Некорректные данные участника'});
- const photo=db.prepare('SELECT id,status,photo_area FROM photos WHERE id=? AND event_id=?').get(photoId,eventId);
- if(!photo)return res.status(404).json({error:'Фотография не найдена в мероприятии'});
- const control=await telegramPhotoSchedule();
- if(!control)return res.status(503).json({error:'Расписание Telegram Admin недоступно. Изменение участников отложено.'});
- if(control.buttons.vote?.open===true||
-    (control.resultContestId==='event_'+eventId&&
-     Number.isSafeInteger(control.resultAtMs)&&Date.now()>=control.resultAtMs))
-   return res.status(409).json({error:'Список участников закрыт таймером голосования Telegram Admin'});
- if(input.action==='add'){
-  const name=typeof input.name==='string'?input.name.trim():'';
-  if(name.length<2||name.length>70||/[<>\u0000-\u001f\u007f]/.test(name)||
-     !['king','queen'].includes(input.category)||photo.status!=='approved'||photo.photo_area!=='contest')
-   return res.status(400).json({error:'Участнику требуется одобренное фото, имя и категория'});
-  db.prepare('INSERT INTO contest_candidates(photo_id,event_id,name,category,registered_at) VALUES(?,?,?,?,?) '+
-   'ON CONFLICT(photo_id) DO UPDATE SET name=excluded.name,category=excluded.category')
-   .run(photoId,eventId,name,input.category,Date.now());
- }else{
-  db.prepare('DELETE FROM contest_candidates WHERE photo_id=? AND event_id=?').run(photoId,eventId);
-  const remaining=db.prepare("SELECT COUNT(*) AS n FROM contest_candidates c JOIN photos p ON p.id=c.photo_id "+
-   "WHERE c.event_id=? AND p.status='approved'").get(eventId);
-  if(!remaining.n)db.prepare('UPDATE contest_settings SET voting_open=0 WHERE event_id=?').run(eventId);
- }
- res.json({ok:true});
-}));
-app.get('/api/admin/contest/export',adminAuth,(req,res)=>{
- const id=Number(req.query.eventId);
- if(!Number.isSafeInteger(id)||id<1||!db.prepare('SELECT 1 FROM events WHERE id=?').get(id))
-  return res.status(400).json({error:'Выберите мероприятие'});
- const rows=db.prepare("SELECT p.id AS photoId,p.status,p.created_at AS uploadedAt,c.name,c.category "+
-  "FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id AND c.event_id=p.event_id "+
-  "WHERE p.event_id=? ORDER BY p.created_at,p.id LIMIT 100000").all(id);
- const cell=v=>'"'+String(v??'').replace(/"/g,'""').replace(/^[=+@-]/,m=>String.fromCharCode(39)+m)+'"';
- const lines=['photo_id;status;uploaded_at;candidate_name;category',
-  ...rows.map(r=>[r.photoId,r.status,r.uploadedAt,r.name,r.category].map(cell).join(';'))];
- res.type('text/csv; charset=utf-8')
-  .set('Content-Disposition','attachment; filename="bali-photo-contest-'+id+'.csv"')
-  .send('\uFEFF'+lines.join('\n'));
-});
 app.get('/api/admin/dashboard', adminAuth, asyncRoute(async(req,res) => {
   // After Windows restart restore the Telegram-selected run before choosing
   // the moderation queue. Never fall back to the GENERAL photo event.
   await synchronizeBroadcast();
-  const events = db.prepare('SELECT id,name,active,created_at,upload_shape FROM events ORDER BY id DESC').all();
+  const events = db.prepare('SELECT id,name,active,created_at,upload_shape FROM events WHERE id NOT IN (SELECT event_id FROM contest_settings) ORDER BY id DESC').all();
   const active = currentEvent.get();
   const requested = req.query.eventId;
-  const selected = requested === undefined ? (req.query.area==='contest'&&activeBroadcast?
-   db.prepare('SELECT id,name,upload_shape FROM events WHERE id=?').get(activeBroadcast.contestEventId):active)
-    : (typeof requested === 'string' && /^\d+$/.test(requested)
-      ? db.prepare('SELECT id,name,upload_shape FROM events WHERE id=?').get(Number(requested)) : null);
+  const selected = requested === undefined ? active
+     : (typeof requested === 'string' && /^\d+$/.test(requested)
+       ? db.prepare('SELECT id,name,upload_shape FROM events WHERE id=? AND id NOT IN (SELECT event_id FROM contest_settings)').get(Number(requested)) : null);
   if (requested !== undefined && !selected) return res.status(404).json({error:'Мероприятие не найдено'});
   const PAGE_SIZE = 48;
   const rawPage = req.query.page ?? '1';
@@ -1645,8 +1440,7 @@ app.get('/api/admin/dashboard', adminAuth, asyncRoute(async(req,res) => {
     return res.status(400).json({error:'Неверный номер страницы'});
   }
   const area=req.query.area||'general';
-  if(typeof area!=='string'||!['general','contest'].includes(area))
-    return res.status(400).json({error:'Неизвестная зона управления'});
+  if(area!=='general')return res.status(410).json({error:'Зона конкурса удалена из админки'});
   const status=req.query.status??'pending';
   if(typeof status!=='string'||!['pending','approved','rejected'].includes(status))
     return res.status(400).json({error:'Неизвестная очередь фотографий'});
@@ -1656,15 +1450,10 @@ app.get('/api/admin/dashboard', adminAuth, asyncRoute(async(req,res) => {
     COALESCE(SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END),0) AS rejected
     FROM photos WHERE event_id=? AND photo_area=?`).get(selected.id,area):{pending:0,approved:0,rejected:0};
   const total=counts[status],pages=Math.max(1,Math.ceil(total/PAGE_SIZE)),page=Math.min(Number(rawPage),pages);
-  const photos=selected?db.prepare(`SELECT p.id,p.status,p.created_at,p.screen_lane,p.photo_area,
-    CASE WHEN c.photo_id IS NULL THEN 0 ELSE 1 END AS contest,
-    t.telegram_username AS telegramUsername,t.telegram_display_name AS telegramName,
-    t.bali_card_number AS cardNumber,t.telegram_provider_id AS telegramId
-    FROM photos p LEFT JOIN contest_candidates c ON c.photo_id=p.id
-    LEFT JOIN contest_telegram_entries t ON t.photo_id=p.id
-    WHERE p.event_id=? AND p.photo_area=? AND p.status=?
-    ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`).all(selected.id,area,status,PAGE_SIZE,(page-1)*PAGE_SIZE):[];
-  res.json({events,active,selected,photos,status,area,counts,page,pages,total,pageSize:PAGE_SIZE});
+  const photos=selected?db.prepare(`SELECT p.id,p.status,p.created_at,p.screen_lane,p.photo_area
+     FROM photos p WHERE p.event_id=? AND p.photo_area=? AND p.status=?
+     ORDER BY p.created_at DESC,p.id DESC LIMIT ? OFFSET ?`).all(selected.id,area,status,PAGE_SIZE,(page-1)*PAGE_SIZE):[];
+   res.json({events,active,selected,photos,status,area,counts,page,pages,total,pageSize:PAGE_SIZE});
 }));
 const makeEvent = db.transaction(name => {
   db.prepare('UPDATE events SET active=0').run();
@@ -1694,7 +1483,7 @@ app.post('/api/admin/events/:id/upload-shape', adminAuth, requireAction, (req,re
   const shape=req.body?.uploadShape;
   if(!Number.isSafeInteger(id)||id<=0)return res.status(400).json({error:'Некорректное мероприятие'});
   if(!['any','square'].includes(shape))return res.status(400).json({error:'Выберите любые форматы или только квадратные'});
-  const result=db.prepare('UPDATE events SET upload_shape=? WHERE id=?').run(shape,id);
+  const result=db.prepare('UPDATE events SET upload_shape=? WHERE id=? AND id NOT IN (SELECT event_id FROM contest_settings)').run(shape,id);
   if(!result.changes)return res.status(404).json({error:'Мероприятие не найдено'});
   res.json({ok:true,uploadShape:shape});
 });
@@ -1706,8 +1495,7 @@ app.post('/api/admin/events/:id/activate', adminAuth, requireAction, (req,res) =
    if(telegramSchedule.value?.broadcast?.active)return res.status(403).json({error:'Сначала останови активный конкурсный эфир'});
   }
   // Never use ordinary-wall activation to display the archived contest feed.
-  if(PHOTO_CONTEST_PAUSED&&
-     db.prepare('SELECT 1 FROM contest_settings WHERE event_id=?').get(Number(req.params.id)))
+  if(db.prepare('SELECT 1 FROM contest_settings WHERE event_id=?').get(Number(req.params.id)))
    return res.status(409).json({error:'Это архив конкурса. Выбери мероприятие обычной фотостены'});
   if (!activateEvent(Number(req.params.id))) return res.status(404).json({error:'Мероприятие не найдено'});
   res.json({ok:true});
@@ -1717,7 +1505,7 @@ app.post('/api/admin/photos/:id/screen-lane', adminAuth, requireAction, (req,res
   const id=Number(req.params.id);
   if(!Number.isSafeInteger(id)||id<1 || !['auto','top','bottom'].includes(lane))
     return res.status(400).json({error:'Выберите верхний, нижний или автоматический поток'});
-  const result=db.prepare('UPDATE photos SET screen_lane=? WHERE id=?').run(lane,id);
+  const result=db.prepare("UPDATE photos SET screen_lane=? WHERE id=? AND photo_area='general'").run(lane,id);
   if(!result.changes)return res.status(404).json({error:'Фотография не найдена'});
   res.json({ok:true,lane});
 });
@@ -1753,74 +1541,19 @@ db.exec(`CREATE TABLE IF NOT EXISTS contest_photo_replacements (
  old_filename TEXT NOT NULL,new_filename TEXT NOT NULL,
  created_at_ms INTEGER NOT NULL
 )`);
-const contestReplacementUpload=multer({storage:multer.memoryStorage(),
- limits:{fileSize:8*1024*1024,files:1,fields:0}});
-app.post('/api/admin/photos/:id/replace',adminAuth,requireAction,reserveUploadSlot,
- contestReplacementUpload.single('photo'),asyncRoute(async(req,res)=>{
- const id=Number(req.params.id);
- const photo=Number.isSafeInteger(id)&&id>0?selectPhoto.get(id):null;
- if(!photo||photo.photo_area!=='contest')return res.status(404).json({error:'Конкурсная фотография не найдена'});
- if(await contestPhotoMutationLocked(photo))return res.status(409).json({error:'После начала голосования менять фотографию нельзя'});
- if(!req.file?.buffer)return res.status(400).json({error:'Выберите JPG, PNG или WebP'});
- let image,thumb,dimensions;
- try{
-  const input=sharp(req.file.buffer,{limitInputPixels:36_000_000,failOn:'error'});
-  const info=await input.metadata();
-  if(!['jpeg','png','webp'].includes(info.format)||info.width<50||info.height<50)
-   return res.status(415).json({error:'Нужен JPG, PNG или WebP не меньше 50×50'});
-  image=await input.rotate().resize({width:1600,height:1600,fit:'inside',withoutEnlargement:true})
-    .webp({quality:80,effort:4}).toBuffer();
-  dimensions=await sharp(image).metadata();
-  thumb=await sharp(image).resize({width:360,height:360,fit:'inside',withoutEnlargement:true})
-    .webp({quality:65}).toBuffer();
- }catch{return res.status(415).json({error:'Изображение не читается или повреждено'})}
- const filesystem=await fsp.statfs(DATA);
- if(Number(filesystem.bavail)*Number(filesystem.bsize)<MIN_FREE_DISK_MB*1048576)
-  return res.status(507).json({error:'Недостаточно места на Windows-диске'});
- const newFilename=runFilename(photo.event_id);
- const fullPath=path.join(PHOTOS,newFilename),thumbPath=path.join(THUMBS,newFilename);
- let saved=false;
- try{
-  await ensurePhotoFolders(newFilename);
-  await fsp.writeFile(fullPath,image,{flag:'wx'});
-  await fsp.writeFile(thumbPath,thumb,{flag:'wx'});
-  // Read the authoritative Telegram clock AGAIN after image processing and IO.
-  // If the deadline has passed or a different run became active, do not swap.
-  const latest=selectPhoto.get(id);
-  if(!latest||latest.filename!==photo.filename||await contestPhotoMutationLocked(latest))
-   return res.status(409).json({error:'Фотография изменилась или голосование уже началось'});
-  const result=db.transaction(()=>{
-   const current=selectPhoto.get(id);
-   if(!current||current.filename!==photo.filename||current.photo_area!=='contest')return false;
-   const updated=db.prepare('UPDATE photos SET filename=?,width=?,height=? WHERE id=? AND filename=? AND photo_area=?')
-    .run(newFilename,dimensions.width,dimensions.height,id,photo.filename,'contest');
-   if(updated.changes!==1)return false;
-   db.prepare('INSERT INTO contest_photo_replacements(photo_id,event_id,old_filename,new_filename,created_at_ms) VALUES(?,?,?,?,?)')
-    .run(id,photo.event_id,photo.filename,newFilename,Date.now());
-   return true;
-  })();
-  if(!result)return res.status(409).json({error:'Фото изменено в другом окне'});
-  saved=true;
-  await Promise.all([fsp.unlink(path.join(PHOTOS,photo.filename)).catch(()=>{}),
-                     fsp.unlink(path.join(THUMBS,photo.filename)).catch(()=>{})]);
-  return res.json({ok:true,photoId:id,version:Date.now(),width:dimensions.width,height:dimensions.height});
- }finally{
-  if(!saved)await Promise.all([fsp.unlink(fullPath).catch(()=>{}),fsp.unlink(thumbPath).catch(()=>{})]);
- }
-}));
 app.post('/api/admin/photos/:id/status', adminAuth, requireAction, asyncRoute(async(req,res) => {
  const status=req.body?.status;
  if(!['approved','rejected','pending'].includes(status))return res.status(400).json({error:'Неизвестный статус'});
  const photo=selectPhoto.get(Number(req.params.id));
  if(!photo)return res.status(404).json({error:'Фотография не найдена'});
- if(await contestPhotoMutationLocked(photo))return res.status(409).json({error:'Голосование началось или завершено. Конкурсное фото уже нельзя изменять.'});
+ if(photo.photo_area!=='general')return res.status(404).json({error:'Фотография недоступна в общей админке'});
  db.prepare('UPDATE photos SET status=? WHERE id=?').run(status,photo.id);
  res.json({ok:true});
 }));
 app.delete('/api/admin/photos/:id', adminAuth, requireAction, asyncRoute(async (req,res) => {
   const item = selectPhoto.get(Number(req.params.id));
   if (!item) return res.status(404).json({error:'Фотография не найдена'});
-  if(await contestPhotoMutationLocked(item))return res.status(409).json({error:'Нельзя удалить конкурсное фото после начала голосования либо из архива победителей.'});
+  if(item.photo_area!=='general')return res.status(404).json({error:'Фотография недоступна в общей админке'});
   db.prepare('DELETE FROM photos WHERE id=?').run(item.id);
   await Promise.all([
     fsp.unlink(path.join(PHOTOS,item.filename)).catch(()=>{}),
@@ -1911,29 +1644,6 @@ async function drainQueuedPhotos(){
  }finally{draining=false}
  return lastQueueSync;
 }
-// Show the real Cloudflare queue for each BALI Event ID even when the
-// outbound server cannot currently complete a PHOTO WALL upload.
-let queueSummaryCache={until:0,value:null};
-async function cloudQueueSummary(){
- if(Date.now()<queueSummaryCache.until)return queueSummaryCache.value;
- let value=null;
- try{
-  const response=await fetch('https://app.baliminsk.by/api/tg-bali/photo-contest-queue-summary',{
-   redirect:'error',headers:{Accept:'application/json'},signal:AbortSignal.timeout(3500)});
-  const body=await response.json().catch(()=>null);
-  if(response.ok&&body?.ok===true)value={waiting:body.waiting,events:body.events,hasMore:body.hasMore};
- }catch{}
- queueSummaryCache={until:Date.now()+10000,value};
- return value;
-}
-app.get('/api/admin/contest/cloud-queue',adminAuth,asyncRoute(async(_req,res)=>{
- res.json({ok:true,...lastQueueSync,cloud:await cloudQueueSummary()});
-}));
-app.post('/api/admin/contest/cloud-queue/retry',adminAuth,requireAction,(_req,res)=>{
- if(draining)return res.json({ok:true,started:false,...lastQueueSync});
- void drainQueuedPhotos().catch(error=>console.warn('Cloud queue retry:',error.message));
- res.status(202).json({ok:true,started:true});
-});
 setTimeout(()=>drainQueuedPhotos().catch(console.error),3000).unref();
 setInterval(()=>drainQueuedPhotos().catch(console.error),45000).unref();
 setInterval(()=>ensureTelegramContest().catch(console.error),30000).unref();
